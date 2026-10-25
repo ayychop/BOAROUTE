@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -11,6 +10,7 @@ import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
+import { copyText } from '@/lib/external';
 import { firstName } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/providers/AuthProvider';
@@ -112,17 +112,23 @@ export default function AiWriter() {
   const saveAsTask = async () => {
     if (!result) return;
     setSaving(true);
+    setError(null);
     const title = result.subject ?? result.body.split('\n')[0].slice(0, 120) ?? 'AI draft';
-    const { error: err } = await supabase.from('tasks').insert({
-      store_id: storeId ?? null,
-      title: title || 'AI draft',
-      content: result.subject ? result.body : result.body.split('\n').slice(1).join('\n').trim() || result.body,
-      media_urls: [],
-      task_type: context,
-    });
-    setSaving(false);
-    if (err) return setError(err.message);
-    setSaved(true);
+    try {
+      const { error: err } = await supabase.from('tasks').insert({
+        store_id: storeId ?? null,
+        title: title || 'AI draft',
+        content: result.subject ? result.body : result.body.split('\n').slice(1).join('\n').trim() || result.body,
+        media_urls: [],
+        task_type: context,
+      });
+      if (err) throw err;
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : 'Could not save the draft. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -216,7 +222,7 @@ export default function AiWriter() {
                     icon={copied ? 'checkmark' : 'copy'}
                     label={copied ? 'Copied' : 'Copy'}
                     onPress={async () => {
-                      await Clipboard.setStringAsync(fullText);
+                      if (!(await copyText(fullText))) return;
                       setCopied(true);
                       setTimeout(() => setCopied(false), 1500);
                     }}

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useMemo, useState } from 'react';
@@ -8,6 +7,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field, Segmented } from '@/components/controls';
 import { ExpenseForm } from '@/components/ExpenseForm';
 import { GlassCard } from '@/components/GlassCard';
+import { DataErrorBanner } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
 import { BudgetRings } from '@/components/BudgetRings';
@@ -15,6 +15,7 @@ import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { CATEGORY_LABEL, budgetsFor, formatPence, inMonth, monthKey, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
+import { copyText } from '@/lib/external';
 import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
 import { buildMonthlyReport, monthTitle, ukDate } from '@/lib/report';
@@ -270,7 +271,7 @@ export default function Finances() {
               icon={copied ? 'checkmark-done' : 'copy'}
               variant="gold"
               onPress={async () => {
-                await Clipboard.setStringAsync(report);
+                if (!(await copyText(report))) return;
                 setCopied(true);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
               }}
@@ -295,6 +296,7 @@ export default function Finances() {
       }}
       refreshing={refreshing}
     >
+      <DataErrorBanner />
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 16, alignItems: 'stretch' }}>
           <View style={{ flex: 1 }}>{odometerCard}</View>

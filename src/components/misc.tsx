@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ReactNode } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
+import { useData } from '@/providers/DataProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 import { GlassCard } from './GlassCard';
 import { Txt } from './Txt';
@@ -99,4 +100,41 @@ function wrapCells(children: ReactNode, min: number) {
       {child}
     </View>
   ));
+}
+
+/** Shown when the last data load failed, with a one-tap retry. Renders nothing when all is well. */
+export function DataErrorBanner() {
+  const { palette } = useTheme();
+  const { error, refresh } = useData();
+  const [retrying, setRetrying] = useState(false);
+  if (!error) return null;
+  const retry = async () => {
+    setRetrying(true);
+    await refresh().catch(() => {});
+    setRetrying(false);
+  };
+  return (
+    <GlassCard style={{ marginBottom: 12, borderColor: palette.danger }} animateIn={false}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Ionicons name="cloud-offline-outline" size={20} color={palette.danger} style={{ flexShrink: 0 }} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="strong" numberOfLines={1}>
+            Some data could not load
+          </Txt>
+          <Txt variant="caption" tone="faint" numberOfLines={2}>
+            Check your signal. {error}
+          </Txt>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Retry loading" onPress={retry} disabled={retrying} hitSlop={10} style={{ flexShrink: 0 }}>
+          {retrying ? (
+            <ActivityIndicator color={palette.primary} />
+          ) : (
+            <Txt variant="label" tone="primary">
+              Retry
+            </Txt>
+          )}
+        </Pressable>
+      </View>
+    </GlassCard>
+  );
 }

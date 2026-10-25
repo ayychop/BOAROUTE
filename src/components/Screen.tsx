@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import type { ReactElement, ReactNode } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -11,7 +11,8 @@ import { AmbientBackground } from './AmbientBackground';
 import { Txt } from './Txt';
 
 interface Props {
-  children: ReactNode;
+  /** Optional when renderList draws the content. */
+  children?: ReactNode;
   title?: string;
   kicker?: string;
   back?: boolean;
@@ -25,6 +26,11 @@ interface Props {
   footer?: ReactNode;
   /** Rendered outside the navigator (setup and error states), so focus is unknown. */
   standalone?: boolean;
+  /**
+   * Renders a virtualised list (FlatList) instead of the default ScrollView.
+   * Receives the screen padding, the title header and the pull-to-refresh control.
+   */
+  renderList?: (parts: { contentContainerStyle: StyleProp<ViewStyle>; header: ReactNode; refreshControl?: ReactElement }) => ReactNode;
 }
 
 /** Only the screen in front animates its ambiance; screens behind it hold a still frame. */
@@ -33,7 +39,7 @@ function FocusedAmbience() {
   return <AmbientBackground animated={focused} />;
 }
 
-export function Screen({ children, title, kicker, back, right, scroll = true, inTabs = false, onRefresh, refreshing = false, footer, standalone = false }: Props) {
+export function Screen({ children, title, kicker, back, right, scroll = true, inTabs = false, onRefresh, refreshing = false, footer, standalone = false, renderList }: Props) {
   const { palette } = useTheme();
   const { insets, gutter, maxContent, compact } = useLayout();
 
@@ -83,23 +89,28 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
     paddingRight: Math.max(gutter, insets.right + 8),
   };
   const inner = { width: '100%' as const, maxWidth: maxContent, alignSelf: 'center' as const };
+  const refreshControl = onRefresh ? (
+    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} colors={[palette.primary]} progressBackgroundColor={palette.surfaceStrong} />
+  ) : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg[0] }}>
       <StatusBar style={palette.statusBar} animated />
       {standalone ? <AmbientBackground /> : <FocusedAmbience />}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {scroll ? (
+        {renderList ? (
+          renderList({
+            contentContainerStyle: [padding, { width: '100%', maxWidth: maxContent + padding.paddingLeft + padding.paddingRight, alignSelf: 'center' }],
+            header,
+            refreshControl,
+          })
+        ) : scroll ? (
           <ScrollView
             contentContainerStyle={padding}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
-            refreshControl={
-              onRefresh ? (
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} colors={[palette.primary]} progressBackgroundColor={palette.surfaceStrong} />
-              ) : undefined
-            }
+            refreshControl={refreshControl}
           >
             <Animated.View entering={FadeIn.duration(420)} style={inner}>
               {header}

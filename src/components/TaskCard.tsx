@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { copyText } from '@/lib/external';
 import { formatDateTime } from '@/lib/format';
 import type { Task } from '@/lib/types';
 import { isVideoPath } from '@/services/media';
@@ -73,7 +73,7 @@ export function TaskCard({ task, urls, index, onOpenMedia, onDelete }: Props) {
             label="Copy text"
             tone="primary"
             onPress={async () => {
-              await Clipboard.setStringAsync(task.content ? `${task.title}\n\n${task.content}` : task.title);
+              if (!(await copyText(task.content ? `${task.title}\n\n${task.content}` : task.title))) return;
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
             }}

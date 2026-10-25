@@ -16,12 +16,14 @@ interface Props {
   index?: number;
   padded?: boolean;
   accessibilityLabel?: string;
+  /** Off for list rows that mount while scrolling, so they don't replay the entrance. */
+  animateIn?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /** Frosted glass panel: translucent fill, top sheen, hairline edge and a soft gold aura when highlighted. */
-export function GlassCard({ children, style, glow = false, onPress, onLongPress, index = 0, padded = true, accessibilityLabel }: Props) {
+export function GlassCard({ children, style, glow = false, onPress, onLongPress, index = 0, padded = true, accessibilityLabel, animateIn = true }: Props) {
   const { palette } = useTheme();
   const { compact } = useLayout();
   const pressed = useSharedValue(1);
@@ -47,11 +49,13 @@ export function GlassCard({ children, style, glow = false, onPress, onLongPress,
     </>
   );
 
-  const entering = FadeInDown.delay(Math.min(index, 10) * 60)
-    .duration(520)
-    .springify()
-    .damping(springs.settle.damping)
-    .stiffness(springs.settle.stiffness);
+  const entering = animateIn
+    ? FadeInDown.delay(Math.min(index, 10) * 60)
+        .duration(520)
+        .springify()
+        .damping(springs.settle.damping)
+        .stiffness(springs.settle.stiffness)
+    : undefined;
 
   if (!onPress && !onLongPress) {
     return (

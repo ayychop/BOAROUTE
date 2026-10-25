@@ -8,7 +8,7 @@ import { EventTypeBadge } from '@/components/badges';
 import { BRLogo } from '@/components/BRLogo';
 import { BudgetRings } from '@/components/BudgetRings';
 import { GlassCard } from '@/components/GlassCard';
-import { EmptyState } from '@/components/misc';
+import { DataErrorBanner, EmptyState } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
 import { Screen, SectionHeader } from '@/components/Screen';
@@ -65,7 +65,7 @@ function TileGrid({ children }: { children: ReactNode[] }) {
 export default function Hub() {
   const { palette, phase } = useTheme();
   const { profile, isAdmin } = useAuth();
-  const { myStores, tallies, targets, events, expenses, mileage, refresh, error } = useData();
+  const { myStores, tallies, targets, events, expenses, mileage, refresh } = useData();
   const { compact, expanded } = useLayout();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -227,13 +227,7 @@ export default function Hub() {
   return (
     <Screen inTabs onRefresh={onRefresh} refreshing={refreshing}>
       {header}
-      {error ? (
-        <GlassCard style={{ marginBottom: 12, borderColor: palette.danger }}>
-          <Txt variant="caption" tone="danger">
-            Some data could not load: {error}. Pull down to retry.
-          </Txt>
-        </GlassCard>
-      ) : null}
+      <DataErrorBanner />
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
           <View style={{ flex: 1.1, gap: 14 }}>

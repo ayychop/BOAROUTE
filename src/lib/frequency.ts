@@ -1,7 +1,7 @@
 import type { Grade, GradeTargets, Manager, Profile, Role } from './types';
 
 export const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
-export const MANAGERS: Manager[] = ['Joseph', 'Pete', 'David'];
+export const MANAGERS: Manager[] = ['Joseph', 'Pete', 'David', 'Marcia'];
 
 /** Default required monthly visits per grade (Jo's standard). */
 export const DEFAULT_FREQUENCIES: Readonly<GradeTargets> = Object.freeze({ A: 4, B: 3, C: 2, D: 1 });
@@ -33,7 +33,7 @@ export function defaultManagersFor(role: Role): Manager[] {
   return role === 'admin' ? ['Joseph'] : ['Joseph', 'Pete'];
 }
 
-/** Whose stores this person routes. Set per profile by the admin (David routes David's stores). */
+/** Whose stores this person routes. Set per profile by the admin (David routes David's, Marcia routes Marcia's). */
 export function managersFor(profile: Pick<Profile, 'role' | 'route_managers'> | null): Manager[] {
   if (!profile) return [];
   const valid = (profile.route_managers ?? []).filter((m): m is Manager => MANAGERS.includes(m as Manager));

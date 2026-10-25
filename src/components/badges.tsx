@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { managerLabel } from '@/lib/frequency';
 import type { EventType, Grade, Manager } from '@/lib/types';
+import type { Palette } from '@/theme/palettes';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius } from '@/theme/typography';
 import { Txt } from './Txt';
@@ -36,9 +37,14 @@ export function GradeBadge({ grade, size = 34 }: { grade: Grade; size?: number }
   );
 }
 
+/** One distinct metallic tone per manager. */
+export function managerColor(manager: Manager, palette: Palette): string {
+  return { Joseph: palette.gold, Pete: palette.platinum, David: palette.rose, Marcia: palette.success }[manager];
+}
+
 export function ManagerBadge({ manager }: { manager: Manager }) {
   const { palette } = useTheme();
-  const color = manager === 'Joseph' ? palette.gold : manager === 'David' ? palette.rose : palette.platinum;
+  const color = managerColor(manager, palette);
   return (
     <View
       style={{

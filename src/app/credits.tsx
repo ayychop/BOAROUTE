@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
-import { Linking, View } from 'react-native';
+import { View } from 'react-native';
 import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
+import { openExternal } from '@/lib/external';
 import { VEHICLES } from '@/lib/vehicles';
 import { radius } from '@/theme/typography';
 
@@ -28,7 +29,7 @@ export default function Credits() {
                 </Txt>
               </View>
             </View>
-            <NeonButton size="sm" variant="ghost" icon="open-outline" label="View source" onPress={() => Linking.openURL(v.credit.source).catch(() => {})} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+            <NeonButton size="sm" variant="ghost" icon="open-outline" label="View source" onPress={() => openExternal(v.credit.source)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
           </GlassCard>
         ))}
         <GlassCard>

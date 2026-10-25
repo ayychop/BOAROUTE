@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { GradeBadge, ManagerBadge } from '@/components/badges';
 import { Field } from '@/components/controls';
@@ -15,6 +15,7 @@ import { TaskCard } from '@/components/TaskCard';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
+import { openMaps } from '@/lib/external';
 import { daysSinceLabel } from '@/lib/format';
 import { legDirectionsUrl, searchUrl } from '@/lib/navigation';
 import { hasCoords, toLatLng } from '@/lib/route-engine';
@@ -40,19 +41,24 @@ export default function StoreDetail() {
   const [visitBusy, setVisitBusy] = useState(false);
 
   const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [tasksError, setTasksError] = useState<string | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [viewing, setViewing] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     if (!id) return;
-    const { data, error } = await supabase.from('tasks').select('*').eq('store_id', id).order('created_at', { ascending: false });
-    if (error) {
-      setTasks([]);
-      return;
+    try {
+      const { data, error } = await supabase.from('tasks').select('*').eq('store_id', id).order('created_at', { ascending: false });
+      if (error) throw error;
+      const rows = (data ?? []) as Task[];
+      setTasks(rows);
+      setTasksError(null);
+      // Photos are a bonus: if signing fails the notes still show, just without thumbnails.
+      setUrls(await signMedia(rows.flatMap((t) => t.media_urls)).catch(() => ({})));
+    } catch (e) {
+      setTasks((prev) => prev ?? []);
+      setTasksError(e instanceof Error && e.message ? e.message : 'Check your connection and try again.');
     }
-    const rows = (data ?? []) as Task[];
-    setTasks(rows);
-    setUrls(await signMedia(rows.flatMap((t) => t.media_urls)));
   }, [id]);
 
   useFocusEffect(
@@ -117,8 +123,12 @@ export default function StoreDetail() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          const { error } = await supabase.from('tasks').delete().eq('id', task.id);
-          if (error) return Alert.alert('Could not delete', error.message);
+          try {
+            const { error } = await supabase.from('tasks').delete().eq('id', task.id);
+            if (error) throw error;
+          } catch (e) {
+            return Alert.alert('Could not delete', e instanceof Error && e.message ? e.message : 'Please try again.');
+          }
           await deleteMedia(task.media_urls).catch(() => {});
           setTasks((prev) => (prev ?? []).filter((t) => t.id !== task.id));
         },
@@ -207,9 +217,22 @@ export default function StoreDetail() {
                 variant="subtle"
                 icon="navigate"
                 label="Navigate"
-                onPress={() => Linking.openURL(hasCoords(store) ? legDirectionsUrl(toLatLng(store)) : searchUrl(`${store.name}, ${store.address}`)).catch(() => {})}
+                onPress={() => {
+                  if (hasCoords(store)) return openMaps(legDirectionsUrl(toLatLng(store)));
+                  if (!store.address?.trim()) return Alert.alert('No address yet', 'Tap Edit Address to add one, then you can navigate here.');
+                  openMaps(searchUrl(`${store.name}, ${store.address}`));
+                }}
               />
-              <NeonButton size="sm" variant="subtle" icon="map" label="View on map" onPress={() => Linking.openURL(searchUrl(`${store.name}, ${store.address}`)).catch(() => {})} />
+              <NeonButton
+                size="sm"
+                variant="subtle"
+                icon="map"
+                label="View on map"
+                onPress={() => {
+                  if (!store.address?.trim() && !hasCoords(store)) return Alert.alert('No address yet', 'Tap Edit Address to add one first.');
+                  openMaps(searchUrl(`${store.name}, ${store.address ?? ''}`.trim()));
+                }}
+              />
             </View>
           </>
         )}
@@ -224,6 +247,14 @@ export default function StoreDetail() {
         <NeonButton label="New task" icon="add-circle" onPress={() => router.push({ pathname: '/task-new', params: { storeId: store.id } })} style={{ flexGrow: 1 }} />
         <NeonButton label="Draft a Message" icon="sparkles" variant="gold" onPress={() => router.push({ pathname: '/ai-writer', params: { storeId: store.id } })} style={{ flexGrow: 1 }} />
       </View>
+      {tasksError ? (
+        <GlassCard animateIn={false} style={{ marginBottom: 10 }}>
+          <Txt variant="caption" tone="danger" style={{ marginBottom: 8 }}>
+            Could not load tasks. {tasksError}
+          </Txt>
+          <NeonButton size="sm" variant="subtle" icon="refresh" label="Retry" onPress={loadTasks} />
+        </GlassCard>
+      ) : null}
       {tasks === null ? (
         <LoadingBlock label="Loading tasks" />
       ) : sortedTasks.length === 0 ? (

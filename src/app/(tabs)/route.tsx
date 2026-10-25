@@ -1,19 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import type { RouteOptionsResult } from '../../../supabase/functions/_shared/route-analysis';
 import { GradeBadge, ManagerBadge } from '@/components/badges';
 import { Chip, ToggleRow } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
 import { HudMap } from '@/components/HudMap';
-import { EmptyState, LoadingBlock } from '@/components/misc';
+import { DataErrorBanner, EmptyState, LoadingBlock } from '@/components/misc';
 import { IconButton, NeonButton } from '@/components/NeonButton';
 import { RouteOptionCard } from '@/components/RouteOptionCard';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { localDateString } from '@/lib/budget';
+import { openMaps } from '@/lib/external';
 import { formatMinutes, formatMiles, kmToMiles } from '@/lib/format';
 import { geocode } from '@/lib/geo';
 import { legDirectionsUrl, optionDirectionsUrl } from '@/lib/navigation';
@@ -114,11 +115,7 @@ export default function RouteScreen() {
   const startNavigation = async () => {
     if (!points.length) return;
     const url = optionDirectionsUrl(points, activeOption);
-    try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Could not open Maps', 'Install Google Maps or try again.');
-    }
+    await openMaps(url);
   };
 
   const markVisited = async (storeId: string) => {
@@ -171,6 +168,15 @@ export default function RouteScreen() {
     return (
       <Screen inTabs title="Today's route" kicker="Route engine">
         <EmptyState icon="home-outline" title="Where do you start?" body={startError} action={<NeonButton label="Open settings" size="sm" onPress={() => router.navigate('/profile')} />} />
+      </Screen>
+    );
+  }
+
+  if (myStores.length === 0) {
+    return (
+      <Screen inTabs title="Today's route" kicker="Route engine">
+        <DataErrorBanner />
+        <EmptyState icon="storefront-outline" title="No stores on your patch" body="Choose the stores you cover and the route engine plans your day around them." action={<NeonButton label="Choose my stores" size="sm" icon="storefront" onPress={() => router.push('/my-stores')} />} />
       </Screen>
     );
   }
@@ -235,6 +241,7 @@ export default function RouteScreen() {
 
   return (
     <Screen inTabs title="Today's route" kicker={`${plan.stops.length} stops · ${plan.visitsRemaining} visits owed this month`}>
+      <DataErrorBanner />
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
           <View style={{ gap: 12 }}>
@@ -285,7 +292,7 @@ export default function RouteScreen() {
                   </View>
                 </View>
                 <View style={{ gap: 8 }}>
-                  <IconButton icon="navigate" label={`Navigate to ${stop.store.name}`} tone="primary" onPress={() => Linking.openURL(legDirectionsUrl(toLatLng(stop.store), leg?.via ?? null)).catch(() => {})} />
+                  <IconButton icon="navigate" label={`Navigate to ${stop.store.name}`} tone="primary" onPress={() => openMaps(legDirectionsUrl(toLatLng(stop.store), leg?.via ?? null))} />
                   <IconButton icon={doneToday ? 'checkmark-done' : 'checkmark'} label={`Mark ${stop.store.name} visited`} tone={doneToday ? 'gold' : 'default'} onPress={() => (busyStop ? undefined : markVisited(stop.store.id))} />
                 </View>
               </View>

@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { Platform, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BRLogo } from '@/components/BRLogo';
@@ -131,7 +131,7 @@ function ProfileUnavailable() {
       </Txt>
       <View style={{ gap: 12 }}>
         <NeonButton label="Try again" icon="refresh" onPress={() => refreshProfile().catch(() => {})} full />
-        <NeonButton label="Sign out" variant="ghost" onPress={() => signOut().catch(() => {})} full />
+        <NeonButton label="Sign out" variant="ghost" onPress={() => signOut().catch((e) => Alert.alert('Could not sign out', e instanceof Error && e.message ? e.message : 'Check your connection and try again.'))} full />
       </View>
     </Screen>
   );

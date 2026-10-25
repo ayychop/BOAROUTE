@@ -31,8 +31,8 @@ const stores: RoutableStore[] = (seed as { name: string; address: string; grade:
 }));
 
 describe('scope', () => {
-  const owners: Manager[] = ['Joseph', 'Pete', 'David'];
-  const mixed = stores.map((s, i) => ({ ...s, assigned_manager: owners[i % 3] }));
+  const owners: Manager[] = ['Joseph', 'Pete', 'David', 'Marcia'];
+  const mixed = stores.map((s, i) => ({ ...s, assigned_manager: owners[i % owners.length] }));
   it('admin (Jo) routes Joseph stores only', () => {
     const jo = storesInScope(mixed, managersFor({ role: 'admin', route_managers: null }));
     expect(jo.length).toBeGreaterThan(0);
@@ -46,6 +46,11 @@ describe('scope', () => {
     const david = storesInScope(mixed, managersFor({ role: 'user', route_managers: ['David'] }));
     expect(david.length).toBeGreaterThan(0);
     expect(david.every((s) => s.assigned_manager === 'David')).toBe(true);
+  });
+  it('Marcia routes Marcia stores', () => {
+    const marcia = storesInScope(mixed, managersFor({ role: 'user', route_managers: ['Marcia'] }));
+    expect(marcia.length).toBeGreaterThan(0);
+    expect(marcia.every((s) => s.assigned_manager === 'Marcia')).toBe(true);
   });
 });
 

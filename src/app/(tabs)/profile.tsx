@@ -162,7 +162,7 @@ export default function Me() {
         <LinkRow icon="wallet" label="Budgets" hint={`Standard ${formatPence(budgets.standard)} · Sales Day / OOH ${formatPence(budgets.special)}`} href="/budget-settings" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
         <LinkRow icon="car-sport" label="Change vehicle" hint={vehicle?.plate} href="/vehicle" />
-        {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="Assign stores to Jo, Pete or David" href="/admin/stores" tone="gold" />}
+        {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="Assign stores to Jo, Pete, David or Marcia" href="/admin/stores" tone="gold" />}
         {isAdmin && <LinkRow icon="people" label="Team routes" hint="Choose whose stores each person routes" href="/admin/team" tone="gold" />}
         <LinkRow icon="images" label="Image credits" href="/credits" />
       </GlassCard>
@@ -176,7 +176,7 @@ export default function Me() {
         onPress={() =>
           Alert.alert('Sign out?', undefined, [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign out', style: 'destructive', onPress: () => signOut().catch(() => {}) },
+            { text: 'Sign out', style: 'destructive', onPress: () => signOut().catch((e) => Alert.alert('Could not sign out', e instanceof Error && e.message ? e.message : 'Check your connection and try again.')) },
           ])
         }
       />

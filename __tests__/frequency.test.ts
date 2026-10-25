@@ -34,6 +34,7 @@ describe('route scope', () => {
 
   it('uses the per-profile scope and drops unknown managers', () => {
     expect(managersFor({ role: 'user', route_managers: ['David'] })).toEqual(['David']);
+    expect(managersFor({ role: 'user', route_managers: ['Marcia'] })).toEqual(['Marcia']);
     expect(managersFor({ role: 'user', route_managers: ['Bob'] })).toEqual(['Joseph', 'Pete']);
     expect(managersFor(null)).toEqual([]);
   });
@@ -42,5 +43,6 @@ describe('route scope', () => {
     expect(managerLabel('Joseph')).toBe("Jo's Store");
     expect(managerLabel('Pete')).toBe("Pete's Store");
     expect(managerLabel('David')).toBe("David's Store");
+    expect(managerLabel('Marcia')).toBe("Marcia's Store");
   });
 });

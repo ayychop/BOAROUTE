@@ -48,7 +48,8 @@ create table if not exists public.profiles (
 alter table public.profiles enable row level security;
 
 -- Whose stores this person routes. Admin-controlled.
--- Defaults: admin {Joseph}; users {Joseph, Pete}; users named David {David}.
+-- Defaults: admin {Joseph}; users {Joseph, Pete}; users named David {David};
+-- users named Marcia {Marcia}.
 alter table public.profiles add column if not exists route_managers text[];
 
 -- Role check used by every policy below. SECURITY DEFINER so it can read
@@ -130,7 +131,7 @@ create table if not exists public.stores (
   required_frequency integer not null default 1 check (required_frequency between 0 and 31),
   visits_completed   integer not null default 0,
   last_visit_date    timestamptz,
-  assigned_manager   text not null default 'Joseph' check (assigned_manager in ('Joseph', 'Pete', 'David')),
+  assigned_manager   text not null default 'Joseph' check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia')),
   vibe               text,
   latitude           double precision,
   longitude          double precision,
@@ -140,10 +141,10 @@ create table if not exists public.stores (
 alter table public.stores enable row level security;
 create index if not exists stores_manager_idx on public.stores (assigned_manager);
 
--- Older versions of this file only allowed Joseph and Pete.
+-- Older versions of this file allowed fewer managers.
 alter table public.stores drop constraint if exists stores_assigned_manager_check;
 alter table public.stores
-  add constraint stores_assigned_manager_check check (assigned_manager in ('Joseph', 'Pete', 'David'));
+  add constraint stores_assigned_manager_check check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia'));
 
 -- Default monthly frequency by grade: A 4, B 3, C 2, D 1.
 create or replace function public.stores_set_defaults()
@@ -378,6 +379,7 @@ as $$
   select case
     when p_is_admin then array['Joseph']
     when p_name ilike 'david%' then array['David']
+    when p_name ilike 'marcia%' then array['Marcia']
     else array['Joseph', 'Pete']
   end;
 $$;

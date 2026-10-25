@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { EventTypeBadge } from '@/components/badges';
 import { GlassCard } from '@/components/GlassCard';
-import { EmptyState } from '@/components/misc';
+import { DataErrorBanner, EmptyState } from '@/components/misc';
 import { IconButton, NeonButton } from '@/components/NeonButton';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
@@ -104,6 +104,7 @@ export default function Events() {
       }}
       refreshing={refreshing}
     >
+      <DataErrorBanner />
       {upcoming.length === 0 ? (
         <EmptyState icon="calendar-outline" title="Nothing scheduled" body="Log a Sales Day, an OOH shift or any work event. You get a reminder the day before and on the morning." action={<NeonButton label="Log event" icon="add" onPress={() => router.push('/event-new')} />} />
       ) : (

@@ -1,6 +1,6 @@
 export type Role = 'admin' | 'user';
 export type Grade = 'A' | 'B' | 'C' | 'D';
-export type Manager = 'Joseph' | 'Pete' | 'David';
+export type Manager = 'Joseph' | 'Pete' | 'David' | 'Marcia';
 export type TaskType = 'note' | 'email';
 export type EventType = 'General' | 'Sales Day' | 'OOH';
 export type MileageType = 'work' | 'personal';
