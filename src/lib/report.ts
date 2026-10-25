@@ -1,4 +1,4 @@
-import { CATEGORY_LABEL, formatPence, inMonth, summariseBudget, summariseMileage, toPence, type Budgets } from './budget';
+import { CATEGORY_LABEL, formatPence, inMonth, summariseBudget, summariseMileage, toPence, type Budgets, weeklySpecialSpend } from './budget';
 import type { Expense, MileageLog } from './types';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -59,8 +59,16 @@ export function buildMonthlyReport(params: {
   lines.push(
     `Standard budget: ${formatPence(budget.standard.spent)} of ${formatPence(budget.standard.budget)} used, ${budget.standard.over ? `over by ${formatPence(-budget.standard.remaining)}` : `${formatPence(budget.standard.remaining)} left`}`,
   );
-  lines.push(
-    `Sales Day / OOH budget: ${formatPence(budget.special.spent)} of ${formatPence(budget.special.budget)} used, ${budget.special.over ? `over by ${formatPence(-budget.special.remaining)}` : `${formatPence(budget.special.remaining)} left`}`,
-  );
+  lines.push(`Sales Day / OOH budget: ${formatPence(budget.sessions.allowance)} per session, ${formatPence(budget.special.budget)} weekly cap, resets every Sunday`);
+  for (const w of weeklySpecialSpend(expenses, month, budgets)) {
+    lines.push(
+      `  Week of ${ukDate(w.start)}: ${formatPence(w.spent)} used, ${w.status.over ? `over by ${formatPence(-w.status.remaining)}` : `${formatPence(w.status.remaining)} left`}`,
+    );
+  }
+  if (budget.takeover.days > 0) {
+    lines.push(
+      `Town Takeovers: ${formatPence(budget.takeover.spent)} of ${formatPence(budget.takeover.budget)} across ${budget.takeover.days} day${budget.takeover.days === 1 ? '' : 's'}, ${budget.takeover.over ? `over by ${formatPence(-budget.takeover.remaining)}` : `${formatPence(budget.takeover.remaining)} left`}`,
+    );
+  }
   return lines.join('\n');
 }

@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
+import { isMember } from '@/lib/frequency';
 import type { Profile } from '@/lib/types';
 
 interface AuthValue {
@@ -10,20 +11,26 @@ interface AuthValue {
   /** Signed in, but the profile could not be loaded (offline or server error). */
   profileError: boolean;
   isAdmin: boolean;
+  /** Approved in team_members. Anyone else stays on the sign-in screen. */
+  isMember: boolean;
   onboarded: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   /** Returns true when the user must confirm their email before signing in. */
   signUp: (email: string, password: string, name: string) => Promise<boolean>;
   signOut: () => Promise<void>;
-  updateProfile: (patch: Partial<Omit<Profile, 'id' | 'email' | 'role' | 'route_managers'>>) => Promise<void>;
+  updateProfile: (patch: Partial<Omit<Profile, 'id' | 'email' | 'role' | 'route_managers' | 'manager_name'>>) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-const PROFILE_COLUMNS = 'id,email,role,name,vehicle_model,starting_location,freq_a,freq_b,freq_c,freq_d,route_managers,current_mileage,working_days,onboarded_at,standard_budget,sales_day_budget';
+const PROFILE_COLUMNS = '*';
 
 async function loadProfile(session: Session): Promise<Profile | null> {
+  // Re-checks team_members by the signed-in email on every sign-in, so the role
+  // and stores always come from the allowlist.
+  const refreshed = await supabase.rpc('refresh_my_access');
+  if (!refreshed.error && refreshed.data && (refreshed.data as Profile).id) return refreshed.data as Profile;
   const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', session.user.id).maybeSingle();
   if (error) throw error;
   if (data) return data as Profile;
@@ -118,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       profileError,
       isAdmin: profile?.role === 'admin',
+      isMember: isMember(profile),
       onboarded: !!profile?.onboarded_at,
       signIn,
       signUp,

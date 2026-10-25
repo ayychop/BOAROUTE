@@ -53,7 +53,7 @@ const PUSH = Platform.OS === 'android' ? 'ios_from_right' : 'default';
 
 function RootNavigator() {
   const { palette, contentOpacity } = useTheme();
-  const { ready, session, profile, profileError, onboarded } = useAuth();
+  const { ready, session, profile, profileError, onboarded, isMember } = useAuth();
   const fade = useAnimatedStyle(() => ({ opacity: contentOpacity.value }));
 
   useEffect(() => {
@@ -69,7 +69,8 @@ function RootNavigator() {
   if (!gateResolved) return <LogoSplash />;
   if (session && !profile) return <ProfileUnavailable />;
 
-  const signedIn = !!session && !!profile;
+  // Pending or denied sign-ups stay on the sign-in screen, which explains why.
+  const signedIn = !!session && !!profile && isMember;
   return (
     <Animated.View style={[{ flex: 1, backgroundColor: palette.bg[0] }, fade]}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg[0] }, animation: 'fade' }}>

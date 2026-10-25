@@ -1,11 +1,18 @@
 // route-options: live-traffic driving options for a multi-stop day route.
-// For every leg it asks Google Directions (departure_time=now,
-// traffic_model=best_guess) for alternatives, falling back to Mapbox
+// For every leg it asks the Google Routes API (TRAFFIC_AWARE_OPTIMAL, live
+// traffic) for alternatives, falling back to Mapbox
 // driving-traffic, then builds a motorway-preferred and a standard option
 // with turn-by-turn steps for the in-app navigator.
 // Secrets: GOOGLE_MAPS_API_KEY (preferred) or MAPBOX_ACCESS_TOKEN.
 import { corsHeaders, json, requireUser } from '../_shared/http.ts';
-import { buildRouteOptions, googleRouteToMapbox, type GoogleRoute, type MapboxRoute } from '../_shared/route-analysis.ts';
+import {
+  buildRouteOptions,
+  googleRouteToMapbox,
+  ROUTES_API_FIELD_MASK,
+  routesApiToGoogle,
+  type MapboxRoute,
+  type RoutesApiRoute,
+} from '../_shared/route-analysis.ts';
 
 const MAX_POINTS = 12;
 
@@ -30,24 +37,26 @@ function parsePoints(body: unknown): Point[] {
 }
 
 async function fetchGoogleLeg(from: Point, to: Point, key: string): Promise<MapboxRoute[]> {
-  const params = new URLSearchParams({
-    origin: `${from.lat},${from.lng}`,
-    destination: `${to.lat},${to.lng}`,
-    mode: 'driving',
-    alternatives: 'true',
-    departure_time: 'now',
-    traffic_model: 'best_guess',
-    region: 'uk',
-    units: 'metric',
-    key,
+  const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': ROUTES_API_FIELD_MASK },
+    body: JSON.stringify({
+      origin: { location: { latLng: { latitude: from.lat, longitude: from.lng } } },
+      destination: { location: { latLng: { latitude: to.lat, longitude: to.lng } } },
+      travelMode: 'DRIVE',
+      // Live traffic. TRAFFIC_UNAWARE would ignore current conditions.
+      routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
+      computeAlternativeRoutes: true,
+      languageCode: 'en-GB',
+      regionCode: 'GB',
+      units: 'IMPERIAL',
+    }),
   });
-  const res = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
-  if (!res.ok) throw new Error(`Google ${res.status}`);
-  const data = await res.json();
-  if (data.status !== 'OK' || !Array.isArray(data.routes) || data.routes.length === 0) {
-    throw new Error(`Google returned ${data.status ?? 'no routes'}${data.error_message ? `: ${data.error_message}` : ''}`);
-  }
-  return (data.routes as GoogleRoute[]).map(googleRouteToMapbox);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(`Google Routes ${res.status}${data?.error?.message ? `: ${data.error.message}` : ''}`);
+  const routes = (data?.routes ?? []) as RoutesApiRoute[];
+  if (routes.length === 0) throw new Error('Google Routes returned no routes');
+  return routes.map((r) => googleRouteToMapbox(routesApiToGoogle(r)));
 }
 
 async function fetchLeg(from: Point, to: Point, token: string): Promise<MapboxRoute[]> {

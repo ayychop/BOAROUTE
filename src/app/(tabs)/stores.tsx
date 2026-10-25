@@ -1,18 +1,25 @@
-import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useIsFocused } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, ScrollView, View, type ListRenderItem } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field } from '@/components/controls';
 import { DataErrorBanner, EmptyState, LoadingBlock } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
-import { StoreCard } from '@/components/StoreCard';
+import { GlassCard } from '@/components/GlassCard';
+import { GoalBar, StoreCard } from '@/components/StoreCard';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
-import { GRADES, managerShort } from '@/lib/frequency';
+import { monthKey } from '@/lib/budget';
+import { GRADES, managerShort, storeTarget } from '@/lib/frequency';
+import { getPref, setPref } from '@/lib/prefs';
 import type { Grade, Manager, Store } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
+import { useTheme } from '@/theme/ThemeProvider';
+import { celebratedKey, parseCelebrated, quoteFor, splitStores, winsHeadline } from '@/lib/wins';
 
 /** Only the first screenful plays the entrance; rows that mount while scrolling appear instantly. */
 const ANIMATED_ROWS = 8;
@@ -21,12 +28,41 @@ const GAP = 12;
 export default function Stores() {
   const { isAdmin } = useAuth();
   const { myStores, managers, tallies, targets, loading, refresh } = useData();
+  const { palette } = useTheme();
   const { columns } = useLayout();
+  const focused = useIsFocused();
   const now = useNow();
+  const month = monthKey(new Date(now));
   const [query, setQuery] = useState('');
   const [manager, setManager] = useState<Manager | 'all'>('all');
   const [grade, setGrade] = useState<Grade | 'all'>('all');
   const [refreshing, setRefreshing] = useState(false);
+  // Entrance animations only on the first screenful. After a filter change, rows
+  // appear instantly: animating cells that mount mid-list could leave them blank on Android.
+  const [touched, setTouched] = useState(false);
+  // Stores whose completion exit already played this month (kept on the device).
+  const [celebrated, setCelebrated] = useState<{ month: string; ids: Set<string> }>(() => ({ month, ids: parseCelebrated(getPref(celebratedKey(month))) }));
+  const celebratedIds = celebrated.month === month ? celebrated.ids : parseCelebrated(getPref(celebratedKey(month)));
+
+  const onExited = useCallback(
+    (id: string) => {
+      setCelebrated((prev) => {
+        const ids = new Set(prev.month === month ? prev.ids : []);
+        ids.add(id);
+        setPref(celebratedKey(month), JSON.stringify([...ids]));
+        return { month, ids };
+      });
+    },
+    [month],
+  );
+  const pickGrade = (g: Grade | 'all') => {
+    setTouched(true);
+    setGrade(g);
+  };
+  const pickManager = (m: Manager | 'all') => {
+    setTouched(true);
+    setManager(m);
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -38,14 +74,87 @@ export default function Stores() {
     );
   }, [myStores, query, manager, grade]);
 
+  const split = useMemo(() => splitStores(filtered, tallies, targets, celebratedIds), [filtered, tallies, targets, celebratedIds]);
+
   const renderItem = useCallback<ListRenderItem<Store>>(
     ({ item, index }) => (
       <View style={{ flex: 1 / columns }}>
-        <StoreCard store={item} tally={tallies[item.id]} target={targets[item.grade]} index={index} now={now} animateIn={index < ANIMATED_ROWS} />
+        <StoreCard
+          store={item}
+          tally={tallies[item.id]}
+          target={storeTarget(item, targets)}
+          index={index}
+          now={now}
+          animateIn={!touched && index < ANIMATED_ROWS}
+          // Only once the screen is in view, so the exit is actually seen.
+          exiting={focused && split.exiting.has(item.id)}
+          onExited={onExited}
+        />
       </View>
     ),
-    [columns, tallies, targets, now],
+    [columns, tallies, targets, now, touched, focused, split.exiting, onExited],
   );
+
+  const winsSection =
+    !loading && filtered.length > 0 ? (
+      <View style={{ marginTop: 28 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <Ionicons name="trophy" size={22} color={palette.gold} />
+          <Txt variant="title" style={{ flex: 1 }}>
+            Your Wins
+          </Txt>
+          <Txt variant="strong" tone="gold">
+            {split.wins.length}
+          </Txt>
+        </View>
+        <Txt variant="caption" tone="dim" style={{ marginBottom: 14 }}>
+          {winsHeadline(split.wins.length, filtered.length)}
+        </Txt>
+        {split.wins.length === 0 ? (
+          <GlassCard animateIn={false}>
+            <Txt variant="body" tone="dim" align="center">
+              Hit a store&apos;s monthly target and it lands here with a little celebration.
+            </Txt>
+          </GlassCard>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+            {split.wins.map((s, i) => {
+              const target = storeTarget(s, targets);
+              const done = tallies[s.id]?.count ?? 0;
+              return (
+                <Animated.View key={s.id} entering={FadeInDown.delay(Math.min(i, 8) * 60).springify().damping(16)} style={{ flexBasis: columns > 1 ? `${100 / columns - 2}%` : '100%', flexGrow: 1 }}>
+                  <GlassCard glow="gold" animateIn={false} onPress={() => router.push({ pathname: '/store/[id]', params: { id: s.id } })} accessibilityLabel={`${s.name}, complete, ${done} of ${target} visits`}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: palette.gold, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="checkmark" size={22} color="#0B0B0C" />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Txt variant="strong" numberOfLines={1}>
+                          {s.name}
+                        </Txt>
+                        <Txt variant="caption" tone="gold" numberOfLines={1}>
+                          Complete · {done}/{target} visits · Grade {s.grade}
+                        </Txt>
+                      </View>
+                    </View>
+                    <GoalBar done={done} target={target} met />
+                    <Txt variant="caption" tone="dim" style={{ marginTop: 10, fontStyle: 'italic' }}>
+                      &ldquo;{quoteFor(s.id, month)}&rdquo;
+                    </Txt>
+                  </GlassCard>
+                </Animated.View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    ) : null;
+
+  const gradeCounts = useMemo(() => {
+    const c: Record<Grade, number> = { A: 0, B: 0, C: 0, D: 0 };
+    for (const s of myStores) if (manager === 'all' || s.assigned_manager === manager) c[s.grade]++;
+    return c;
+  }, [myStores, manager]);
 
   const filters = (
     <View>
@@ -54,16 +163,16 @@ export default function Stores() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, paddingBottom: 4 }} style={{ marginBottom: 14 }}>
         {managers.length > 1 && (
           <>
-            <Chip label="All" active={manager === 'all'} onPress={() => setManager('all')} />
+            <Chip label="All" active={manager === 'all'} onPress={() => pickManager('all')} />
             {managers.map((m) => (
-              <Chip key={m} label={managerShort(m)} active={manager === m} onPress={() => setManager(m)} icon="person" tone={m === 'Joseph' ? 'primary' : 'gold'} />
+              <Chip key={m} label={managerShort(m)} active={manager === m} onPress={() => pickManager(m)} icon="person" tone={m === 'Joseph' ? 'primary' : 'gold'} />
             ))}
             <View style={{ width: 10 }} />
           </>
         )}
-        <Chip label="Any grade" active={grade === 'all'} onPress={() => setGrade('all')} />
+        <Chip label={`Any grade · ${myStores.length}`} active={grade === 'all'} onPress={() => pickGrade('all')} />
         {GRADES.map((g) => (
-          <Chip key={g} label={`Grade ${g}`} active={grade === g} onPress={() => setGrade(g)} />
+          <Chip key={g} label={`Grade ${g} · ${gradeCounts[g]}`} active={grade === g} onPress={() => pickGrade(g)} />
         ))}
       </ScrollView>
     </View>
@@ -91,7 +200,7 @@ export default function Stores() {
         <FlatList
           // numColumns cannot change on the fly; a new key remounts the list when the Fold opens or closes.
           key={`cols-${columns}`}
-          data={loading ? [] : filtered}
+          data={loading ? [] : split.active}
           keyExtractor={(s) => s.id}
           renderItem={renderItem}
           numColumns={columns}
@@ -107,14 +216,21 @@ export default function Stores() {
             loading ? (
               <LoadingBlock label="Loading stores" />
             ) : (
-              <EmptyState icon="storefront-outline" title="No stores match" body={myStores.length ? 'Try a different search or filter.' : 'No stores on your patch yet. Tap Edit to choose yours.'} />
+              filtered.length > 0 ? (
+                <EmptyState icon="trophy-outline" title="All done here" body="Every store in this view has hit its target this month. Enjoy your wins below." />
+              ) : (
+                <EmptyState icon="storefront-outline" title="No stores match" body={myStores.length ? 'Try a different search or filter.' : 'No stores on your patch yet. Tap Edit to choose yours.'} />
+              )
             )
           }
           ListFooterComponent={
             !loading && filtered.length > 0 ? (
-              <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 16 }}>
-                Showing {filtered.length} of {myStores.length}
-              </Txt>
+              <>
+                <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 16 }}>
+                  {grade === 'all' ? 'All grades' : `Grade ${grade}`}: {filtered.length} of {myStores.length} stores · {split.active.length - split.exiting.size} to visit · {split.wins.length + split.exiting.size} complete
+                </Txt>
+                {winsSection}
+              </>
             ) : undefined
           }
           contentContainerStyle={contentContainerStyle}
@@ -125,7 +241,6 @@ export default function Stores() {
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           windowSize={9}
-          removeClippedSubviews
         />
       )}
     />

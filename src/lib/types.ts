@@ -1,10 +1,16 @@
-export type Role = 'admin' | 'user';
+/**
+ * Set by the database from team_members, by the signed-in email.
+ * 'unassigned' is a pending sign-up, 'denied' a refused one: neither gets into the app.
+ */
+export type Role = 'admin' | 'user' | 'unassigned' | 'denied';
 export type Grade = 'A' | 'B' | 'C' | 'D';
-export type Manager = 'Joseph' | 'Pete' | 'David' | 'Marcia';
+export type Manager = 'Joseph' | 'Pete' | 'David' | 'Marcia' | 'Sarah';
 export type TaskType = 'note' | 'email';
 export type EventType = 'General' | 'Sales Day' | 'OOH';
 export type MileageType = 'work' | 'personal';
-export type ExpenseCategory = 'standard' | 'sales_day' | 'ooh';
+export type ExpenseCategory = 'standard' | 'sales_day' | 'ooh' | 'town_takeover';
+/** Stored on each expense (derived from category in the database). */
+export type SessionType = 'Standard' | 'OOH_Session' | 'Town_Takeover';
 
 export interface Profile {
   id: string;
@@ -17,8 +23,10 @@ export interface Profile {
   freq_b: number | null;
   freq_c: number | null;
   freq_d: number | null;
-  /** Managers whose stores this person routes. NULL or empty means the role default. */
+  /** Managers whose stores this person routes, mirrored from team_members. Empty until approved. */
   route_managers: string[] | null;
+  /** Whose stores are theirs (team_members.manager_name). NULL until approved. */
+  manager_name?: string | null;
   /** Odometer in miles; numeric(9,1), so PostgREST may return a string. Trips add to it. */
   current_mileage: number | string | null;
   /** Working weekdays, 0 = Sunday ... 6 = Saturday. */
@@ -28,6 +36,8 @@ export interface Profile {
   /** Monthly budgets in GBP; numeric(8,2), so PostgREST may return strings. */
   standard_budget: number | string | null;
   sales_day_budget: number | string | null;
+  /** Per OOH / Sales Day session allowance in GBP (default 25). */
+  ooh_session_allowance?: number | string | null;
 }
 
 export interface Store {
@@ -37,6 +47,8 @@ export interface Store {
   address: string;
   grade: Grade;
   required_frequency: number;
+  /** True when someone set required_frequency by hand; false means "use the person's grade target". */
+  frequency_custom?: boolean;
   visits_completed: number;
   last_visit_date: string | null;
   assigned_manager: Manager;
@@ -103,5 +115,10 @@ export interface Expense {
   location: string;
   recipient: string;
   category: ExpenseCategory;
+  session_type?: SessionType | null;
+  /** YYYY-MM-DD of the session; defaults to date. */
+  session_date?: string | null;
+  /** Town Takeover only: the custom budget for that day (numeric, may arrive as a string). */
+  event_budget?: number | string | null;
   created_at: string;
 }

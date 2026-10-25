@@ -12,12 +12,17 @@
    (default £150, shared by Sales Day and OOH expenses). They can change both under Me > Budgets.
 2. Authentication > Providers > Email: enabled (email + password).
    If "Confirm email" is on, new users must tap the email link before signing in.
-3. The admin is whoever signs up with an email listed in `public.app_admins`
-   (seeded with the owner's address). Admins get the `HP13 6BU` start location.
+3. Access is decided by the signed-in email, never by the name typed at signup.
+   Only emails in `public.team_members` get into the app. It is seeded with the
+   owner's address as the one and only admin (Joseph's stores, `HP13 6BU` start).
+   Anyone else who signs up is held on the sign-in screen as a pending request
+   and sees no data until the admin approves them under Me > Team Management
+   (or pre-adds their email there). The admin can also deny or remove people.
 
-Route scope defaults: admin routes Joseph's stores, users route Joseph + Pete,
-users whose name starts with "David" route David's stores. The admin can change
-anyone's scope in the app under Me > Team routes.
+Store visibility is enforced by RLS: the admin sees the full master list (Store
+Management) and routes Joseph's stores day to day; a merchandiser sees only their
+patch. Defaults: David's stores for David; Sarah, Joseph, Pete and Marcia for
+Sarah; anyone else their own. The admin can change a patch under Team Management.
 
 ## 2. App configuration
 

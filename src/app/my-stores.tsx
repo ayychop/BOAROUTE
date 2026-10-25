@@ -9,7 +9,7 @@ import { Txt } from '@/components/Txt';
 import { useData } from '@/providers/DataProvider';
 
 export default function MyStores() {
-  const { stores, chosenStoreIds, myStores, saveChosenStores, loading } = useData();
+  const { patchStores: stores, chosenStoreIds, myStores, saveChosenStores, loading } = useData();
   // Start from the saved picks, or from whatever the route currently covers.
   const [picked, setPicked] = useState<string[] | null>(null);
   const selected = picked ?? (chosenStoreIds.length ? chosenStoreIds : myStores.map((s) => s.id));

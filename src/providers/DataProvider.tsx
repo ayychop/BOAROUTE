@@ -6,11 +6,28 @@ import { geocode } from '@/lib/geo';
 import type { VisitTally } from '@/lib/route-engine';
 import { storesInScope } from '@/lib/route-engine';
 import { supabase } from '@/lib/supabaseClient';
-import type { EventType, Expense, ExpenseCategory, GradeTargets, Manager, MileageLog, MileageType, Store, Visit, WorkEvent } from '@/lib/types';
+import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, Visit, WorkEvent } from '@/lib/types';
 import { syncEventReminders } from '@/services/notifications';
 import { useAuth } from './AuthProvider';
 
-const STORE_COLUMNS = 'id,user_id,name,address,grade,required_frequency,visits_completed,last_visit_date,assigned_manager,vibe,latitude,longitude';
+// '*' so the app keeps working whether or not the newest columns (frequency_custom) exist yet.
+const STORE_COLUMNS = '*';
+
+const GRADE_SET = new Set<Grade>(['A', 'B', 'C', 'D']);
+
+/** Normalises a store row: grade trimmed and upper-cased so filters match, coordinates as numbers. */
+function cleanStore(raw: Store): Store {
+  const grade = String(raw.grade ?? '').trim().toUpperCase() as Grade;
+  const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  return {
+    ...raw,
+    grade: GRADE_SET.has(grade) ? grade : 'D',
+    required_frequency: Number(raw.required_frequency) || 0,
+    frequency_custom: raw.frequency_custom === true,
+    latitude: num(raw.latitude),
+    longitude: num(raw.longitude),
+  };
+}
 const DAY_MS = 86_400_000;
 const EMPTY: never[] = [];
 
@@ -20,6 +37,8 @@ interface DataValue {
   stores: Store[];
   /** Stores this person routes: the ones they chose, or their managers' stores if they chose none. */
   myStores: Store[];
+  /** Every store in this person's patch (pickers). The admin's full list stays in stores, for Store Management. */
+  patchStores: Store[];
   /** Store ids this person picked as theirs (user_stores). */
   chosenStoreIds: string[];
   saveChosenStores: (storeIds: string[]) => Promise<void>;
@@ -31,6 +50,8 @@ interface DataValue {
   expenses: Expense[];
   refresh: () => Promise<void>;
   logVisit: (storeId: string) => Promise<void>;
+  /** Grade and monthly frequency for a store. frequency null = use the grade default. */
+  updateStoreSettings: (storeId: string, grade: Grade, frequency: number | null) => Promise<void>;
   undoLastVisit: (storeId: string) => Promise<void>;
   updateStoreAddress: (storeId: string, address: string) => Promise<{ located: boolean }>;
   assignStores: (storeIds: string[], manager: Manager) => Promise<void>;
@@ -38,7 +59,7 @@ interface DataValue {
   deleteEvent: (id: string) => Promise<void>;
   addMileage: (m: { miles: number; type: MileageType; notes: string | null; date?: string }) => Promise<void>;
   deleteMileage: (id: string) => Promise<void>;
-  addExpense: (e: { amount: number; location: string; recipient: string; category: ExpenseCategory; date?: string }) => Promise<void>;
+  addExpense: (e: { amount: number; location: string; recipient: string; category: ExpenseCategory; date?: string; eventBudget?: number | null }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
 }
 
@@ -76,7 +97,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ]);
     const firstError = s.error ?? v.error ?? e.error ?? m.error ?? x.error ?? u.error;
     setError(firstError ? firstError.message : null);
-    if (!s.error) setStores((s.data ?? []) as Store[]);
+    if (!s.error) setStores(((s.data ?? []) as Store[]).map(cleanStore));
     if (!v.error) setVisits((v.data ?? []) as Visit[]);
     if (!e.error) {
       const evs = (e.data ?? []) as WorkEvent[];
@@ -129,11 +150,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [vVisits]);
 
   const managers = useMemo(() => managersFor(profile), [profile]);
+  const patchStores = useMemo(() => storesInScope(vStores as Store[], managers), [vStores, managers]);
+  // Chosen stores never reach outside the patch, even if a store was reassigned since.
   const myStores = useMemo(() => {
-    if (vChosen.length === 0) return storesInScope(vStores as Store[], managers);
+    if (vChosen.length === 0) return patchStores;
     const ids = new Set<string>(vChosen);
-    return (vStores as Store[]).filter((s) => ids.has(s.id));
-  }, [vStores, vChosen, managers]);
+    const chosen = patchStores.filter((s) => ids.has(s.id));
+    return chosen.length ? chosen : patchStores;
+  }, [patchStores, vChosen]);
 
   const saveChosenStores = useCallback(
     async (storeIds: string[]) => {
@@ -164,6 +188,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (err) throw err;
     setVisits((prev) => [data as Visit, ...prev]);
   }, []);
+
+  const updateStoreSettings = useCallback(
+    async (storeId: string, grade: Grade, frequency: number | null) => {
+      const before = stores.find((s) => s.id === storeId);
+      setStores((prev) =>
+        prev.map((s) => (s.id === storeId ? { ...s, grade, frequency_custom: frequency !== null, required_frequency: frequency ?? s.required_frequency } : s)),
+      );
+      const { data, error: err } = await supabase.rpc('update_store_settings', { p_store_id: storeId, p_grade: grade, p_frequency: frequency });
+      if (err) {
+        if (before) setStores((prev) => prev.map((s) => (s.id === storeId ? before : s)));
+        throw new Error(/update_store_settings/.test(err.message) ? 'Store editing needs the latest database update. Ask your admin to re-run the SQL file.' : err.message);
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as Store | null;
+      if (row) setStores((prev) => prev.map((s) => (s.id === storeId ? cleanStore({ ...s, ...row }) : s)));
+    },
+    [stores],
+  );
 
   const undoLastVisit = useCallback(
     async (storeId: string) => {
@@ -266,10 +307,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const addExpense = useCallback<DataValue['addExpense']>(async (e) => {
     const { data, error: err } = await supabase
       .from('expenses')
-      .insert({ amount: e.amount, location: e.location, recipient: e.recipient, category: e.category, date: e.date ?? localDateString(new Date()) })
+      .insert({
+        amount: e.amount,
+        location: e.location,
+        recipient: e.recipient,
+        category: e.category,
+        date: e.date ?? localDateString(new Date()),
+        // Town Takeovers carry their own day budget; other categories must not send the column.
+        ...(e.category === 'town_takeover' ? { event_budget: e.eventBudget ?? null } : {}),
+      })
       .select('*')
       .single();
-    if (err) throw err;
+    if (err) {
+      // The database enforces the session and weekly caps; its message is written for people.
+      if (err.code === '23514' && /cap/i.test(err.message)) throw new Error(err.message.replace(/GBP\s?/g, '£'));
+      if (/event_budget|town_takeover|expenses_category_check/.test(err.message)) throw new Error('Town Takeovers need the latest database update. Ask your admin to re-run the SQL file.');
+      throw err;
+    }
     setExpenses((prev) => [data as Expense, ...prev]);
   }, []);
 
@@ -285,6 +339,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       error: mine ? error : null,
       stores: vStores as Store[],
       myStores,
+      patchStores,
       chosenStoreIds: vChosen as string[],
       saveChosenStores,
       managers,
@@ -295,6 +350,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       expenses: vExpenses as Expense[],
       refresh,
       logVisit,
+      updateStoreSettings,
       undoLastVisit,
       updateStoreAddress,
       assignStores,
@@ -305,7 +361,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, vChosen, saveChosenStores, managers, targets, tallies, vEvents, vMileage, vExpenses, refresh, logVisit, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, patchStores, vChosen, saveChosenStores, managers, targets, tallies, vEvents, vMileage, vExpenses, refresh, logVisit, updateStoreSettings, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

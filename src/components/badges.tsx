@@ -39,7 +39,7 @@ export function GradeBadge({ grade, size = 34 }: { grade: Grade; size?: number }
 
 /** One distinct metallic tone per manager. */
 export function managerColor(manager: Manager, palette: Palette): string {
-  return { Joseph: palette.gold, Pete: palette.platinum, David: palette.rose, Marcia: palette.success }[manager];
+  return { Joseph: palette.gold, Pete: palette.platinum, David: palette.rose, Marcia: palette.success, Sarah: palette.primary }[manager] ?? palette.textDim;
 }
 
 export function ManagerBadge({ manager }: { manager: Manager }) {

@@ -6,45 +6,57 @@ import { ProgressRing } from './ProgressRing';
 import { Txt } from './Txt';
 
 /**
- * The standard ring and the Sales Day / OOH ring side by side. Sizes come from
- * the measured width, so they shrink with the screen (Flip cover, Fold cover)
- * instead of pushing text off the card. Amounts scale with each ring.
+ * Three rings: Standard (monthly), Sales Day / OOH (weekly cap, with sessions
+ * left) and Special Events (Town Takeover day budgets). Sizes come from the
+ * measured width, so they shrink on the Flip and Fold covers instead of
+ * pushing text off the card. Amounts scale with each ring.
  */
 export function BudgetRings({ budget, large = false }: { budget: BudgetSummary; large?: boolean }) {
   const { palette } = useTheme();
   const [width, setWidth] = useState(0);
 
-  const gap = 12;
-  // The standard ring gets 55% of the row, the special ring 45%.
-  const colBig = Math.max(0, (width - gap) * 0.55);
-  const colSmall = Math.max(0, (width - gap) * 0.45);
-  const maxBig = large ? 220 : 150;
-  const big = Math.round(Math.min(maxBig, colBig * 0.92));
-  const small = Math.round(Math.min(maxBig * 0.78, colSmall * 0.86));
+  const gap = 10;
+  const col = Math.max(0, (width - gap * 2) / 3);
+  const size = Math.round(Math.min(large ? 150 : 118, col * 0.94));
+  const { sessions, takeover } = budget;
 
   return (
     <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: 'row', alignItems: 'flex-start', gap, minHeight: 80 }}>
       {width > 0 && (
         <>
           <Pool
-            width={colBig}
-            size={big}
+            width={col}
+            size={size}
             ratio={budget.standard.remainingRatio}
             over={budget.standard.over}
             remaining={budget.standard.remaining}
             colors={budget.standard.over ? [palette.danger, palette.warning] : [palette.gold, palette.primaryDeep]}
             title="Standard"
             total={budget.standard.budget}
+            sub="per month"
           />
           <Pool
-            width={colSmall}
-            size={small}
+            width={col}
+            size={size}
             ratio={budget.special.remainingRatio}
             over={budget.special.over}
             remaining={budget.special.remaining}
             colors={budget.special.over ? [palette.danger, palette.warning] : [palette.rose, palette.gold]}
-            title="Sales Day / OOH"
+            title="OOH weekly"
             total={budget.special.budget}
+            sub={sessions.left > 0 ? `${sessions.left} × ${formatPence(sessions.allowance).replace('.00', '')} left` : 'Cap reached'}
+          />
+          <Pool
+            width={col}
+            size={size}
+            ratio={takeover.budget > 0 ? takeover.remainingRatio : 0}
+            over={takeover.over}
+            remaining={takeover.remaining}
+            colors={takeover.over ? [palette.danger, palette.warning] : [palette.platinum, palette.primary]}
+            title="Special Events"
+            total={takeover.budget}
+            sub={takeover.days === 0 ? 'No takeovers yet' : `${takeover.days} takeover day${takeover.days === 1 ? '' : 's'}`}
+            empty={takeover.days === 0}
           />
         </>
       )}
@@ -61,6 +73,8 @@ function Pool({
   colors,
   title,
   total,
+  sub,
+  empty = false,
 }: {
   width: number;
   size: number;
@@ -70,10 +84,12 @@ function Pool({
   colors: [string, string];
   title: string;
   total: number;
+  sub?: string;
+  empty?: boolean;
 }) {
   const stroke = Math.max(5, Math.round(size * 0.07));
   // Sized from the string so long amounts fit inside the ring without Android's clipped auto-fit.
-  const amount = formatPence(Math.abs(remaining));
+  const amount = empty ? 'None' : formatPence(Math.abs(remaining));
   const inner = size - stroke * 2 - 12;
   const amountSize = Math.min(size * 0.17, inner / (amount.length * 0.62));
   return (
@@ -89,12 +105,17 @@ function Pool({
           {amount}
         </Txt>
         <Txt variant="label" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1} style={{ fontSize: Math.max(7.5, size * 0.065), lineHeight: Math.max(10, size * 0.09) }}>
-          {over ? 'Over' : 'Left'}
+          {empty ? 'Set per day' : over ? 'Over' : 'Left'}
         </Txt>
       </ProgressRing>
       <Txt variant="caption" tone="dim" align="center" numberOfLines={2} style={{ width }}>
-        {title} · {formatPence(total).replace('.00', '')}
+        {empty ? title : `${title} · ${formatPence(total).replace('.00', '')}`}
       </Txt>
+      {sub ? (
+        <Txt variant="caption" tone={over ? 'danger' : 'faint'} align="center" numberOfLines={2} style={{ width, marginTop: -4 }}>
+          {sub}
+        </Txt>
+      ) : null}
     </View>
   );
 }

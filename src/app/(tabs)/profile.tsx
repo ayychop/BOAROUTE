@@ -83,7 +83,7 @@ export default function Me() {
   };
 
   return (
-    <Screen inTabs kicker={isAdmin ? 'Admin' : 'Operational Manager'} title={profile?.name ?? 'Me'}>
+    <Screen inTabs kicker={isAdmin ? 'Admin' : 'Merchandiser'} title={profile?.name ?? 'Me'}>
       {/* Same glass as every other card; no entrance animation, so it never flickers on refocus. */}
       <GlassCard glow="gold" animateIn={false} padded={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 12, paddingRight: 14 }}>
@@ -171,8 +171,8 @@ export default function Me() {
         <LinkRow icon="wallet" label="Budgets" hint={`Standard ${formatPence(budgets.standard)} · Sales Day / OOH ${formatPence(budgets.special)}`} href="/budget-settings" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
         <LinkRow icon="car-sport" label="Change vehicle" hint={vehicle?.plate} href="/vehicle" />
-        {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="Assign stores to Jo, Pete, David or Marcia" href="/admin/stores" tone="gold" />}
-        {isAdmin && <LinkRow icon="people" label="Team routes" hint="Choose whose stores each person routes" href="/admin/team" tone="gold" />}
+        {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="The full master list: assign stores to Jo, Pete, David, Marcia or Sarah" href="/admin/stores" tone="gold" />}
+        {isAdmin && <LinkRow icon="people" label="Team Management" hint="Approve sign-ups and set whose stores each person works" href="/admin/team" tone="gold" />}
         <LinkRow icon="images" label="Image credits" href="/credits" />
       </GlassCard>
 

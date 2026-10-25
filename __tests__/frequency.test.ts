@@ -1,4 +1,4 @@
-import { DEFAULT_FREQUENCIES, managerLabel, managersFor, targetsFor, usesDefaultTargets } from '../src/lib/frequency';
+import { DEFAULT_FREQUENCIES, defaultPatchFor, isMember, managerLabel, managersFor, targetsFor, usesDefaultTargets } from '../src/lib/frequency';
 
 const freqs = (f: Partial<Record<'freq_a' | 'freq_b' | 'freq_c' | 'freq_d', number | null>> = {}) => ({
   freq_a: null,
@@ -27,16 +27,29 @@ describe('frequencies', () => {
 });
 
 describe('route scope', () => {
-  it('falls back to role defaults', () => {
+  it('comes from the database role and manager, never the typed name', () => {
     expect(managersFor({ role: 'admin', route_managers: null })).toEqual(['Joseph']);
-    expect(managersFor({ role: 'user', route_managers: [] })).toEqual(['Joseph', 'Pete']);
+    expect(managersFor({ role: 'user', route_managers: [], manager_name: 'David' })).toEqual(['David']);
+    expect(managersFor({ role: 'user', route_managers: null, manager_name: 'Sarah' })).toEqual(['Sarah', 'Joseph', 'Pete', 'Marcia']);
+    // A user with no manager assigned gets nothing, whatever they typed as a name.
+    expect(managersFor({ role: 'user', route_managers: null, manager_name: null })).toEqual([]);
+  });
+
+  it('pending and denied accounts see no stores', () => {
+    expect(managersFor({ role: 'unassigned', route_managers: ['David'], manager_name: 'David' })).toEqual([]);
+    expect(managersFor({ role: 'denied', route_managers: ['Joseph'] })).toEqual([]);
+    expect(isMember({ role: 'unassigned' })).toBe(false);
+    expect(isMember({ role: 'denied' })).toBe(false);
+    expect(isMember({ role: 'user' })).toBe(true);
+    expect(isMember({ role: 'admin' })).toBe(true);
+    expect(managersFor(null)).toEqual([]);
   });
 
   it('uses the per-profile scope and drops unknown managers', () => {
     expect(managersFor({ role: 'user', route_managers: ['David'] })).toEqual(['David']);
     expect(managersFor({ role: 'user', route_managers: ['Marcia'] })).toEqual(['Marcia']);
-    expect(managersFor({ role: 'user', route_managers: ['Bob'] })).toEqual(['Joseph', 'Pete']);
-    expect(managersFor(null)).toEqual([]);
+    expect(managersFor({ role: 'user', route_managers: ['Bob'], manager_name: 'Pete' })).toEqual(['Pete']);
+    expect(defaultPatchFor('Bob')).toEqual([]);
   });
 
   it('labels store cards', () => {

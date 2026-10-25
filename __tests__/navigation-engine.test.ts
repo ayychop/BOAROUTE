@@ -3,9 +3,12 @@ import {
   decodePolyline,
   googleRoadClass,
   googleRouteToMapbox,
+  parseRoutesDuration,
+  routesApiToGoogle,
   stripHtml,
   type GoogleRoute,
   type LngLat,
+  type RoutesApiRoute,
 } from '../supabase/functions/_shared/route-analysis';
 import { HAZARD_MAX_AGE_MS, hazardMeta, isLiveHazard, reportedAgo } from '../src/lib/hazards';
 import { decodeNavRequest, encodeNavRequest, MAX_NAV_STOPS } from '../src/lib/nav-request';
@@ -116,6 +119,72 @@ describe('Google Directions adapter', () => {
     expect(options.identical).toBe(false);
     expect(options.motorway.steps.map((s) => s.instruction)).toEqual(['Head south on A404', 'Merge onto M4', 'Turn right onto Oxford Road']);
     expect(options.standard.steps).toHaveLength(2);
+  });
+});
+
+describe('Google Routes API adapter (live traffic)', () => {
+  const rstep = (from: LngLat, to: LngLat, metres: number, seconds: number, text: string) => ({
+    distanceMeters: metres,
+    staticDuration: `${seconds}s`,
+    polyline: { encodedPolyline: encodePolyline([from, to]) },
+    startLocation: { latLng: { latitude: from[1], longitude: from[0] } },
+    navigationInstruction: { instructions: text },
+  });
+  // Shaped like a real computeRoutes response (TRAFFIC_AWARE_OPTIMAL).
+  const viaM4: RoutesApiRoute = {
+    legs: [
+      {
+        distanceMeters: 40190,
+        duration: '1946s',
+        staticDuration: '2357s',
+        steps: [
+          rstep([-0.75, 51.63], [-0.8, 51.6], 2000, 240, 'Turn right onto Crendon St/A404\nContinue to follow A404'),
+          rstep([-0.8, 51.6], [-0.95, 51.47], 36190, 1937, 'Merge onto M4'),
+          rstep([-0.95, 51.47], [-0.97, 51.455], 2000, 180, 'Turn right onto Oxford Road'),
+        ],
+      },
+    ],
+  };
+  const viaLanes: RoutesApiRoute = {
+    legs: [
+      {
+        distanceMeters: 29629,
+        duration: '1900s',
+        staticDuration: '2467s',
+        steps: [
+          rstep([-0.75, 51.63], [-0.85, 51.55], 15000, 1233, 'Turn left onto Marlow Bottom'),
+          rstep([-0.85, 51.55], [-0.97, 51.455], 14629, 1234, 'Continue onto Henley Lane'),
+        ],
+      },
+    ],
+  };
+
+  it('parses protobuf durations', () => {
+    expect(parseRoutesDuration('1955s')).toBe(1955);
+    expect(parseRoutesDuration('12.5s')).toBe(12.5);
+    expect(parseRoutesDuration(undefined)).toBe(0);
+    expect(parseRoutesDuration('soon')).toBe(0);
+  });
+
+  it('uses the live-traffic duration, not the static one', () => {
+    const r = googleRouteToMapbox(routesApiToGoogle(viaM4));
+    expect(r.duration).toBe(1946);
+    expect(r.duration_typical).toBe(2357);
+    expect(r.distance).toBe(40190);
+    expect(r.legs[0].steps[0].maneuver?.instruction).toBe('Turn right onto Crendon St/A404. Continue to follow A404');
+    expect(r.legs[0].steps.reduce((a, st) => a + st.duration, 0)).toBeCloseTo(1946, 5);
+  });
+
+  it('feeds the motorway-preferred and standard options with source google', () => {
+    const options = buildRouteOptions([[viaLanes, viaM4].map((x) => googleRouteToMapbox(routesApiToGoogle(x)))], new Date(2026, 9, 25), 'google');
+    expect(options.source).toBe('google');
+    expect(options.standard.durationS).toBe(1900);
+    expect(options.motorway.roads).toContain('M4');
+  });
+
+  it('survives an empty or partial response', () => {
+    expect(routesApiToGoogle({}).legs).toEqual([]);
+    expect(routesApiToGoogle({ legs: [{ steps: [{ distanceMeters: 5 }] }] }).legs[0].steps).toEqual([]);
   });
 });
 

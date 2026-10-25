@@ -12,19 +12,51 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 0. Admin allowlist
--- Anyone who signs up with an email in this table becomes an admin and
--- gets the HP13 6BU starting location. Everyone else is a regular user.
+-- 0. Team allowlist
+-- Access comes from the signed-in email, never from the name typed at
+-- signup. Only emails in team_members get into the app. Anyone else is
+-- held as a pending request (profiles.role = 'unassigned') until the admin
+-- approves or denies it in Admin > Team Management.
+--   role          admin (Jo, the only one) or user (merchandiser)
+--   manager_name  whose stores are theirs
+--   route_managers  optional override of the patch; NULL means the default
+--                   (admin: Joseph; Sarah: Sarah, Joseph, Pete, Marcia;
+--                   anyone else: their own stores)
 -- ---------------------------------------------------------------------
-create table if not exists public.app_admins (
-  email text primary key
+create table if not exists public.team_members (
+  email          text primary key check (email = lower(btrim(email)) and email like '%_@_%'),
+  role           text not null default 'user' check (role in ('admin', 'user')),
+  manager_name   text not null check (manager_name in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah')),
+  route_managers text[] check (route_managers <@ array['Joseph', 'Pete', 'David', 'Marcia', 'Sarah']),
+  created_at     timestamptz not null default now()
 );
-alter table public.app_admins enable row level security;
-revoke all on public.app_admins from anon, authenticated;
+alter table public.team_members enable row level security;
+revoke all on public.team_members from anon;
+-- One admin, ever.
+create unique index if not exists team_members_one_admin on public.team_members ((true)) where role = 'admin';
 
-insert into public.app_admins (email)
-values ('ayychop@gmail.com')
-on conflict (email) do nothing;
+insert into public.team_members (email, role, manager_name)
+values ('ayychop@gmail.com', 'admin', 'Joseph')
+on conflict (email) do update set role = 'admin', manager_name = 'Joseph';
+
+-- Replaced by team_members.
+drop table if exists public.app_admins;
+
+-- The stores a team member works: their override, or the default above.
+create or replace function public.team_patch(p_role text, p_manager text, p_override text[])
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_role is null or p_manager is null then '{}'::text[]
+    when p_role = 'admin' then array['Joseph']
+    when coalesce(cardinality(p_override), 0) > 0 then p_override
+    when p_manager = 'Sarah' then array['Sarah', 'Joseph', 'Pete', 'Marcia']
+    else array[p_manager]
+  end;
+$$;
 
 -- ---------------------------------------------------------------------
 -- 1. Profiles
@@ -32,7 +64,7 @@ on conflict (email) do nothing;
 create table if not exists public.profiles (
   id                uuid primary key references auth.users (id) on delete cascade,
   email             text not null,
-  role              text not null default 'user' check (role in ('admin', 'user')),
+  role              text not null default 'unassigned',
   name              text,
   vehicle_model     text,
   starting_location text,
@@ -47,13 +79,19 @@ create table if not exists public.profiles (
 );
 alter table public.profiles enable row level security;
 
--- Whose stores this person routes. Admin-controlled.
--- Defaults: admin {Joseph}; users {Joseph, Pete}; users named David {David};
--- users named Marcia {Marcia}.
+-- Access state. 'unassigned' is a pending request, 'denied' a refused one;
+-- neither can see any stores. role, manager_name and route_managers always
+-- mirror team_members (see profiles_guard below).
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles
+  add constraint profiles_role_check check (role in ('admin', 'user', 'unassigned', 'denied'));
+alter table public.profiles alter column role set default 'unassigned';
 alter table public.profiles add column if not exists route_managers text[];
+alter table public.profiles add column if not exists manager_name text;
 
 -- Role check used by every policy below. SECURITY DEFINER so it can read
--- profiles without recursing through the profiles RLS policies.
+-- profiles without recursing through the profiles RLS policies. The email
+-- must also be the admin in team_members, so a stale row cannot grant it.
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -62,50 +100,135 @@ security definer
 set search_path = ''
 as $$
   select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and role = 'admin'
+    select 1 from public.profiles p
+    join public.team_members t on t.email = lower(btrim(p.email)) and t.role = 'admin'
+    where p.id = auth.uid() and p.role = 'admin'
   );
 $$;
 revoke execute on function public.is_admin() from public, anon;
 grant execute on function public.is_admin() to authenticated;
 
--- Users may edit their own profile but never promote themselves.
-create or replace function public.protect_profile_columns()
+-- Approved team member (admin or merchandiser).
+create or replace function public.is_member()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role in ('admin', 'user')
+  );
+$$;
+revoke execute on function public.is_member() from public, anon;
+grant execute on function public.is_member() to authenticated;
+
+-- Whose stores the signed-in person may see. Empty unless approved.
+create or replace function public.my_route_managers()
+returns text[]
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((
+    select route_managers from public.profiles
+    where id = auth.uid() and role in ('admin', 'user')
+  ), '{}'::text[]);
+$$;
+revoke execute on function public.my_route_managers() from public, anon;
+grant execute on function public.my_route_managers() to authenticated;
+
+-- Every insert or update of a profile re-reads team_members by the account's
+-- email, so access can never come from anything the user typed. Users may
+-- edit their own profile but never their role, manager or patch, or email.
+drop function if exists public.protect_profile_columns() cascade;
+create or replace function public.profiles_guard()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_member public.team_members;
+  v_email text;
 begin
   -- auth.uid() is NULL for the SQL editor and the service role.
-  if auth.uid() is not null then
-    if new.role is distinct from old.role and not public.is_admin() then
+  if tg_op = 'UPDATE' and auth.uid() is not null and not public.is_admin() then
+    if new.role is distinct from old.role then
       raise exception 'Only an admin can change roles';
     end if;
-    if new.route_managers is distinct from old.route_managers and not public.is_admin() then
+    if new.route_managers is distinct from old.route_managers or new.manager_name is distinct from old.manager_name then
       raise exception 'Only an admin can change route assignments';
     end if;
-    new.email := old.email;
   end if;
+
+  if tg_op = 'UPDATE' then
+    new.email := old.email;
+  else
+    -- The email always comes from the auth account.
+    select u.email into v_email from auth.users u where u.id = new.id;
+    new.email := coalesce(v_email, new.email);
+  end if;
+
+  select * into v_member from public.team_members t where t.email = lower(btrim(new.email));
+  if found then
+    new.role := v_member.role;
+    new.manager_name := v_member.manager_name;
+    new.route_managers := public.team_patch(v_member.role, v_member.manager_name, v_member.route_managers);
+    if v_member.role = 'admin' then
+      new.starting_location := coalesce(new.starting_location, 'HP13 6BU');
+    end if;
+  else
+    new.role := case when new.role = 'denied' then 'denied' else 'unassigned' end;
+    new.manager_name := null;
+    new.route_managers := '{}'::text[];
+  end if;
+
   new.updated_at := now();
   return new;
 end;
 $$;
 
 drop trigger if exists profiles_protect_columns on public.profiles;
-create trigger profiles_protect_columns
-  before update on public.profiles
-  for each row execute function public.protect_profile_columns();
+drop trigger if exists profiles_guard on public.profiles;
+create trigger profiles_guard
+  before insert or update on public.profiles
+  for each row execute function public.profiles_guard();
+
+-- Re-apply team_members to the signed-in profile. The app calls this on
+-- every sign-in, so approvals and removals take effect straight away.
+create or replace function public.refresh_my_access()
+returns public.profiles
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.profiles;
+begin
+  if auth.uid() is null then
+    raise exception 'Not signed in';
+  end if;
+  update public.profiles set updated_at = now() where id = auth.uid() returning * into v_row;
+  return v_row;
+end;
+$$;
+revoke execute on function public.refresh_my_access() from public, anon;
+grant execute on function public.refresh_my_access() to authenticated;
 
 drop policy if exists "profiles: read own or admin" on public.profiles;
 create policy "profiles: read own or admin" on public.profiles
   for select to authenticated
   using (id = (select auth.uid()) or public.is_admin());
 
+-- The guard decides the role, so any value sent here is replaced.
 drop policy if exists "profiles: insert own as user" on public.profiles;
-create policy "profiles: insert own as user" on public.profiles
+drop policy if exists "profiles: insert own" on public.profiles;
+create policy "profiles: insert own" on public.profiles
   for insert to authenticated
-  with check (id = (select auth.uid()) and role = 'user');
+  with check (id = (select auth.uid()));
 
 drop policy if exists "profiles: update own" on public.profiles;
 create policy "profiles: update own" on public.profiles
@@ -119,6 +242,100 @@ create policy "profiles: admin update any" on public.profiles
   using (public.is_admin())
   with check (public.is_admin());
 
+-- team_members: the admin manages merchandisers. The admin row itself is
+-- only changed from the SQL editor.
+grant select, insert, update, delete on public.team_members to authenticated;
+
+drop policy if exists "team_members: admin read" on public.team_members;
+create policy "team_members: admin read" on public.team_members
+  for select to authenticated
+  using (public.is_admin());
+
+drop policy if exists "team_members: admin add" on public.team_members;
+create policy "team_members: admin add" on public.team_members
+  for insert to authenticated
+  with check (public.is_admin() and role = 'user');
+
+drop policy if exists "team_members: admin edit" on public.team_members;
+create policy "team_members: admin edit" on public.team_members
+  for update to authenticated
+  using (public.is_admin() and role = 'user')
+  with check (public.is_admin() and role = 'user');
+
+drop policy if exists "team_members: admin remove" on public.team_members;
+create policy "team_members: admin remove" on public.team_members
+  for delete to authenticated
+  using (public.is_admin() and role = 'user');
+
+-- Keep profiles in step with team_members: touching the row re-runs the guard.
+create or replace function public.team_members_sync()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.profiles
+     set updated_at = now()
+   where lower(btrim(email)) in (
+     case when tg_op <> 'DELETE' then new.email end,
+     case when tg_op <> 'INSERT' then old.email end
+   );
+  return null;
+end;
+$$;
+
+drop trigger if exists team_members_sync on public.team_members;
+create trigger team_members_sync
+  after insert or update or delete on public.team_members
+  for each row execute function public.team_members_sync();
+
+-- Admin > Team Management: approve a pending request as one of the managers,
+-- or deny it.
+create or replace function public.review_access_request(
+  p_profile_id uuid,
+  p_approve    boolean,
+  p_manager    text default null
+)
+returns public.profiles
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_email text;
+  v_row public.profiles;
+begin
+  if not public.is_admin() then
+    raise exception 'Only the admin can review requests';
+  end if;
+  select lower(btrim(email)) into v_email from public.profiles where id = p_profile_id;
+  if v_email is null then
+    raise exception 'Request not found';
+  end if;
+  if exists (select 1 from public.team_members where email = v_email and role = 'admin') then
+    raise exception 'The admin account cannot be changed here';
+  end if;
+
+  if p_approve then
+    if p_manager is null or p_manager not in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah') then
+      raise exception 'Choose whose stores they work';
+    end if;
+    insert into public.team_members (email, role, manager_name)
+    values (v_email, 'user', p_manager)
+    on conflict (email) do update set manager_name = excluded.manager_name, route_managers = null;
+  else
+    delete from public.team_members where email = v_email;
+    update public.profiles set role = 'denied' where id = p_profile_id;
+  end if;
+
+  select * into v_row from public.profiles where id = p_profile_id;
+  return v_row;
+end;
+$$;
+revoke execute on function public.review_access_request(uuid, boolean, text) from public, anon;
+grant execute on function public.review_access_request(uuid, boolean, text) to authenticated;
+
 -- ---------------------------------------------------------------------
 -- 2. Stores
 -- ---------------------------------------------------------------------
@@ -131,7 +348,7 @@ create table if not exists public.stores (
   required_frequency integer not null default 1 check (required_frequency between 0 and 31),
   visits_completed   integer not null default 0,
   last_visit_date    timestamptz,
-  assigned_manager   text not null default 'Joseph' check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia')),
+  assigned_manager   text not null default 'Joseph' check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah')),
   vibe               text,
   latitude           double precision,
   longitude          double precision,
@@ -144,16 +361,21 @@ create index if not exists stores_manager_idx on public.stores (assigned_manager
 -- Older versions of this file allowed fewer managers.
 alter table public.stores drop constraint if exists stores_assigned_manager_check;
 alter table public.stores
-  add constraint stores_assigned_manager_check check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia'));
+  add constraint stores_assigned_manager_check check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah'));
 
--- Default monthly frequency by grade: A 4, B 3, C 2, D 1.
+-- frequency_custom: true when someone set this store's monthly frequency by
+-- hand (Store > Edit). Otherwise each person's grade target applies.
+alter table public.stores add column if not exists frequency_custom boolean not null default false;
+
+-- Default monthly frequency by grade: A 4, B 3, C 2, D 1, unless the store
+-- has its own frequency.
 create or replace function public.stores_set_defaults()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
-  if tg_op = 'INSERT' or new.grade is distinct from old.grade then
+  if not new.frequency_custom and (tg_op = 'INSERT' or new.grade is distinct from old.grade or old.frequency_custom) then
     new.required_frequency := case new.grade
       when 'A' then 4 when 'B' then 3 when 'C' then 2 else 1 end;
   end if;
@@ -167,10 +389,13 @@ create trigger stores_defaults
   before insert or update on public.stores
   for each row execute function public.stores_set_defaults();
 
+-- The admin sees the full master list; a merchandiser sees only their patch;
+-- a pending or denied account sees nothing.
 drop policy if exists "stores: read for signed-in users" on public.stores;
-create policy "stores: read for signed-in users" on public.stores
+drop policy if exists "stores: read own patch or admin" on public.stores;
+create policy "stores: read own patch or admin" on public.stores
   for select to authenticated
-  using (true);
+  using (public.is_admin() or assigned_manager = any (public.my_route_managers()));
 
 drop policy if exists "stores: admin insert" on public.stores;
 create policy "stores: admin insert" on public.stores
@@ -188,7 +413,7 @@ create policy "stores: admin delete" on public.stores
   for delete to authenticated
   using (public.is_admin());
 
--- Any signed-in user may correct a store address (and its map pin).
+-- Any team member may correct the address (and map pin) of a store in their patch.
 -- This is the only store column non-admins can change, so it goes through
 -- a narrow function instead of a broad UPDATE policy.
 create or replace function public.update_store_address(
@@ -222,6 +447,7 @@ begin
          latitude  = coalesce(p_latitude, latitude),
          longitude = coalesce(p_longitude, longitude)
    where id = p_store_id
+     and (public.is_admin() or assigned_manager = any (public.my_route_managers()))
   returning * into v_row;
 
   if not found then
@@ -232,6 +458,49 @@ end;
 $$;
 revoke execute on function public.update_store_address(uuid, text, double precision, double precision) from public, anon;
 grant execute on function public.update_store_address(uuid, text, double precision, double precision) to authenticated;
+
+-- Any signed-in user may change a store's grade and monthly frequency
+-- (Store > Edit). p_frequency NULL means "use the grade default".
+create or replace function public.update_store_settings(
+  p_store_id  uuid,
+  p_grade     text,
+  p_frequency integer default null
+)
+returns public.stores
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.stores;
+begin
+  if auth.uid() is null then
+    raise exception 'Not signed in';
+  end if;
+  if p_grade is null or p_grade not in ('A', 'B', 'C', 'D') then
+    raise exception 'Grade must be A, B, C or D';
+  end if;
+  if p_frequency is not null and (p_frequency < 0 or p_frequency > 12) then
+    raise exception 'Frequency must be between 0 and 12 visits a month';
+  end if;
+
+  update public.stores
+     set grade              = p_grade,
+         frequency_custom   = p_frequency is not null,
+         required_frequency = coalesce(p_frequency, required_frequency)
+   where id = p_store_id
+     and (public.is_admin() or assigned_manager = any (public.my_route_managers()))
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'Store not found';
+  end if;
+  return v_row;
+end;
+$$;
+
+revoke execute on function public.update_store_settings(uuid, text, integer) from public, anon;
+grant execute on function public.update_store_settings(uuid, text, integer) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 3. Visits
@@ -368,21 +637,11 @@ create policy "task-media: owner delete" on storage.objects
   using (bucket_id = 'task-media' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
 -- ---------------------------------------------------------------------
--- 7. New user hook: create the profile, apply admin role + start location
+-- 7. New user hook: create the profile. profiles_guard sets the role,
+-- manager and patch from team_members by email; anyone not on the list
+-- becomes a pending request for the admin.
 -- ---------------------------------------------------------------------
-create or replace function public.default_route_managers(p_is_admin boolean, p_name text)
-returns text[]
-language sql
-immutable
-set search_path = ''
-as $$
-  select case
-    when p_is_admin then array['Joseph']
-    when p_name ilike 'david%' then array['David']
-    when p_name ilike 'marcia%' then array['Marcia']
-    else array['Joseph', 'Pete']
-  end;
-$$;
+drop function if exists public.default_route_managers(boolean, text);
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -391,27 +650,19 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_is_admin boolean;
-  v_name text;
+  v_role text;
 begin
-  v_is_admin := exists (
-    select 1 from public.app_admins a where lower(a.email) = lower(new.email)
-  );
-  v_name := coalesce(nullif(btrim(new.raw_user_meta_data ->> 'name'), ''), split_part(new.email, '@', 1));
-
-  insert into public.profiles (id, email, role, name, starting_location, route_managers)
+  insert into public.profiles (id, email, name)
   values (
     new.id,
     new.email,
-    case when v_is_admin then 'admin' else 'user' end,
-    v_name,
-    case when v_is_admin then 'HP13 6BU' else null end,
-    public.default_route_managers(v_is_admin, v_name)
+    coalesce(nullif(btrim(new.raw_user_meta_data ->> 'name'), ''), split_part(new.email, '@', 1))
   )
   on conflict (id) do nothing;
 
   -- Seeded stores have no owner until the admin account exists.
-  if v_is_admin then
+  select role into v_role from public.profiles where id = new.id;
+  if v_role = 'admin' then
     update public.stores set user_id = new.id where user_id is null;
   end if;
 
@@ -424,24 +675,20 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Backfill profiles for accounts that already existed before this migration.
-insert into public.profiles (id, email, role, name, starting_location, route_managers)
+-- Backfill profiles for accounts that already existed, and re-apply
+-- team_members to every profile (the update runs profiles_guard).
+insert into public.profiles (id, email, name)
 select
   u.id,
   u.email,
-  case when a.email is not null then 'admin' else 'user' end,
-  coalesce(nullif(btrim(u.raw_user_meta_data ->> 'name'), ''), split_part(u.email, '@', 1)),
-  case when a.email is not null then 'HP13 6BU' else null end,
-  public.default_route_managers(
-    a.email is not null,
-    coalesce(nullif(btrim(u.raw_user_meta_data ->> 'name'), ''), split_part(u.email, '@', 1))
-  )
+  coalesce(nullif(btrim(u.raw_user_meta_data ->> 'name'), ''), split_part(u.email, '@', 1))
 from auth.users u
-left join public.app_admins a on lower(a.email) = lower(u.email)
-on conflict (id) do update
-  set role = case when excluded.role = 'admin' then 'admin' else public.profiles.role end,
-      starting_location = coalesce(public.profiles.starting_location, excluded.starting_location),
-      route_managers = coalesce(public.profiles.route_managers, excluded.route_managers);
+on conflict (id) do update set updated_at = now();
+
+update public.stores
+   set user_id = (select id from public.profiles where role = 'admin' limit 1)
+ where user_id is null
+   and exists (select 1 from public.profiles where role = 'admin');
 
 -- ---------------------------------------------------------------------
 -- 8. Mileage logs
@@ -467,7 +714,8 @@ create policy "mileage_logs: owner all" on public.mileage_logs
 -- ---------------------------------------------------------------------
 -- 9. Expenses (budget rules live in src/lib/budget.ts:
 --     standard -> profiles.standard_budget per month (default GBP 60);
---     sales_day + ooh -> shared profiles.sales_day_budget (default GBP 150))
+--     sales_day + ooh -> shared profiles.sales_day_budget per week, resetting
+--     every Sunday (default GBP 150))
 -- ---------------------------------------------------------------------
 create table if not exists public.expenses (
   id         uuid primary key default gen_random_uuid(),
@@ -730,9 +978,11 @@ create policy "user_stores: delete own" on public.user_stores
   using (user_id = (select auth.uid()));
 
 -- ---------------------------------------------------------------------
--- 12. Personal monthly budgets (GBP), editable by each person in the app
---     standard_budget: standard expenses. Default GBP 60.
---     sales_day_budget: shared pool for Sales Day and OOH expenses. Default GBP 150.
+-- 12. Personal budgets (GBP), editable by each person in the app
+--     standard_budget: standard expenses, per calendar month. Default GBP 60.
+--     sales_day_budget: shared pool for Sales Day and OOH expenses, per week.
+--     The week runs Sunday to Saturday and the pool resets every Sunday.
+--     Default GBP 150.
 -- ---------------------------------------------------------------------
 alter table public.profiles add column if not exists standard_budget numeric(8, 2) not null default 60;
 alter table public.profiles add column if not exists sales_day_budget numeric(8, 2) not null default 150;
@@ -747,6 +997,123 @@ alter table public.profiles add constraint profiles_standard_budget_check
 alter table public.profiles drop constraint if exists profiles_sales_day_budget_check;
 alter table public.profiles add constraint profiles_sales_day_budget_check
   check (sales_day_budget between 0 and 5000);
+
+comment on column public.profiles.standard_budget is 'Standard expenses budget in GBP per calendar month.';
+comment on column public.profiles.sales_day_budget is 'Hard weekly cap in GBP for Sales Day + OOH sessions. Resets every Sunday.';
+
+-- Most a single Sales Day / OOH session may cost. Several sessions a day are fine.
+alter table public.profiles add column if not exists ooh_session_allowance numeric(8, 2) not null default 25;
+alter table public.profiles drop constraint if exists profiles_ooh_session_allowance_check;
+alter table public.profiles add constraint profiles_ooh_session_allowance_check
+  check (ooh_session_allowance > 0 and ooh_session_allowance <= 5000);
+comment on column public.profiles.ooh_session_allowance is 'Per Sales Day / OOH session allowance in GBP.';
+
+-- Expense sessions.
+--   session_type: Standard (monthly budget), OOH_Session (Sales Day or OOH,
+--   capped per session and per week) or Town_Takeover (its own day budget,
+--   no caps). Derived from category so the two never disagree.
+--   session_date: the day of the session (defaults to the expense date).
+--   event_budget: Town Takeover only, the custom budget for that day.
+alter table public.expenses drop constraint if exists expenses_category_check;
+alter table public.expenses add constraint expenses_category_check
+  check (category in ('standard', 'sales_day', 'ooh', 'town_takeover'));
+alter table public.expenses add column if not exists session_type text;
+alter table public.expenses add column if not exists session_date date;
+alter table public.expenses add column if not exists event_budget numeric(8, 2);
+update public.expenses
+   set session_type = case category when 'standard' then 'Standard' when 'town_takeover' then 'Town_Takeover' else 'OOH_Session' end
+ where session_type is null;
+update public.expenses set session_date = date where session_date is null;
+alter table public.expenses alter column session_type set not null;
+alter table public.expenses alter column session_date set not null;
+alter table public.expenses drop constraint if exists expenses_session_type_check;
+alter table public.expenses add constraint expenses_session_type_check
+  check (session_type in ('Standard', 'OOH_Session', 'Town_Takeover'));
+alter table public.expenses drop constraint if exists expenses_event_budget_check;
+alter table public.expenses add constraint expenses_event_budget_check
+  check (
+    (category = 'town_takeover' and event_budget is not null and event_budget > 0 and event_budget <= 5000)
+    or (category <> 'town_takeover' and event_budget is null)
+  ) not valid;
+create index if not exists expenses_user_session_idx on public.expenses (user_id, session_type, session_date);
+
+-- Fills session_type and session_date, and enforces the session rules:
+-- a session costs at most the person's allowance (GBP 25), and the
+-- Sunday-to-Saturday week never passes their weekly cap (GBP 150).
+create or replace function public.expenses_apply_session_rules()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_allowance numeric;
+  v_cap numeric;
+  v_week date;
+  v_spent numeric;
+begin
+  new.session_type := case new.category when 'standard' then 'Standard' when 'town_takeover' then 'Town_Takeover' else 'OOH_Session' end;
+  new.session_date := coalesce(new.session_date, new.date);
+
+  if new.session_type = 'OOH_Session' then
+    select coalesce(p.ooh_session_allowance, 25), coalesce(p.sales_day_budget, 150)
+      into v_allowance, v_cap
+      from public.profiles p where p.id = new.user_id;
+    v_allowance := coalesce(v_allowance, 25);
+    v_cap := coalesce(v_cap, 150);
+    if new.amount > v_allowance then
+      raise exception 'A Sales Day / OOH session is capped at GBP %', v_allowance using errcode = 'check_violation';
+    end if;
+    v_week := public.budget_week_start(new.session_date);
+    select coalesce(sum(e.amount), 0) into v_spent
+      from public.expenses e
+     where e.user_id = new.user_id
+       and e.session_type = 'OOH_Session'
+       and e.session_date >= v_week and e.session_date < v_week + 7
+       and e.id <> new.id;
+    if v_spent + new.amount > v_cap then
+      raise exception 'This week''s Sales Day / OOH cap of GBP % is reached (GBP % left). It resets on Sunday.', v_cap, greatest(v_cap - v_spent, 0)
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists expenses_session_rules on public.expenses;
+create trigger expenses_session_rules
+  before insert or update on public.expenses
+  for each row execute function public.expenses_apply_session_rules();
+
+-- Sunday that starts the budget week containing d.
+create or replace function public.budget_week_start(d date)
+returns date
+language sql
+immutable
+set search_path = ''
+as $$
+  select d - extract(dow from d)::integer;
+$$;
+
+-- Sales Day + OOH session spend per person per Sunday-to-Saturday week,
+-- against that person's weekly cap. security_invoker: callers only see rows the
+-- expenses and profiles policies already allow (their own).
+drop view if exists public.weekly_special_spend;
+create view public.weekly_special_spend
+with (security_invoker = true)
+as
+select e.user_id,
+       public.budget_week_start(e.session_date) as week_start,
+       count(*)::integer as sessions,
+       sum(e.amount)::numeric(10, 2) as spent,
+       p.sales_day_budget as budget,
+       (p.sales_day_budget - sum(e.amount))::numeric(10, 2) as remaining
+  from public.expenses e
+  join public.profiles p on p.id = e.user_id
+ where e.session_type = 'OOH_Session'
+ group by e.user_id, public.budget_week_start(e.session_date), p.sales_day_budget;
+
+grant select on public.weekly_special_spend to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 13. Crowdsourced hazard reports (police, speed cameras, accidents, hazards)
@@ -804,7 +1171,7 @@ alter table public.hazard_reports enable row level security;
 drop policy if exists "hazard_reports: team read" on public.hazard_reports;
 create policy "hazard_reports: team read" on public.hazard_reports
   for select to authenticated
-  using (true);
+  using (public.is_member());
 
 -- Report as yourself, timestamped now, at most 10 reports in 10 minutes.
 drop policy if exists "hazard_reports: insert own" on public.hazard_reports;
@@ -812,6 +1179,7 @@ create policy "hazard_reports: insert own" on public.hazard_reports
   for insert to authenticated
   with check (
     user_id = (select auth.uid())
+    and public.is_member()
     and is_active
     and cleared_by is null
     and cleared_at is null
@@ -834,6 +1202,9 @@ declare
 begin
   if v_uid is null then
     raise exception 'Please sign in again';
+  end if;
+  if not public.is_member() then
+    raise exception 'Your account is waiting for approval';
   end if;
   update public.hazard_reports
      set is_active = false, cleared_by = v_uid, cleared_at = now()

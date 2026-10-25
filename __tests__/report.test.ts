@@ -33,7 +33,10 @@ describe('monthly report', () => {
 
   it('reports both budgets', () => {
     expect(report).toContain('Standard budget: £12.50 of £60.00 used, £47.50 left');
-    expect(report).toContain('Sales Day / OOH budget: £8.99 of £150.00 used, £141.01 left');
+    expect(report).toContain('Sales Day / OOH budget: £25.00 per session, £150.00 weekly cap, resets every Sunday');
+    // The Sales Day on Friday 9 October falls in the week of Sunday 4 October.
+    expect(report).toContain('Week of 04/10/2026: £8.99 used, £141.01 left');
+    expect(report).toContain('Week of 11/10/2026: £0.00 used, £150.00 left');
   });
 
   it('has a header and no em or en dashes', () => {
@@ -58,10 +61,11 @@ describe('monthly report', () => {
       month: '2026-02',
       mileage: [],
       expenses: [{ date: '2026-02-01', amount: 30, location: 'A', recipient: 'B', category: 'standard' }],
-      budgets: { standard: 10000, special: 20000 },
+      budgets: { standard: 10000, special: 20000, session: 2500 },
     });
     expect(custom).toContain('Standard budget: £30.00 of £100.00 used, £70.00 left');
-    expect(custom).toContain('Sales Day / OOH budget: £0.00 of £200.00 used, £200.00 left');
+    expect(custom).toContain('Sales Day / OOH budget: £25.00 per session, £200.00 weekly cap, resets every Sunday');
+    expect(custom).toContain('Week of 01/02/2026: £0.00 used, £200.00 left');
   });
 
   it('formats helpers', () => {

@@ -376,3 +376,69 @@ export function googleRouteToMapbox(route: GoogleRoute): MapboxRoute {
   });
   return { distance, duration, duration_typical: typical, geometry: { coordinates }, legs };
 }
+
+// ---------------------------------------------------------------------------
+// Google Routes API adapter. The legacy Directions API cannot be enabled on
+// new Google Cloud projects, so live traffic comes from computeRoutes with
+// routingPreference TRAFFIC_AWARE_OPTIMAL. Its routes are converted into the
+// Directions shape above.
+
+/** Subset of a Routes API (directions/v2:computeRoutes) route that we rely on. */
+export interface RoutesApiRoute {
+  legs?: {
+    distanceMeters?: number;
+    /** Live-traffic duration, e.g. "1955s". */
+    duration?: string;
+    /** Duration without traffic. */
+    staticDuration?: string;
+    steps?: {
+      distanceMeters?: number;
+      staticDuration?: string;
+      polyline?: { encodedPolyline?: string };
+      startLocation?: { latLng?: { latitude?: number; longitude?: number } };
+      navigationInstruction?: { instructions?: string };
+    }[];
+  }[];
+}
+
+/** The Routes API field mask matching RoutesApiRoute. */
+export const ROUTES_API_FIELD_MASK = [
+  'routes.legs.distanceMeters',
+  'routes.legs.duration',
+  'routes.legs.staticDuration',
+  'routes.legs.steps.distanceMeters',
+  'routes.legs.steps.staticDuration',
+  'routes.legs.steps.polyline.encodedPolyline',
+  'routes.legs.steps.startLocation',
+  'routes.legs.steps.navigationInstruction.instructions',
+].join(',');
+
+/** "1955s" or "12.5s" to seconds; anything else is 0. */
+export function parseRoutesDuration(value: string | undefined): number {
+  const m = /^(\d+(?:\.\d+)?)s$/.exec(value ?? '');
+  return m ? Number(m[1]) : 0;
+}
+
+export function routesApiToGoogle(route: RoutesApiRoute): GoogleRoute {
+  return {
+    legs: (route.legs ?? []).map((leg) => {
+      const typical = parseRoutesDuration(leg.staticDuration);
+      const live = parseRoutesDuration(leg.duration) || typical;
+      return {
+        distance: { value: leg.distanceMeters ?? 0 },
+        duration: { value: typical || live },
+        duration_in_traffic: { value: live },
+        steps: (leg.steps ?? [])
+          .filter((st) => st.polyline?.encodedPolyline)
+          .map((st) => ({
+            distance: { value: st.distanceMeters ?? 0 },
+            duration: { value: parseRoutesDuration(st.staticDuration) },
+            // Multi-line instructions ("Turn right onto A404\nContinue to follow A404") read as sentences.
+            html_instructions: (st.navigationInstruction?.instructions ?? '').replace(/\n+/g, '. '),
+            polyline: { points: st.polyline?.encodedPolyline ?? '' },
+            start_location: { lat: st.startLocation?.latLng?.latitude ?? 0, lng: st.startLocation?.latLng?.longitude ?? 0 },
+          })),
+      };
+    }),
+  };
+}

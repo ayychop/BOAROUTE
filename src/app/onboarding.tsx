@@ -45,7 +45,7 @@ function StepSegment({ state }: { state: 'done' | 'current' | 'todo' }) {
 export default function Onboarding() {
   const { palette } = useTheme();
   const { profile, updateProfile, isAdmin } = useAuth();
-  const { stores, chosenStoreIds, saveChosenStores, loading } = useData();
+  const { patchStores: stores, chosenStoreIds, saveChosenStores, loading } = useData();
   const [step, setStep] = useState(0);
   const [forward, setForward] = useState(true);
 

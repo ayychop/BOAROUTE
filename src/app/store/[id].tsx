@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { GradeBadge, ManagerBadge } from '@/components/badges';
 import { Field } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
@@ -12,12 +12,14 @@ import { EmptyState, LoadingBlock } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Screen, SectionHeader } from '@/components/Screen';
+import { StoreSettingsSheet } from '@/components/StoreSettingsSheet';
 import { TaskCard } from '@/components/TaskCard';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
 import { localDateString } from '@/lib/budget';
 import { daysSinceLabel } from '@/lib/format';
+import { remainingMessage, storeTarget } from '@/lib/frequency';
 import { geocode } from '@/lib/geo';
 import { encodeNavRequest } from '@/lib/nav-request';
 import { hasCoords, toLatLng } from '@/lib/route-engine';
@@ -31,7 +33,7 @@ export default function StoreDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { palette } = useTheme();
   const { expanded } = useLayout();
-  const { stores, tallies, targets, logVisit, undoLastVisit, updateStoreAddress } = useData();
+  const { stores, tallies, targets, logVisit, undoLastVisit, updateStoreAddress, updateStoreSettings } = useData();
   const store = stores.find((s) => s.id === id);
   const now = useNow();
 
@@ -42,6 +44,15 @@ export default function StoreDetail() {
   const [addrNotice, setAddrNotice] = useState<string | null>(null);
   const [visitBusy, setVisitBusy] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cheer, setCheer] = useState<{ text: string; done: boolean } | null>(null);
+
+  // The encouragement after a visit fades after a few seconds.
+  useEffect(() => {
+    if (!cheer) return;
+    const t = setTimeout(() => setCheer(null), 4500);
+    return () => clearTimeout(t);
+  }, [cheer]);
 
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -62,7 +73,7 @@ export default function StoreDetail() {
       setTasks((prev) => prev ?? []);
       setTasksError(e instanceof Error && e.message ? e.message : 'Check your connection and try again.');
     }
-  }, [id]);
+  }, [id, setTasks, setTasksError, setUrls]);
 
   useFocusEffect(
     useCallback(() => {
@@ -71,7 +82,7 @@ export default function StoreDetail() {
   );
 
   const tally = store ? tallies[store.id] : undefined;
-  const target = store ? targets[store.grade] : 0;
+  const target = store ? storeTarget(store, targets) : 0;
   const done = tally?.count ?? 0;
   const days = tally?.last ? Math.floor((now - new Date(tally.last).getTime()) / 86_400_000) : null;
   const sortedTasks = useMemo(() => tasks ?? [], [tasks]);
@@ -124,6 +135,7 @@ export default function StoreDetail() {
     try {
       await logVisit(store.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setCheer({ text: remainingMessage(done + 1, target), done: done + 1 >= target });
     } catch (e) {
       Alert.alert('Visit not saved', e instanceof Error ? e.message : 'Please try again.');
     } finally {
@@ -198,9 +210,34 @@ export default function StoreDetail() {
       <Txt variant="caption" tone={owed === 0 ? 'success' : 'dim'} style={{ marginTop: 16 }}>
         {owed === 0
           ? `Target met: ${done} of ${target} visits this month. This store is out of today's route.`
-          : `${done} of ${target} visits this month · ${owed} still owed`}
+          : `${done} of ${target} visits this month · ${owed === 1 ? 'Last one to go' : `${owed} more to go`}`}
         {visitedToday ? ' · Visited today' : ''}
       </Txt>
+      {cheer ? (
+        <Animated.View
+          key={cheer.text}
+          entering={ZoomIn.springify().damping(12)}
+          exiting={FadeOut.duration(300)}
+          accessibilityLiveRegion="polite"
+          style={{
+            marginTop: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            borderRadius: 16,
+            backgroundColor: cheer.done ? palette.gold + '26' : palette.primary + '1F',
+            borderWidth: 1,
+            borderColor: cheer.done ? palette.gold : palette.primary,
+          }}
+        >
+          <Ionicons name={cheer.done ? 'trophy' : 'flame'} size={22} color={cheer.done ? palette.gold : palette.primary} />
+          <Txt variant="strong" style={{ flex: 1 }}>
+            {cheer.text}
+          </Txt>
+        </Animated.View>
+      ) : null}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <NeonButton label={visitedToday ? 'Visited today' : 'Mark as Visited'} icon={visitedToday ? 'checkmark-done' : 'checkmark-circle'} variant="gold" size="lg" onPress={onLogVisit} loading={visitBusy} style={{ flexGrow: 1, flexBasis: 200 }} full />
         {done > 0 && <NeonButton label="Undo" icon="arrow-undo" variant="ghost" onPress={onUndo} />}
@@ -287,7 +324,12 @@ export default function StoreDetail() {
   );
 
   return (
-    <Screen back kicker="Store" title={store.name}>
+    <Screen
+      back
+      kicker="Store"
+      title={store.name}
+      right={<NeonButton size="sm" variant="subtle" icon="options-outline" label="Edit" onPress={() => setSettingsOpen(true)} />}
+    >
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, gap: 12 }}>
@@ -302,6 +344,9 @@ export default function StoreDetail() {
           {address}
           {tasksBlock}
         </View>
+      )}
+      {settingsOpen && (
+        <StoreSettingsSheet store={store} targets={targets} open={settingsOpen} onClose={() => setSettingsOpen(false)} onSave={(grade, frequency) => updateStoreSettings(store.id, grade, frequency)} />
       )}
       <MediaViewer path={viewing} url={viewing ? urls[viewing] ?? null : null} onClose={() => setViewing(null)} />
     </Screen>

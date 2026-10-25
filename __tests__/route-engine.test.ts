@@ -38,9 +38,12 @@ describe('scope', () => {
     expect(jo.length).toBeGreaterThan(0);
     expect(jo.every((s) => s.assigned_manager === 'Joseph')).toBe(true);
   });
-  it('Sarah routes Joseph and Pete stores', () => {
-    const sarah = storesInScope(mixed, managersFor({ role: 'user', route_managers: null }));
-    expect(new Set(sarah.map((s) => s.assigned_manager))).toEqual(new Set(['Joseph', 'Pete']));
+  it('Sarah routes Sarah, Joseph, Pete and Marcia stores, never David', () => {
+    const sarah = storesInScope(mixed, managersFor({ role: 'user', route_managers: null, manager_name: 'Sarah' }));
+    expect(new Set(sarah.map((s) => s.assigned_manager))).toEqual(new Set(['Joseph', 'Pete', 'Marcia']));
+  });
+  it('a pending sign-up routes nothing', () => {
+    expect(storesInScope(mixed, managersFor({ role: 'unassigned', route_managers: null }))).toEqual([]);
   });
   it('David routes David stores', () => {
     const david = storesInScope(mixed, managersFor({ role: 'user', route_managers: ['David'] }));

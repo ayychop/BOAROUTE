@@ -31,8 +31,17 @@ describe('seed data', () => {
   it('enables RLS on every table', () => {
     const all = migration;
     const tables = [...all.matchAll(/create table if not exists public\.(\w+)/g)].map((m) => m[1]);
-    expect(tables.sort()).toEqual(['app_admins', 'events', 'expenses', 'hazard_reports', 'mileage_logs', 'profiles', 'stores', 'tasks', 'user_stores', 'visits']);
+    expect(tables.sort()).toEqual(['events', 'expenses', 'hazard_reports', 'mileage_logs', 'profiles', 'stores', 'tasks', 'team_members', 'user_stores', 'visits']);
     for (const t of tables) expect(all).toContain(`alter table public.${t} enable row level security`);
+  });
+
+  it('decides access by email from team_members, with Jo as the only admin', () => {
+    expect(migration).toContain("values ('ayychop@gmail.com', 'admin', 'Joseph')");
+    expect(migration).toContain('team_members_one_admin');
+    // Stores are filtered by patch in the database, not only in the app.
+    expect(migration).toContain('using (public.is_admin() or assigned_manager = any (public.my_route_managers()))');
+    expect(migration).not.toMatch(/stores: read for signed-in users[\s\S]{0,120}using \(true\)/);
+    expect(migration).not.toMatch(/ilike 'david%'/);
   });
 });
 

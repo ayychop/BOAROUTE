@@ -154,8 +154,11 @@ export default function Finances() {
         </Pressable>
       </View>
       <BudgetRings budget={budget} large />
+      <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 10 }}>
+        Standard is monthly. OOH and Sales Day sessions are {formatPence(budget.sessions.allowance)} each with a {formatPence(budget.special.budget)} weekly cap (week of {ukDate(budget.week)}, resets Sunday). Town Takeovers use their own day budgets.
+      </Txt>
       <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 16, flexWrap: 'wrap', gap: 8 }}>
-        {(['standard', 'sales_day', 'ooh'] as ExpenseCategory[]).map((c) => (
+        {(['standard', 'sales_day', 'ooh', 'town_takeover'] as ExpenseCategory[]).map((c) => (
           <View key={c} style={{ alignItems: 'center', flexGrow: 1, flexBasis: 80, minWidth: 0 }}>
             <Txt variant="label" tone="faint" numberOfLines={1}>
               {CATEGORY_LABEL[c]}

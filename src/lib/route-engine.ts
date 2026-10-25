@@ -1,10 +1,12 @@
+import { storeTarget } from './frequency';
 import { estimateDrive, haversineKm } from './geo';
 import type { GradeTargets, LatLng, Manager, Store } from './types';
 
 export type RoutableStore = Pick<
   Store,
   'id' | 'name' | 'address' | 'grade' | 'assigned_manager' | 'latitude' | 'longitude' | 'last_visit_date'
->;
+> &
+  Partial<Pick<Store, 'required_frequency' | 'frequency_custom'>>;
 
 export interface VisitTally {
   /** Visits this calendar month by the current user. */
@@ -98,7 +100,7 @@ export function computeDue<S extends RoutableStore>(
 
   const due: DueStore<S>[] = [];
   for (const store of stores) {
-    const target = targets[store.grade] ?? 0;
+    const target = storeTarget(store, targets);
     const tally = tallies[store.id];
     const done = tally?.count ?? 0;
     const remaining = Math.max(0, target - done);
@@ -267,7 +269,7 @@ export function monthProgress(
   let done = 0;
   let target = 0;
   for (const s of stores) {
-    const t = targets[s.grade] ?? 0;
+    const t = storeTarget(s, targets);
     target += t;
     done += Math.min(t, tallies[s.id]?.count ?? 0);
   }
