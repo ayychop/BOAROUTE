@@ -67,7 +67,8 @@
         "expo-build-properties",
         {
           "android": {
-            "extraProguardRules": "# WorkManager (pulled in by react-native-maps) starts at launch and Room creates\n# its database by reflection. R8 removed the constructor, crashing on open.\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class * extends androidx.work.ListenableWorker { <init>(android.content.Context, androidx.work.WorkerParameters); }"
+            "enableMinifyInReleaseBuilds": true,
+            "extraProguardRules": "# WorkManager (pulled in by react-native-maps) starts at launch and creates its\n# Room database and input mergers by reflection, so R8 must keep their constructors.\n-keep class * extends androidx.room.RoomDatabase { void <init>(); }\n-keep class * extends androidx.work.InputMerger { void <init>(); }\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class * extends androidx.work.ListenableWorker { <init>(android.content.Context, androidx.work.WorkerParameters); }"
           }
         }
       ]
