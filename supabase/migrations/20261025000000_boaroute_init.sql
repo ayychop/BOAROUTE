@@ -7,7 +7,8 @@
 --
 -- Contents: profiles, stores (Jo / Sarah / David seeds), visits, events,
 -- tasks + task-media storage, mileage_logs, expenses, onboarding fields
--- (current mileage, working days, chosen stores), RLS on everything.
+-- (current mileage, working days, chosen stores), personal budgets,
+-- RLS on everything.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -463,7 +464,8 @@ create policy "mileage_logs: owner all" on public.mileage_logs
 
 -- ---------------------------------------------------------------------
 -- 9. Expenses (budget rules live in src/lib/budget.ts:
---     standard -> GBP 60 per month; sales_day + ooh -> shared GBP 25 per month)
+--     standard -> profiles.standard_budget per month (default GBP 60);
+--     sales_day + ooh -> shared profiles.sales_day_budget (default GBP 150))
 -- ---------------------------------------------------------------------
 create table if not exists public.expenses (
   id         uuid primary key default gen_random_uuid(),
@@ -724,3 +726,22 @@ drop policy if exists "user_stores: delete own" on public.user_stores;
 create policy "user_stores: delete own" on public.user_stores
   for delete to authenticated
   using (user_id = (select auth.uid()));
+
+-- ---------------------------------------------------------------------
+-- 12. Personal monthly budgets (GBP), editable by each person in the app
+--     standard_budget: standard expenses. Default GBP 60.
+--     sales_day_budget: shared pool for Sales Day and OOH expenses. Default GBP 150.
+-- ---------------------------------------------------------------------
+alter table public.profiles add column if not exists standard_budget numeric(8, 2) not null default 60;
+alter table public.profiles add column if not exists sales_day_budget numeric(8, 2) not null default 150;
+
+-- Re-assert the defaults in case the columns were created by hand earlier.
+alter table public.profiles alter column standard_budget set default 60;
+alter table public.profiles alter column sales_day_budget set default 150;
+
+alter table public.profiles drop constraint if exists profiles_standard_budget_check;
+alter table public.profiles add constraint profiles_standard_budget_check
+  check (standard_budget between 0 and 5000);
+alter table public.profiles drop constraint if exists profiles_sales_day_budget_check;
+alter table public.profiles add constraint profiles_sales_day_budget_check
+  check (sales_day_budget between 0 and 5000);

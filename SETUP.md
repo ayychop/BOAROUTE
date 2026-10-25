@@ -8,6 +8,8 @@
    automatically), `profiles.working_days`, `profiles.onboarded_at`, and the `user_stores` table for each
    person's chosen stores. It is safe to run again, including over a database that ran an earlier version.
    Anyone who signed in before this version goes through the new four-step onboarding once.
+   Each person also gets `profiles.standard_budget` (default £60) and `profiles.sales_day_budget`
+   (default £150, shared by Sales Day and OOH expenses). They can change both under Me > Budgets.
 2. Authentication > Providers > Email: enabled (email + password).
    If "Confirm email" is on, new users must tap the email link before signing in.
 3. The admin is whoever signs up with an email listed in `public.app_admins`

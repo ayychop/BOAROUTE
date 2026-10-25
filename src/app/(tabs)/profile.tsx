@@ -9,8 +9,10 @@ import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
+import { useLayout } from '@/hooks/useLayout';
 import { managerShort } from '@/lib/frequency';
 import { geocode, normalisePostcode } from '@/lib/geo';
+import { budgetsFor, formatPence } from '@/lib/budget';
 import { formatOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
 import { describeDays } from '@/lib/workdays';
@@ -36,24 +38,28 @@ function LinkRow({ icon, label, hint, href, tone }: { icon: keyof typeof Ionicon
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, opacity: pressed ? 0.7 : 1 })}
     >
       <Ionicons name={icon} size={20} color={tone === 'gold' ? palette.gold : palette.primary} />
-      <View style={{ flex: 1 }}>
-        <Txt variant="strong">{label}</Txt>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Txt variant="strong" numberOfLines={1}>
+          {label}
+        </Txt>
         {hint ? (
-          <Txt variant="caption" tone="faint">
+          <Txt variant="caption" tone="faint" numberOfLines={2}>
             {hint}
           </Txt>
         ) : null}
       </View>
-      <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+      <Ionicons name="chevron-forward" size={18} color={palette.textFaint} style={{ flexShrink: 0 }} />
     </Pressable>
   );
 }
 
 export default function Me() {
   const { palette, mode, setMode } = useTheme();
+  const { compact } = useLayout();
   const { profile, isAdmin, updateProfile, signOut } = useAuth();
   const { managers, myStores, chosenStoreIds } = useData();
   const vehicle = vehicleFor(profile?.vehicle_model);
+  const budgets = budgetsFor(profile);
   const [start, setStart] = useState(profile?.starting_location ?? '');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
@@ -78,20 +84,20 @@ export default function Me() {
     <Screen inTabs kicker={isAdmin ? 'Admin' : 'Operational Manager'} title={profile?.name ?? 'Me'}>
       <GlassCard glow="gold" padded={false} index={0}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {vehicle && <Image source={vehicle.image} style={{ width: 120, height: 96 }} contentFit="cover" />}
-          <View style={{ flex: 1, padding: 14, gap: 4 }}>
+          {vehicle && <Image source={vehicle.image} style={{ width: '30%', maxWidth: 120, alignSelf: 'stretch', minHeight: 96 }} contentFit="cover" />}
+          <View style={{ flex: 1, minWidth: 0, padding: 14, gap: 4 }}>
             <Txt variant="caption" tone="faint" numberOfLines={1}>
               {profile?.email}
             </Txt>
-            <Txt variant="strong" numberOfLines={1}>
+            <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
               {vehicle ? `${vehicle.year} X1 M Sport Hybrid` : 'No vehicle selected'}
             </Txt>
             <Txt variant="caption" tone="primary" numberOfLines={1}>
               {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
             </Txt>
           </View>
-          <View style={{ paddingRight: 14 }}>
-            <BRLogo size={36} glow={false} />
+          <View style={{ paddingRight: 14, flexShrink: 0 }}>
+            <BRLogo size={compact ? 28 : 36} glow={false} />
           </View>
         </View>
       </GlassCard>
@@ -110,7 +116,8 @@ export default function Me() {
               onPress={() => setMode(a.value)}
               style={{
                 flexGrow: 1,
-                flexBasis: 140,
+                flexBasis: compact ? 120 : 150,
+                minWidth: 0,
                 borderRadius: radius.md,
                 borderWidth: active ? 1.5 : StyleSheet.hairlineWidth * 2,
                 borderColor: active ? palette.primary : palette.border,
@@ -121,11 +128,13 @@ export default function Me() {
                 gap: 10,
               }}
             >
-              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: preview.bg[1], borderWidth: 1, borderColor: preview.primary, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: preview.bg[1], borderWidth: 1, borderColor: preview.primary, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name={a.icon} size={16} color={preview.gold} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Txt variant="strong">{a.label}</Txt>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {a.label}
+                </Txt>
                 <Txt variant="caption" tone="faint" numberOfLines={1}>
                   {a.hint}
                 </Txt>
@@ -150,6 +159,7 @@ export default function Me() {
       <GlassCard>
         <LinkRow icon="storefront" label="My stores" hint={`${myStores.length} stores on your patch`} href="/my-stores" />
         <LinkRow icon="calendar" label="Working days" hint={describeDays(profile?.working_days ?? [])} href="/working-days" />
+        <LinkRow icon="wallet" label="Budgets" hint={`Standard ${formatPence(budgets.standard)} · Sales Day / OOH ${formatPence(budgets.special)}`} href="/budget-settings" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
         <LinkRow icon="car-sport" label="Change vehicle" hint={vehicle?.plate} href="/vehicle" />
         {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="Assign stores to Jo, Pete or David" href="/admin/stores" tone="gold" />}

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
@@ -9,11 +10,11 @@ import { ExpenseForm } from '@/components/ExpenseForm';
 import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
-import { ProgressRing } from '@/components/ProgressRing';
+import { BudgetRings } from '@/components/BudgetRings';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
-import { CATEGORY_LABEL, formatPence, inMonth, monthKey, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
+import { CATEGORY_LABEL, budgetsFor, formatPence, inMonth, monthKey, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
 import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
 import { buildMonthlyReport, monthTitle, ukDate } from '@/lib/report';
@@ -35,7 +36,8 @@ export default function Finances() {
   const { compact, expanded } = useLayout();
   const month = monthKey(new Date());
 
-  const budget = useMemo(() => summariseBudget(expenses, month), [expenses, month]);
+  const budgets = useMemo(() => budgetsFor(profile), [profile]);
+  const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
   const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
 
   // Mileage form
@@ -93,13 +95,11 @@ export default function Finances() {
   };
 
   const generate = () => {
-    setReport(buildMonthlyReport({ month: reportMonth, name: profile?.name, mileage, expenses }));
+    setReport(buildMonthlyReport({ month: reportMonth, name: profile?.name, mileage, expenses, budgets }));
     setCopied(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
-  const bigRing = compact ? 150 : expanded ? 230 : 190;
-  const smallRing = compact ? 104 : expanded ? 150 : 128;
   const thisMonthExpenses = expenses.filter((e) => inMonth(e.date, month));
   const thisMonthMiles = mileage.filter((m) => inMonth(m.date, month));
 
@@ -142,52 +142,26 @@ export default function Finances() {
 
   const rings = (
     <GlassCard index={1}>
-      <Txt variant="label" tone="dim" align="center" style={{ marginBottom: 12 }}>
-        {monthTitle(month)} budgets
-      </Txt>
-      <View style={{ flexDirection: compact ? 'column' : 'row', alignItems: 'center', justifyContent: 'center', gap: compact ? 16 : 28 }}>
-        <ProgressRing
-          value={budget.standard.remainingRatio}
-          size={bigRing}
-          stroke={compact ? 12 : 16}
-          colors={budget.standard.over ? [palette.danger, palette.warning] : [palette.gold, palette.primaryDeep]}
-          accessibilityLabel={`Standard budget: ${formatPence(budget.standard.remaining)} remaining of ${formatPence(budget.standard.budget)}`}
-        >
-          <Txt variant="label" tone="faint" style={{ fontSize: 9 }}>
-            {budget.standard.over ? 'Over by' : 'Remaining'}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <Txt variant="label" tone="dim" numberOfLines={1}>
+          {monthTitle(month)} budgets
+        </Txt>
+        <Pressable accessibilityRole="link" onPress={() => router.push('/budget-settings')} hitSlop={10} style={{ flexShrink: 0 }}>
+          <Txt variant="label" tone="primary" numberOfLines={1}>
+            Edit
           </Txt>
-          <Txt variant="metric" glow tone={budget.standard.over ? 'danger' : 'gold'} adjustsFontSizeToFit numberOfLines={1} style={{ fontSize: compact ? 24 : 32, lineHeight: compact ? 30 : 38 }}>
-            {formatPence(Math.abs(budget.standard.remaining))}
-          </Txt>
-          <Txt variant="caption" tone="dim">
-            of £60 standard
-          </Txt>
-        </ProgressRing>
-        <ProgressRing
-          value={budget.special.remainingRatio}
-          size={smallRing}
-          stroke={compact ? 9 : 11}
-          colors={budget.special.over ? [palette.danger, palette.warning] : [palette.rose, palette.gold]}
-          accessibilityLabel={`Sales Day and OOH budget: ${formatPence(budget.special.remaining)} remaining of ${formatPence(budget.special.budget)}`}
-        >
-          <Txt variant="label" tone="faint" style={{ fontSize: 8 }}>
-            {budget.special.over ? 'Over by' : 'Left'}
-          </Txt>
-          <Txt variant="title" glow tone={budget.special.over ? 'danger' : 'default'} adjustsFontSizeToFit numberOfLines={1}>
-            {formatPence(Math.abs(budget.special.remaining))}
-          </Txt>
-          <Txt variant="caption" tone="faint" style={{ fontSize: 11 }} align="center">
-            Sales Day / OOH
-          </Txt>
-        </ProgressRing>
+        </Pressable>
       </View>
+      <BudgetRings budget={budget} large />
       <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 16, flexWrap: 'wrap', gap: 8 }}>
         {(['standard', 'sales_day', 'ooh'] as ExpenseCategory[]).map((c) => (
-          <View key={c} style={{ alignItems: 'center', minWidth: 90 }}>
-            <Txt variant="label" tone="faint">
+          <View key={c} style={{ alignItems: 'center', flexGrow: 1, flexBasis: 80, minWidth: 0 }}>
+            <Txt variant="label" tone="faint" numberOfLines={1}>
               {CATEGORY_LABEL[c]}
             </Txt>
-            <Txt variant="strong">{formatPence(budget.byCategory[c])}</Txt>
+            <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit>
+              {formatPence(budget.byCategory[c])}
+            </Txt>
           </View>
         ))}
       </View>

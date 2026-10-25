@@ -1,15 +1,21 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { odometerDigits } from '@/lib/odometer';
 import { useTheme } from '@/theme/ThemeProvider';
 import { fonts, radius } from '@/theme/typography';
 import { Txt } from './Txt';
 
-/** Six-digit cockpit odometer. Digits that change roll in from below. */
-export function Odometer({ value, size = 'md' }: { value: number | string | null | undefined; size?: 'sm' | 'md' | 'lg' }) {
+/**
+ * Six-digit cockpit odometer. Digits that change roll in from below.
+ * Cells shrink to fit `maxWidth` (defaults to the window minus card padding).
+ */
+export function Odometer({ value, size = 'md', maxWidth }: { value: number | string | null | undefined; size?: 'sm' | 'md' | 'lg'; maxWidth?: number }) {
   const { palette } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const digits = odometerDigits(value);
-  const cellW = size === 'lg' ? 38 : size === 'sm' ? 22 : 30;
+  const preferred = size === 'lg' ? 38 : size === 'sm' ? 22 : 30;
+  const room = (maxWidth ?? windowWidth - 110) - 30; // leave space for the "mi" label
+  const cellW = Math.max(16, Math.min(preferred, Math.floor(room / 6) - 4));
   const cellH = Math.round(cellW * 1.36);
   const fontSize = Math.round(cellW * 0.82);
   return (

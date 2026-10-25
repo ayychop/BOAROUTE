@@ -25,6 +25,9 @@ export interface Profile {
   working_days: number[];
   /** Set when onboarding is finished. */
   onboarded_at: string | null;
+  /** Monthly budgets in GBP; numeric(8,2), so PostgREST may return strings. */
+  standard_budget: number | string | null;
+  sales_day_budget: number | string | null;
 }
 
 export interface Store {

@@ -1,4 +1,4 @@
-import { CATEGORY_LABEL, formatPence, inMonth, summariseBudget, summariseMileage, toPence } from './budget';
+import { CATEGORY_LABEL, formatPence, inMonth, summariseBudget, summariseMileage, toPence, type Budgets } from './budget';
 import type { Expense, MileageLog } from './types';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -25,10 +25,12 @@ export function buildMonthlyReport(params: {
   name?: string | null;
   mileage: Pick<MileageLog, 'date' | 'miles' | 'type'>[];
   expenses: Pick<Expense, 'date' | 'amount' | 'location' | 'recipient' | 'category'>[];
+  /** The person's own budgets; defaults (GBP 60 / GBP 150) when omitted. */
+  budgets?: Budgets;
 }): string {
-  const { month, name, mileage, expenses } = params;
+  const { month, name, mileage, expenses, budgets } = params;
   const miles = summariseMileage(mileage, month);
-  const budget = summariseBudget(expenses, month);
+  const budget = summariseBudget(expenses, month, budgets);
   const rows = expenses
     .filter((e) => inMonth(e.date, month) && Number.isFinite(toPence(e.amount)))
     .sort((a, b) => a.date.localeCompare(b.date));

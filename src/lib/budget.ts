@@ -1,8 +1,38 @@
-import type { Expense, ExpenseCategory, MileageLog } from './types';
+import type { Expense, ExpenseCategory, MileageLog, Profile } from './types';
 
 /** All money maths runs in integer pence so totals never drift. */
-export const STANDARD_BUDGET_PENCE = 6000; // GBP 60 per month
-export const SPECIAL_BUDGET_PENCE = 2500; // GBP 25 per month, shared by Sales Day and OOH
+export const DEFAULT_STANDARD_BUDGET_PENCE = 6000; // GBP 60 per month
+export const DEFAULT_SPECIAL_BUDGET_PENCE = 15000; // GBP 150 per month, shared by Sales Day and OOH
+/** Matches the CHECK constraint on profiles.standard_budget and profiles.sales_day_budget. */
+export const MAX_BUDGET_PENCE = 500000; // GBP 5,000
+
+export interface Budgets {
+  /** Monthly standard budget in pence. */
+  standard: number;
+  /** Monthly Sales Day / OOH pool in pence. */
+  special: number;
+}
+
+export const DEFAULT_BUDGETS: Budgets = { standard: DEFAULT_STANDARD_BUDGET_PENCE, special: DEFAULT_SPECIAL_BUDGET_PENCE };
+
+/** A person's own budgets, falling back to the defaults for anything missing or invalid. */
+export function budgetsFor(profile: Pick<Profile, 'standard_budget' | 'sales_day_budget'> | null | undefined): Budgets {
+  const read = (v: number | string | null | undefined, fallback: number) => {
+    if (v === null || v === undefined || v === '') return fallback;
+    const p = toPence(v);
+    return Number.isFinite(p) && p >= 0 && p <= MAX_BUDGET_PENCE ? p : fallback;
+  };
+  return {
+    standard: read(profile?.standard_budget, DEFAULT_STANDARD_BUDGET_PENCE),
+    special: read(profile?.sales_day_budget, DEFAULT_SPECIAL_BUDGET_PENCE),
+  };
+}
+
+/** Validates a budget typed by the user ("150", "£1,200.50"). Returns pence or NaN. */
+export function parseBudget(input: string): number {
+  const p = toPence(input);
+  return Number.isFinite(p) && p >= 0 && p <= MAX_BUDGET_PENCE ? p : NaN;
+}
 
 export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   standard: 'Standard',
@@ -73,7 +103,7 @@ function pool(budget: number, spent: number): PoolStatus {
   };
 }
 
-export function summariseBudget(expenses: Pick<Expense, 'date' | 'amount' | 'category'>[], month: string): BudgetSummary {
+export function summariseBudget(expenses: Pick<Expense, 'date' | 'amount' | 'category'>[], month: string, budgets: Budgets = DEFAULT_BUDGETS): BudgetSummary {
   const byCategory: Record<ExpenseCategory, number> = { standard: 0, sales_day: 0, ooh: 0 };
   for (const e of expenses) {
     if (!inMonth(e.date, month)) continue;
@@ -83,8 +113,8 @@ export function summariseBudget(expenses: Pick<Expense, 'date' | 'amount' | 'cat
   }
   return {
     month,
-    standard: pool(STANDARD_BUDGET_PENCE, byCategory.standard),
-    special: pool(SPECIAL_BUDGET_PENCE, byCategory.sales_day + byCategory.ooh),
+    standard: pool(budgets.standard, byCategory.standard),
+    special: pool(budgets.special, byCategory.sales_day + byCategory.ooh),
     byCategory,
   };
 }

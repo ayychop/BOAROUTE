@@ -21,7 +21,7 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-const PROFILE_COLUMNS = 'id,email,role,name,vehicle_model,starting_location,freq_a,freq_b,freq_c,freq_d,route_managers,current_mileage,working_days,onboarded_at';
+const PROFILE_COLUMNS = 'id,email,role,name,vehicle_model,starting_location,freq_a,freq_b,freq_c,freq_d,route_managers,current_mileage,working_days,onboarded_at,standard_budget,sales_day_budget';
 
 async function loadProfile(session: Session): Promise<Profile | null> {
   const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', session.user.id).maybeSingle();

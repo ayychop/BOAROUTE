@@ -1,6 +1,8 @@
 import {
-  STANDARD_BUDGET_PENCE,
-  SPECIAL_BUDGET_PENCE,
+  DEFAULT_SPECIAL_BUDGET_PENCE,
+  DEFAULT_STANDARD_BUDGET_PENCE,
+  budgetsFor,
+  parseBudget,
   formatPence,
   localDateString,
   monthKey,
@@ -15,18 +17,41 @@ import type { ExpenseCategory } from '../src/lib/types';
 const e = (date: string, amount: number | string, category: ExpenseCategory) => ({ date, amount, category });
 
 describe('budget pools', () => {
-  it('uses GBP 60 standard and GBP 25 Sales Day / OOH budgets', () => {
-    expect(STANDARD_BUDGET_PENCE).toBe(6000);
-    expect(SPECIAL_BUDGET_PENCE).toBe(2500);
+  it('defaults to GBP 60 standard and GBP 150 Sales Day / OOH budgets', () => {
+    expect(DEFAULT_STANDARD_BUDGET_PENCE).toBe(6000);
+    expect(DEFAULT_SPECIAL_BUDGET_PENCE).toBe(15000);
+    expect(budgetsFor(null)).toEqual({ standard: 6000, special: 15000 });
   });
 
-  it('routes only standard expenses to the GBP 60 pool', () => {
+  it("reads each person's own budgets, including PostgREST strings", () => {
+    expect(budgetsFor({ standard_budget: '80.00', sales_day_budget: 200 })).toEqual({ standard: 8000, special: 20000 });
+    expect(budgetsFor({ standard_budget: 0, sales_day_budget: null })).toEqual({ standard: 0, special: 15000 });
+    expect(budgetsFor({ standard_budget: 'abc', sales_day_budget: 9999 })).toEqual({ standard: 6000, special: 15000 });
+  });
+
+  it('validates typed budgets', () => {
+    expect(parseBudget('150')).toBe(15000);
+    expect(parseBudget('£1,200.50')).toBe(120050);
+    expect(parseBudget('0')).toBe(0);
+    expect(parseBudget('5000.01')).toBeNaN();
+    expect(parseBudget('-5')).toBeNaN();
+    expect(parseBudget('')).toBeNaN();
+  });
+
+  it('applies custom budgets to the pools', () => {
+    const s = summariseBudget([e('2026-10-02', 50, 'standard'), e('2026-10-03', 120, 'ooh')], '2026-10', { standard: 10000, special: 15000 });
+    expect(s.standard.remaining).toBe(5000);
+    expect(s.special.remaining).toBe(3000);
+    expect(s.special.over).toBe(false);
+  });
+
+  it('routes only standard expenses to the standard pool', () => {
     expect(poolFor('standard')).toBe('standard');
     expect(poolFor('sales_day')).toBe('special');
     expect(poolFor('ooh')).toBe('special');
   });
 
-  it('deducts standard from 60 and Sales Day + OOH from the shared 25', () => {
+  it('deducts standard from 60 and Sales Day + OOH from the shared 150', () => {
     const s = summariseBudget(
       [e('2026-10-02', 12.5, 'standard'), e('2026-10-05', '7.25', 'standard'), e('2026-10-06', 10, 'sales_day'), e('2026-10-20', '4.99', 'ooh')],
       '2026-10',
@@ -34,12 +59,12 @@ describe('budget pools', () => {
     expect(s.standard.spent).toBe(1975);
     expect(s.standard.remaining).toBe(4025);
     expect(s.special.spent).toBe(1499);
-    expect(s.special.remaining).toBe(1001);
+    expect(s.special.remaining).toBe(13501);
     expect(s.byCategory).toEqual({ standard: 1975, sales_day: 1000, ooh: 499 });
   });
 
   it('never lets special expenses touch the standard pool', () => {
-    const s = summariseBudget([e('2026-10-02', 25, 'sales_day'), e('2026-10-03', 25, 'ooh')], '2026-10');
+    const s = summariseBudget([e('2026-10-02', 100, 'sales_day'), e('2026-10-03', 75, 'ooh')], '2026-10');
     expect(s.standard.spent).toBe(0);
     expect(s.standard.remaining).toBe(6000);
     expect(s.special.remaining).toBe(-2500);

@@ -6,16 +6,16 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { EventTypeBadge } from '@/components/badges';
 import { BRLogo } from '@/components/BRLogo';
+import { BudgetRings } from '@/components/BudgetRings';
 import { GlassCard } from '@/components/GlassCard';
 import { EmptyState } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
-import { ProgressRing } from '@/components/ProgressRing';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
-import { formatPence, monthKey, summariseBudget, summariseMileage } from '@/lib/budget';
+import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/budget';
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
 import { odometerValue } from '@/lib/odometer';
 import { computeDue, monthProgress } from '@/lib/route-engine';
@@ -30,11 +30,11 @@ import { radius } from '@/theme/typography';
 function ActionTile({ icon, label, sub, onPress, index, tone = 'primary' }: { icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void; index: number; tone?: 'primary' | 'gold' }) {
   const { palette } = useTheme();
   return (
-    <GlassCard index={index} onPress={onPress} accessibilityLabel={label} style={{ flex: 1, minHeight: 112 }} glow={tone === 'gold' ? 'gold' : false}>
+    <GlassCard index={index} onPress={onPress} accessibilityLabel={label} style={{ minHeight: 104 }} glow={tone === 'gold' ? 'gold' : false}>
       <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong, marginBottom: 12 }}>
         <Ionicons name={icon} size={18} color={palette.gold} />
       </View>
-      <Txt variant="strong" numberOfLines={1}>
+      <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
         {label}
       </Txt>
       {sub ? (
@@ -46,17 +46,16 @@ function ActionTile({ icon, label, sub, onPress, index, tone = 'primary' }: { ic
   );
 }
 
-/** Two tiles per row, with an empty spacer if the last row is short. */
+/**
+ * Wrapping tile grid: two per row on phones, more on wide screens, one per row
+ * when the screen is too narrow for two to fit without clipping.
+ */
 function TileGrid({ children }: { children: ReactNode[] }) {
-  const items = children.filter(Boolean);
-  const rows: ReactNode[][] = [];
-  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
   return (
-    <View style={{ gap: 12 }}>
-      {rows.map((row, r) => (
-        <View key={r} style={{ flexDirection: 'row', gap: 12 }}>
-          {row}
-          {row.length === 1 && <View style={{ flex: 1 }} />}
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+      {children.filter(Boolean).map((child, i) => (
+        <View key={i} style={{ flexGrow: 1, flexBasis: 128, minWidth: 0 }}>
+          {child}
         </View>
       ))}
     </View>
@@ -75,7 +74,8 @@ export default function Hub() {
   const month = monthKey(new Date(nowMs));
   const progress = useMemo(() => monthProgress(myStores, tallies, targets), [myStores, tallies, targets]);
   const due = useMemo(() => computeDue(myStores, tallies, targets), [myStores, tallies, targets]);
-  const budget = useMemo(() => summariseBudget(expenses, month), [expenses, month]);
+  const budgets = useMemo(() => budgetsFor(profile), [profile]);
+  const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
   const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
   const upcoming = useMemo(() => events.filter((e) => new Date(e.event_date).getTime() >= nowMs - 3_600_000).slice(0, 3), [events, nowMs]);
   const vehicle = vehicleFor(profile?.vehicle_model);
@@ -94,10 +94,10 @@ export default function Hub() {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 12 : 16, marginBottom: compact ? 16 : 22 }}>
       <BRLogo size={compact ? 40 : expanded ? 60 : 50} animated={phase === 'cockpit'} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt variant="label" tone="primary" numberOfLines={1}>
+        <Txt variant="label" tone="primary" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
           {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </Txt>
-        <Txt variant={compact ? 'title' : 'display'} numberOfLines={1} adjustsFontSizeToFit>
+        <Txt variant={compact ? 'title' : 'display'} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6}>
           {greetingFor(phase, now.getHours())}, {firstName(profile?.name, profile?.email)}
         </Txt>
       </View>
@@ -112,31 +112,31 @@ export default function Hub() {
           <Image source={vehicle.image} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
           <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
           <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong }}>
-              <Txt variant="label" tone="gold" style={{ fontSize: 9.5 }}>
+            <View style={{ flexShrink: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong }}>
+              <Txt variant="label" tone="gold" numberOfLines={1} style={{ fontSize: 9.5 }}>
                 {vehicle.plate}
               </Txt>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
+            <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workingToday ? palette.success : palette.textFaint }} />
-              <Txt variant="label" style={{ color: palette.text, fontSize: 9.5 }}>
+              <Txt variant="label" numberOfLines={1} style={{ color: palette.text, fontSize: 9.5 }}>
                 {workingToday ? 'Working day' : 'Day off'}
               </Txt>
             </View>
           </View>
           <View style={{ position: 'absolute', left: 18, right: 18, bottom: 6 }}>
-            <Txt variant="label" tone="dim" style={{ fontSize: 9.5 }}>
+            <Txt variant="label" tone="dim" numberOfLines={1} style={{ fontSize: 9.5 }}>
               {vehicle.year} BMW X1 · {vehicle.specs[0].value}
             </Txt>
-            <Txt variant="title" numberOfLines={1}>
+            <Txt variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
               M Sport Hybrid
             </Txt>
           </View>
         </View>
       )}
       <View style={{ padding: compact ? 16 : 20, paddingTop: vehicle ? 10 : undefined, gap: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <Odometer value={odometerValue(profile?.current_mileage)} size={compact ? 'sm' : 'md'} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Odometer value={odometerValue(profile?.current_mileage)} size={compact ? 'sm' : 'md'} maxWidth={expanded ? 420 : undefined} />
           <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
         </View>
         <View style={{ flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 12 }}>
@@ -149,50 +149,12 @@ export default function Hub() {
   );
 
   // 2. Budgets
-  const ringBig = compact ? 112 : expanded ? 150 : 132;
-  const ringSmall = compact ? 84 : expanded ? 112 : 98;
   const budgetCard = (
     <GlassCard index={1} onPress={() => router.navigate('/finances')} accessibilityLabel="Budgets">
-      <Txt variant="label" tone="dim" style={{ marginBottom: 14 }}>
+      <Txt variant="label" tone="dim" numberOfLines={1} style={{ marginBottom: 14 }}>
         Budgets this month
       </Txt>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', gap: 12 }}>
-        <View style={{ alignItems: 'center', gap: 8 }}>
-          <ProgressRing
-            value={budget.standard.remainingRatio}
-            size={ringBig}
-            stroke={compact ? 8 : 10}
-            colors={budget.standard.over ? [palette.danger, palette.warning] : [palette.gold, palette.primaryDeep]}
-            accessibilityLabel={`Standard budget: ${formatPence(budget.standard.remaining)} remaining`}
-          >
-            <Txt variant="metric" tone={budget.standard.over ? 'danger' : 'default'} numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: compact ? 22 : 26 }}>
-              {formatPence(Math.abs(budget.standard.remaining))}
-            </Txt>
-            <Txt variant="label" tone="faint" style={{ fontSize: 8.5 }}>
-              {budget.standard.over ? 'Over' : 'Left'}
-            </Txt>
-          </ProgressRing>
-          <Txt variant="caption" tone="dim">
-            Standard · £60
-          </Txt>
-        </View>
-        <View style={{ alignItems: 'center', gap: 8 }}>
-          <ProgressRing
-            value={budget.special.remainingRatio}
-            size={ringSmall}
-            stroke={compact ? 6 : 8}
-            colors={budget.special.over ? [palette.danger, palette.warning] : [palette.rose, palette.gold]}
-            accessibilityLabel={`Sales Day and OOH budget: ${formatPence(budget.special.remaining)} remaining`}
-          >
-            <Txt variant="metric" tone={budget.special.over ? 'danger' : 'default'} numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: compact ? 17 : 20 }}>
-              {formatPence(Math.abs(budget.special.remaining))}
-            </Txt>
-          </ProgressRing>
-          <Txt variant="caption" tone="dim">
-            Sales Day / OOH · £25
-          </Txt>
-        </View>
-      </View>
+      <BudgetRings budget={budget} />
     </GlassCard>
   );
 
@@ -203,7 +165,7 @@ export default function Hub() {
         title="Upcoming events"
         action={
           <Pressable onPress={() => router.navigate('/events')} hitSlop={8} accessibilityRole="link">
-            <Txt variant="label" tone="primary">
+            <Txt variant="label" tone="primary" numberOfLines={1}>
               See all
             </Txt>
           </Pressable>
@@ -218,7 +180,7 @@ export default function Hub() {
             return (
               <GlassCard key={e.id} index={i + 2} glow={e.event_type === 'Sales Day' ? 'gold' : false} onPress={() => router.navigate('/events')} accessibilityLabel={e.title}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                  <View style={{ alignItems: 'center', width: 56, paddingRight: 12, borderRightWidth: StyleSheet.hairlineWidth * 2, borderRightColor: palette.border }}>
+                  <View style={{ alignItems: 'center', width: 56, flexShrink: 0, paddingRight: 12, borderRightWidth: StyleSheet.hairlineWidth * 2, borderRightColor: palette.border }}>
                     <Txt variant="label" tone="primary" align="center" numberOfLines={2}>
                       {relativeDay(when)}
                     </Txt>
@@ -231,7 +193,11 @@ export default function Hub() {
                       {formatDateTime(when)}
                     </Txt>
                   </View>
-                  {e.event_type !== 'General' && <EventTypeBadge type={e.event_type} />}
+                  {e.event_type !== 'General' && (
+                    <View style={{ flexShrink: 0 }}>
+                      <EventTypeBadge type={e.event_type} />
+                    </View>
+                  )}
                 </View>
               </GlassCard>
             );
@@ -294,11 +260,11 @@ export default function Hub() {
 function Metric({ label, value, divider }: { label: string; value: string; divider?: boolean }) {
   const { palette } = useTheme();
   return (
-    <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: divider ? StyleSheet.hairlineWidth * 2 : 0, borderLeftColor: palette.border }}>
-      <Txt variant="label" tone="faint" style={{ fontSize: 9 }}>
+    <View style={{ flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 4, borderLeftWidth: divider ? StyleSheet.hairlineWidth * 2 : 0, borderLeftColor: palette.border }}>
+      <Txt variant="label" tone="faint" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontSize: 9 }}>
         {label}
       </Txt>
-      <Txt variant="strong" numberOfLines={1} style={{ marginTop: 2 }}>
+      <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: 2 }}>
         {value}
       </Txt>
     </View>

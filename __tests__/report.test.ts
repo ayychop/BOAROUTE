@@ -33,7 +33,7 @@ describe('monthly report', () => {
 
   it('reports both budgets', () => {
     expect(report).toContain('Standard budget: £12.50 of £60.00 used, £47.50 left');
-    expect(report).toContain('Sales Day / OOH budget: £8.99 of £25.00 used, £16.01 left');
+    expect(report).toContain('Sales Day / OOH budget: £8.99 of £150.00 used, £141.01 left');
   });
 
   it('has a header and no em or en dashes', () => {
@@ -48,9 +48,20 @@ describe('monthly report', () => {
     const over = buildMonthlyReport({
       month: '2026-02',
       mileage: [],
-      expenses: [{ date: '2026-02-01', amount: 30, location: 'A', recipient: 'B', category: 'ooh' }],
+      expenses: [{ date: '2026-02-01', amount: 155, location: 'A', recipient: 'B', category: 'ooh' }],
     });
     expect(over).toContain('over by £5.00');
+  });
+
+  it("uses the person's own budgets when given", () => {
+    const custom = buildMonthlyReport({
+      month: '2026-02',
+      mileage: [],
+      expenses: [{ date: '2026-02-01', amount: 30, location: 'A', recipient: 'B', category: 'standard' }],
+      budgets: { standard: 10000, special: 20000 },
+    });
+    expect(custom).toContain('Standard budget: £30.00 of £100.00 used, £70.00 left');
+    expect(custom).toContain('Sales Day / OOH budget: £0.00 of £200.00 used, £200.00 left');
   });
 
   it('formats helpers', () => {

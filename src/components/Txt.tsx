@@ -46,10 +46,11 @@ export function Txt({ variant = 'body', tone = 'default', align, glow, style, ma
       ? { textShadowColor: tone === 'gold' || tone === 'primary' ? palette.goldGlow : 'rgba(255,240,210,0.18)', textShadowRadius: 12, textShadowOffset: { width: 0, height: 0 } }
       : null;
 
+  // flexShrink lets text give way inside rows instead of pushing past the card edge.
   return (
     <Text
       maxFontSizeMultiplier={maxFontSizeMultiplier}
-      style={[{ ...v, fontSize: v.fontSize * scale, lineHeight: v.lineHeight * scale, color, textAlign: align }, glowStyle, style]}
+      style={[{ flexShrink: 1, ...v, fontSize: v.fontSize * scale, lineHeight: v.lineHeight * scale, color, textAlign: align }, glowStyle, style]}
       {...rest}
     />
   );
