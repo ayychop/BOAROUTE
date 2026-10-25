@@ -62,6 +62,14 @@
           "cameraPermission": "BOAROUTE uses the camera so you can photograph displays for your store tasks.",
           "microphonePermission": "BOAROUTE records sound when you film a video for a store task."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "# WorkManager (pulled in by react-native-maps) starts at launch and Room creates\n# its database by reflection. R8 removed the constructor, crashing on open.\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class * extends androidx.work.ListenableWorker { <init>(android.content.Context, androidx.work.WorkerParameters); }"
+          }
+        }
       ]
     ],
     "experiments": {
