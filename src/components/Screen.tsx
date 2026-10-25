@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, useIsFocused } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, View } from 'react-native';
@@ -22,9 +23,17 @@ interface Props {
   onRefresh?: () => void;
   refreshing?: boolean;
   footer?: ReactNode;
+  /** Rendered outside the navigator (setup and error states), so focus is unknown. */
+  standalone?: boolean;
 }
 
-export function Screen({ children, title, kicker, back, right, scroll = true, inTabs = false, onRefresh, refreshing = false, footer }: Props) {
+/** Only the screen in front animates its ambiance; screens behind it hold a still frame. */
+function FocusedAmbience() {
+  const focused = useIsFocused();
+  return <AmbientBackground animated={focused} />;
+}
+
+export function Screen({ children, title, kicker, back, right, scroll = true, inTabs = false, onRefresh, refreshing = false, footer, standalone = false }: Props) {
   const { palette } = useTheme();
   const { insets, gutter, maxContent, compact } = useLayout();
 
@@ -48,7 +57,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
               borderColor: palette.border,
             }}
           >
-            <Ionicons name="chevron-back" size={22} color={palette.text} />
+            <Ionicons name="chevron-back" size={20} color={palette.gold} />
           </Pressable>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -58,7 +67,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
             </Txt>
           ) : null}
           {title ? (
-            <Txt variant={compact ? 'title' : 'display'} numberOfLines={2} glow>
+            <Txt variant={compact ? 'title' : 'display'} numberOfLines={2}>
               {title}
             </Txt>
           ) : null}
@@ -69,7 +78,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
 
   const padding = {
     paddingTop: insets.top + (compact ? 8 : 14),
-    paddingBottom: (inTabs ? 24 : insets.bottom + 28) + (footer ? 80 : 0),
+    paddingBottom: (inTabs ? 28 : insets.bottom + 28) + (footer ? 110 : 0),
     paddingLeft: Math.max(gutter, insets.left + 8),
     paddingRight: Math.max(gutter, insets.right + 8),
   };
@@ -78,7 +87,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg[0] }}>
       <StatusBar style={palette.statusBar} animated />
-      <AmbientBackground />
+      {standalone ? <AmbientBackground /> : <FocusedAmbience />}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {scroll ? (
           <ScrollView
@@ -92,7 +101,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
               ) : undefined
             }
           >
-            <Animated.View entering={FadeIn.duration(260)} style={inner}>
+            <Animated.View entering={FadeIn.duration(420)} style={inner}>
               {header}
               {children}
             </Animated.View>
@@ -114,9 +123,10 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
               bottom: 0,
               paddingHorizontal: Math.max(gutter, insets.left + 8),
               paddingBottom: (inTabs ? 12 : insets.bottom + 12),
-              paddingTop: 12,
+              paddingTop: 28,
             }}
           >
+            <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', palette.bg[2]]} locations={[0, 0.45]} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
             <View style={inner}>{footer}</View>
           </View>
         ) : null}
@@ -127,11 +137,19 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
 
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 10, gap: 8 }}>
-      <Txt variant="label" tone="dim" style={{ flexShrink: 1 }} numberOfLines={1}>
-        {title}
-      </Txt>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: 12, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }}>
+        <SectionRule />
+        <Txt variant="label" tone="dim" style={{ flexShrink: 1 }} numberOfLines={1}>
+          {title}
+        </Txt>
+      </View>
       {action}
     </View>
   );
+}
+
+function SectionRule() {
+  const { palette } = useTheme();
+  return <View style={{ width: 18, height: 1, backgroundColor: palette.primary, opacity: 0.8 }} />;
 }

@@ -10,7 +10,7 @@ import { Txt } from './Txt';
 
 export function GradeBadge({ grade, size = 34 }: { grade: Grade; size?: number }) {
   const { palette } = useTheme();
-  const color = grade === 'A' ? palette.gold : grade === 'B' ? palette.primary : grade === 'C' ? palette.success : palette.textDim;
+  const color = grade === 'A' ? palette.gold : grade === 'B' ? palette.platinum : grade === 'C' ? palette.rose : palette.textDim;
   return (
     <View
       accessibilityLabel={`Grade ${grade}`}
@@ -20,11 +20,11 @@ export function GradeBadge({ grade, size = 34 }: { grade: Grade; size?: number }
         borderRadius: size * 0.3,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1.5,
+        borderWidth: 1,
         borderColor: color,
         backgroundColor: palette.surface,
         shadowColor: color,
-        shadowOpacity: palette.phase === 'dawn' ? 0 : 0.6,
+        shadowOpacity: grade === 'A' ? 0.45 : 0,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 0 },
       }}
@@ -38,7 +38,7 @@ export function GradeBadge({ grade, size = 34 }: { grade: Grade; size?: number }
 
 export function ManagerBadge({ manager }: { manager: Manager }) {
   const { palette } = useTheme();
-  const color = manager === 'Joseph' ? palette.primary : palette.gold;
+  const color = manager === 'Joseph' ? palette.gold : manager === 'David' ? palette.rose : palette.platinum;
   return (
     <View
       style={{
@@ -67,7 +67,7 @@ export function EventTypeBadge({ type }: { type: EventType }) {
   const reduced = useReducedMotion();
   const pulse = useSharedValue(0);
   const special = type !== 'General';
-  const color = type === 'Sales Day' ? palette.gold : type === 'OOH' ? '#B57BFF' : palette.textDim;
+  const color = type === 'Sales Day' ? palette.gold : type === 'OOH' ? palette.rose : palette.textDim;
 
   useEffect(() => {
     if (!special || reduced) return;

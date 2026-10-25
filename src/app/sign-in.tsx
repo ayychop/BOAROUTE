@@ -128,7 +128,7 @@ export default function SignIn() {
                 {notice}
               </Txt>
             ) : null}
-            <NeonButton label={mode === 'signin' ? 'Engage' : 'Create account'} icon="flash" onPress={submit} loading={busy} size="lg" full />
+            <NeonButton label={mode === 'signin' ? 'Sign in' : 'Create account'} icon={mode === 'signin' ? 'arrow-forward' : 'person-add-outline'} onPress={submit} loading={busy} size="lg" full />
           </GlassCard>
         </Animated.View>
       </View>

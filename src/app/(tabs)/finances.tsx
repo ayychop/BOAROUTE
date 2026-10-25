@@ -5,14 +5,17 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field, Segmented } from '@/components/controls';
-import { Dropdown } from '@/components/Dropdown';
+import { ExpenseForm } from '@/components/ExpenseForm';
 import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
+import { Odometer } from '@/components/Odometer';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { CATEGORY_LABEL, formatPence, inMonth, monthKey, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
+import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
+import { vehicleFor } from '@/lib/vehicles';
 import { buildMonthlyReport, monthTitle, ukDate } from '@/lib/report';
 import type { ExpenseCategory, MileageType } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
@@ -27,8 +30,8 @@ function recentMonths(n: number): string[] {
 
 export default function Finances() {
   const { palette } = useTheme();
-  const { profile } = useAuth();
-  const { mileage, expenses, addMileage, addExpense, deleteExpense, deleteMileage, refresh } = useData();
+  const { profile, updateProfile } = useAuth();
+  const { mileage, expenses, addMileage, deleteExpense, deleteMileage, refresh } = useData();
   const { compact, expanded } = useLayout();
   const month = monthKey(new Date());
 
@@ -42,13 +45,12 @@ export default function Finances() {
   const [mileBusy, setMileBusy] = useState(false);
   const [mileError, setMileError] = useState<string | null>(null);
 
-  // Expense form
-  const [amount, setAmount] = useState('');
-  const [location, setLocation] = useState('');
-  const [recipient, setRecipient] = useState('');
-  const [category, setCategory] = useState<ExpenseCategory>('standard');
-  const [expBusy, setExpBusy] = useState(false);
-  const [expError, setExpError] = useState<string | null>(null);
+  // Odometer correction
+  const [odoEdit, setOdoEdit] = useState<string | null>(null);
+  const [odoBusy, setOdoBusy] = useState(false);
+  const [odoError, setOdoError] = useState<string | null>(null);
+  const odo = odometerValue(profile?.current_mileage);
+  const vehicle = vehicleFor(profile?.vehicle_model);
 
   // Report
   const [reportMonth, setReportMonth] = useState(month);
@@ -73,24 +75,20 @@ export default function Finances() {
     }
   };
 
-  const saveExpense = async () => {
-    setExpError(null);
-    const pence = toPence(amount);
-    if (!Number.isFinite(pence) || pence <= 0) return setExpError('Enter an amount like 12.50.');
-    if (pence > 1_000_000) return setExpError('That amount looks too large.');
-    if (!location.trim()) return setExpError('Add where it was spent.');
-    if (!recipient.trim()) return setExpError('Add who was paid.');
-    setExpBusy(true);
+  const saveOdometer = async () => {
+    if (odoEdit === null) return;
+    const v = parseOdometer(odoEdit);
+    if (!Number.isFinite(v)) return setOdoError('Enter the reading as shown on your dashboard, for example 14500.');
+    setOdoBusy(true);
+    setOdoError(null);
     try {
-      await addExpense({ amount: pence / 100, location: location.trim(), recipient: recipient.trim(), category });
-      setAmount('');
-      setLocation('');
-      setRecipient('');
+      await updateProfile({ current_mileage: v });
+      setOdoEdit(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
-      setExpError(e instanceof Error ? e.message : 'Could not save.');
+      setOdoError(e instanceof Error ? e.message : 'Could not save.');
     } finally {
-      setExpBusy(false);
+      setOdoBusy(false);
     }
   };
 
@@ -105,8 +103,45 @@ export default function Finances() {
   const thisMonthExpenses = expenses.filter((e) => inMonth(e.date, month));
   const thisMonthMiles = mileage.filter((m) => inMonth(m.date, month));
 
+  const odometerCard = (
+    <GlassCard glow="gold" index={0}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="label" tone="dim">
+            Current mileage
+          </Txt>
+          <Txt variant="caption" tone="faint" numberOfLines={1}>
+            {vehicle ? `${vehicle.year} BMW X1 · ${vehicle.specs[0].value}` : 'Your vehicle'}
+          </Txt>
+        </View>
+        {odoEdit === null && (
+          <Pressable accessibilityRole="button" onPress={() => setOdoEdit(odo === null ? '' : String(Math.floor(odo)))} hitSlop={10}>
+            <Txt variant="label" tone="primary">
+              {odo === null ? 'Set' : 'Correct'}
+            </Txt>
+          </Pressable>
+        )}
+      </View>
+      <View style={{ alignItems: 'center' }}>
+        <Odometer value={odo} size={compact ? 'md' : 'lg'} />
+      </View>
+      <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 12 }}>
+        {odo === null ? 'Set your reading once and every trip you log adds to it.' : `Updates automatically when you log a trip · ${formatOdometer(odo)} miles`}
+      </Txt>
+      {odoEdit !== null && (
+        <Animated.View entering={FadeInDown.springify().damping(18)} style={{ marginTop: 16 }}>
+          <Field label="Dashboard reading" icon="speedometer-outline" value={odoEdit} onChangeText={setOdoEdit} keyboardType="number-pad" maxLength={9} placeholder="e.g. 14500" error={odoError} autoFocus />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <NeonButton label="Cancel" variant="subtle" onPress={() => { setOdoEdit(null); setOdoError(null); }} />
+            <NeonButton label="Save reading" icon="checkmark" onPress={saveOdometer} loading={odoBusy} style={{ flex: 1 }} full />
+          </View>
+        </Animated.View>
+      )}
+    </GlassCard>
+  );
+
   const rings = (
-    <GlassCard glow={budget.standard.over ? false : 'gold'} index={0}>
+    <GlassCard index={1}>
       <Txt variant="label" tone="dim" align="center" style={{ marginBottom: 12 }}>
         {monthTitle(month)} budgets
       </Txt>
@@ -115,7 +150,7 @@ export default function Finances() {
           value={budget.standard.remainingRatio}
           size={bigRing}
           stroke={compact ? 12 : 16}
-          colors={budget.standard.over ? [palette.danger, palette.warning] : [palette.gold, palette.primary]}
+          colors={budget.standard.over ? [palette.danger, palette.warning] : [palette.gold, palette.primaryDeep]}
           accessibilityLabel={`Standard budget: ${formatPence(budget.standard.remaining)} remaining of ${formatPence(budget.standard.budget)}`}
         >
           <Txt variant="label" tone="faint" style={{ fontSize: 9 }}>
@@ -132,7 +167,7 @@ export default function Finances() {
           value={budget.special.remainingRatio}
           size={smallRing}
           stroke={compact ? 9 : 11}
-          colors={budget.special.over ? [palette.danger, palette.warning] : ['#B57BFF', palette.primary]}
+          colors={budget.special.over ? [palette.danger, palette.warning] : [palette.rose, palette.gold]}
           accessibilityLabel={`Sales Day and OOH budget: ${formatPence(budget.special.remaining)} remaining of ${formatPence(budget.special.budget)}`}
         >
           <Txt variant="label" tone="faint" style={{ fontSize: 8 }}>
@@ -160,9 +195,9 @@ export default function Finances() {
   );
 
   const mileageCard = (
-    <GlassCard index={1}>
+    <GlassCard index={2}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Txt variant="title">Mileage</Txt>
+        <Txt variant="title">Log a trip</Txt>
         <Txt variant="caption" tone="dim">
           {miles.work.toFixed(1)} work · {miles.personal.toFixed(1)} personal
         </Txt>
@@ -180,33 +215,20 @@ export default function Finances() {
       <Field label="Miles" icon="speedometer-outline" value={milesInput} onChangeText={setMilesInput} placeholder="e.g. 42.5" keyboardType="decimal-pad" returnKeyType="done" onSubmitEditing={saveMiles} error={mileError} />
       <Field label="Note (optional)" value={mileNote} onChangeText={setMileNote} placeholder="e.g. Reading loop" maxLength={500} />
       <NeonButton label={`Log ${mileType} miles`} icon="add-circle" onPress={saveMiles} loading={mileBusy} full />
+      {odo !== null && (
+        <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 10 }}>
+          Adds to your odometer ({formatOdometer(odo)} mi)
+        </Txt>
+      )}
     </GlassCard>
   );
 
   const expenseCard = (
-    <GlassCard index={2}>
+    <GlassCard index={3}>
       <Txt variant="title" style={{ marginBottom: 12 }}>
         Quick expense
       </Txt>
-      <Field label="Amount (£)" icon="cash-outline" value={amount} onChangeText={setAmount} placeholder="12.50" keyboardType="decimal-pad" />
-      <Field label="Location" icon="location-outline" value={location} onChangeText={setLocation} placeholder="e.g. Reading Oracle" maxLength={200} />
-      <Field label="Recipient" icon="storefront-outline" value={recipient} onChangeText={setRecipient} placeholder="e.g. Costa" maxLength={200} />
-      <Dropdown
-        label="Category"
-        value={category}
-        onChange={setCategory}
-        options={[
-          { value: 'standard', label: 'Standard', hint: 'Deducts from the £60 monthly budget', icon: 'wallet' },
-          { value: 'sales_day', label: 'Sales Day', hint: 'Deducts from the £25 Sales Day / OOH pool', icon: 'flash' },
-          { value: 'ooh', label: 'OOH', hint: 'Deducts from the £25 Sales Day / OOH pool', icon: 'moon' },
-        ]}
-      />
-      {expError ? (
-        <Txt variant="caption" tone="danger" style={{ marginBottom: 10 }}>
-          {expError}
-        </Txt>
-      ) : null}
-      <NeonButton label="Add expense" icon="add-circle" variant="gold" onPress={saveExpense} loading={expBusy} full />
+      <ExpenseForm />
     </GlassCard>
   );
 
@@ -299,7 +321,17 @@ export default function Finances() {
       }}
       refreshing={refreshing}
     >
-      {rings}
+      {expanded ? (
+        <View style={{ flexDirection: 'row', gap: 16, alignItems: 'stretch' }}>
+          <View style={{ flex: 1 }}>{odometerCard}</View>
+          <View style={{ flex: 1.3 }}>{rings}</View>
+        </View>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {odometerCard}
+          {rings}
+        </View>
+      )}
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 16, marginTop: 12, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, gap: 12 }}>

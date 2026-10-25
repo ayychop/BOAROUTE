@@ -4,7 +4,10 @@
 
 1. SQL Editor > New query > paste `supabase/migrations/20261025000000_boaroute_init.sql` > Run.
    It creates every table, RLS policy, the `task-media` storage bucket, and seeds Jo's 78 and David's 65 stores.
-   It is safe to run again.
+   It also adds the onboarding fields: `profiles.current_mileage` (trips logged in Finances add to it
+   automatically), `profiles.working_days`, `profiles.onboarded_at`, and the `user_stores` table for each
+   person's chosen stores. It is safe to run again, including over a database that ran an earlier version.
+   Anyone who signed in before this version goes through the new four-step onboarding once.
 2. Authentication > Providers > Email: enabled (email + password).
    If "Confirm email" is on, new users must tap the email link before signing in.
 3. The admin is whoever signs up with an email listed in `public.app_admins`

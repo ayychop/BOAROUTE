@@ -16,7 +16,7 @@ interface Props {
   accessibilityLabel?: string;
 }
 
-/** Neon ring that sweeps to its value with a gradient stroke. */
+/** Metallic ring that sweeps to its value with a gradient stroke. */
 export function ProgressRing({ value, size, stroke = 12, colors, children, accessibilityLabel }: Props) {
   const { palette } = useTheme();
   const reduced = useReducedMotion();
@@ -35,7 +35,6 @@ export function ProgressRing({ value, size, stroke = 12, colors, children, acces
 
   const [c1, c2] = colors ?? [palette.primary, palette.gold];
   const gradientId = `ring-${size}-${stroke}`;
-  const glowing = palette.phase !== 'dawn';
 
   return (
     <View accessibilityRole="progressbar" accessibilityLabel={accessibilityLabel} accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }} style={{ width: size, height: size }}>
@@ -45,7 +44,7 @@ export function ProgressRing({ value, size, stroke = 12, colors, children, acces
           inset: stroke / 2,
           borderRadius: size / 2,
           shadowColor: c1,
-          shadowOpacity: glowing ? 0.55 : 0,
+          shadowOpacity: 0.3,
           shadowRadius: 22,
           shadowOffset: { width: 0, height: 0 },
         }}
@@ -58,6 +57,7 @@ export function ProgressRing({ value, size, stroke = 12, colors, children, acces
           </SvgGradient>
         </Defs>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={palette.border} strokeWidth={stroke} fill="none" />
+        <Circle cx={size / 2} cy={size / 2} r={r - stroke / 2 - 3} stroke={palette.primary} strokeOpacity={0.18} strokeWidth={0.8} fill="none" />
         <AnimatedCircle
           cx={size / 2}
           cy={size / 2}

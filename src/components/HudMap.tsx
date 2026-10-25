@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, G, Line, Polyline, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Polyline, Text as SvgText } from 'react-native-svg';
 import type { LngLat } from '../../supabase/functions/_shared/route-analysis';
 import type { LatLng } from '@/lib/types';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -54,33 +54,27 @@ export function HudMap({ width, height, start, stops, motorway, standard, select
   const [sx, sy] = project([start.lng, start.lat]);
 
   const motorwayActive = selected === 'motorway' && motorway;
-  const gridColor = palette.primary;
+  const standardColor = palette.platinum;
 
   return (
     <View
-      style={{ width, height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: palette.phase === 'dawn' ? '#EAF4FF' : '#020814', borderWidth: 1, borderColor: palette.border }}
+      style={{ width, height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.border }}
       accessibilityLabel={`Route map with ${stops.length} stops`}
     >
       <Svg width={width} height={height}>
-        {/* HUD grid */}
-        <G opacity={palette.phase === 'dawn' ? 0.12 : 0.1}>
-          {Array.from({ length: Math.ceil(width / 28) }, (_, i) => (
-            <Line key={`v${i}`} x1={i * 28} y1={0} x2={i * 28} y2={height} stroke={gridColor} strokeWidth={0.6} />
-          ))}
-          {Array.from({ length: Math.ceil(height / 28) }, (_, i) => (
-            <Line key={`h${i}`} x1={0} y1={i * 28} x2={width} y2={i * 28} stroke={gridColor} strokeWidth={0.6} />
-          ))}
-        </G>
-        <Circle cx={sx} cy={sy} r={Math.min(width, height) * 0.42} stroke={gridColor} strokeOpacity={0.12} strokeDasharray="4 6" fill="none" />
+        {/* Fine range rings around home */}
+        {[0.22, 0.42, 0.64].map((f) => (
+          <Circle key={f} cx={sx} cy={sy} r={Math.min(width, height) * f} stroke={palette.primary} strokeOpacity={0.1} strokeWidth={0.8} fill="none" />
+        ))}
 
         {/* Inactive option first, as a faint dashed trace */}
         {motorway && !motorwayActive && <Polyline points={toPoints(motorway)} fill="none" stroke={palette.gold} strokeOpacity={0.45} strokeWidth={2} strokeDasharray="5 5" strokeLinejoin="round" />}
-        {motorwayActive && <Polyline points={toPoints(standard)} fill="none" stroke={palette.primary} strokeOpacity={0.4} strokeWidth={2} strokeDasharray="5 5" strokeLinejoin="round" />}
+        {motorwayActive && <Polyline points={toPoints(standard)} fill="none" stroke={standardColor} strokeOpacity={0.4} strokeWidth={2} strokeDasharray="5 5" strokeLinejoin="round" />}
 
         {/* Active option with glow */}
         {(() => {
           const line = motorwayActive ? motorway! : standard;
-          const color = motorwayActive ? palette.gold : palette.primary;
+          const color = motorwayActive ? palette.gold : standardColor;
           return (
             <G>
               <Polyline points={toPoints(line)} fill="none" stroke={color} strokeOpacity={0.18} strokeWidth={12} strokeLinejoin="round" strokeLinecap="round" />
@@ -95,8 +89,8 @@ export function HudMap({ width, height, start, stops, motorway, standard, select
           const [x, y] = project([s.lng, s.lat]);
           return (
             <G key={`${s.lat},${s.lng},${i}`}>
-              <Circle cx={x} cy={y} r={11} fill={palette.phase === 'dawn' ? '#FFFFFF' : '#03101F'} stroke={palette.gold} strokeWidth={2} />
-              <SvgText x={x} y={y + 4} fontSize={11} fontFamily={fonts.display} fill={palette.phase === 'dawn' ? palette.text : palette.gold} textAnchor="middle">
+              <Circle cx={x} cy={y} r={11} fill={palette.bg[2]} stroke={palette.gold} strokeWidth={1.5} />
+              <SvgText x={x} y={y + 4} fontSize={11} fontFamily={fonts.bodyBold} fill={palette.gold} textAnchor="middle">
                 {i + 1}
               </SvgText>
             </G>
@@ -105,7 +99,7 @@ export function HudMap({ width, height, start, stops, motorway, standard, select
 
         {/* Home */}
         <Circle cx={sx} cy={sy} r={14} fill={palette.primary} fillOpacity={0.2} />
-        <Circle cx={sx} cy={sy} r={7} fill={palette.primary} stroke="#FFFFFF" strokeWidth={2} />
+        <Circle cx={sx} cy={sy} r={7} fill={palette.primary} stroke={palette.text} strokeWidth={2} />
       </Svg>
     </View>
   );

@@ -119,7 +119,7 @@ export function Chip({
   );
 }
 
-/** Segmented control with a sliding neon thumb. */
+/** Segmented control with a sliding gold thumb. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -158,7 +158,7 @@ export function Segmented<T extends string>({
               borderRadius: radius.pill,
               backgroundColor: palette.primary,
               shadowColor: palette.primary,
-              shadowOpacity: palette.phase === 'dawn' ? 0.2 : 0.7,
+              shadowOpacity: 0.35,
               shadowRadius: 12,
               shadowOffset: { width: 0, height: 0 },
               elevation: 6,
@@ -249,7 +249,7 @@ export function ToggleRow({ label, hint, value, onChange }: { label: string; hin
           onChange(v);
         }}
         trackColor={{ false: palette.border, true: palette.primary }}
-        thumbColor={value ? '#FFFFFF' : palette.textFaint}
+        thumbColor={value ? palette.gold : palette.textFaint}
       />
     </View>
   );

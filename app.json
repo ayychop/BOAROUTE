@@ -7,7 +7,7 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#03070F",
+    "backgroundColor": "#060606",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.boanets.boaroute"
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.boanets.boaroute",
       "adaptiveIcon": {
-        "backgroundColor": "#071226",
+        "backgroundColor": "#0B0A09",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -40,7 +40,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#03070F"
+          "backgroundColor": "#060606"
         }
       ],
       "expo-video",
@@ -48,7 +48,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#00B3FF",
+          "color": "#CDA960",
           "defaultChannel": "reminders",
           "enableRemoteNotifications": false
         }

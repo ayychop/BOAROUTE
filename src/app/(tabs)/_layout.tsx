@@ -70,7 +70,7 @@ function NeonTabBar({ state, descriptors, emitter, navigateToTab, insets }: Bott
                 borderBottomRightRadius: 3,
                 backgroundColor: palette.primary,
                 shadowColor: palette.primary,
-                shadowOpacity: palette.phase === 'dawn' ? 0.3 : 1,
+                shadowOpacity: 0.9,
                 shadowRadius: 10,
                 shadowOffset: { width: 0, height: 0 },
                 elevation: 6,

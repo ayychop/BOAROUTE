@@ -19,6 +19,12 @@ export interface Profile {
   freq_d: number | null;
   /** Managers whose stores this person routes. NULL or empty means the role default. */
   route_managers: string[] | null;
+  /** Odometer in miles; numeric(9,1), so PostgREST may return a string. Trips add to it. */
+  current_mileage: number | string | null;
+  /** Working weekdays, 0 = Sunday ... 6 = Saturday. */
+  working_days: number[];
+  /** Set when onboarding is finished. */
+  onboarded_at: string | null;
 }
 
 export interface Store {

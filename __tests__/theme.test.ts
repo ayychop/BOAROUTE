@@ -26,8 +26,20 @@ describe('time-based ambiance', () => {
       expect(PALETTES[p].phase).toBe(p);
       expect(PALETTES[p].bg).toHaveLength(3);
     }
-    expect(PALETTES.dawn.statusBar).toBe('dark');
+    // Every phase stays dark: the BOA identity is black, charcoal and gold.
+    expect(PALETTES.dawn.statusBar).toBe('light');
     expect(PALETTES.cockpit.statusBar).toBe('light');
+  });
+
+  it('uses no cyan or teal anywhere in the palettes', () => {
+    for (const p of PHASES) {
+      for (const value of Object.values(PALETTES[p])) {
+        if (typeof value !== 'string' || !value.startsWith('#')) continue;
+        const [r, g, b] = [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+        // Cyan/teal means blue and green both well above red.
+        expect(Math.min(g, b) - r > 40).toBe(false);
+      }
+    }
   });
 
   it('greets by time of day', () => {

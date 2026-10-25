@@ -27,7 +27,7 @@ export async function configureNotifications(): Promise<void> {
       description: 'Reminders the day before and the morning of your work events',
       // eslint-disable-next-line import/namespace -- exported via `export *` from a .types module; exists at runtime
       importance: Notifications.AndroidImportance.HIGH,
-      lightColor: '#00D0FF',
+      lightColor: '#CDA960',
       vibrationPattern: [0, 200, 120, 200],
     });
   }

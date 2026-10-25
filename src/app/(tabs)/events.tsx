@@ -20,7 +20,7 @@ function EventCard({ e, index, past }: { e: WorkEvent; index: number; past?: boo
   const { deleteEvent } = useData();
   const when = new Date(e.event_date);
   const special = e.event_type !== 'General';
-  const accent = e.event_type === 'Sales Day' ? palette.gold : e.event_type === 'OOH' ? '#B57BFF' : palette.primary;
+  const accent = e.event_type === 'Sales Day' ? palette.gold : e.event_type === 'OOH' ? palette.rose : palette.platinum;
 
   const remove = () =>
     Alert.alert('Delete event?', `"${e.title}" and its reminders will be removed.`, [

@@ -6,7 +6,8 @@
 -- dropped and recreated, and the store seed skips rows that already exist.
 --
 -- Contents: profiles, stores (Jo / Sarah / David seeds), visits, events,
--- tasks + task-media storage, mileage_logs, expenses, RLS on everything.
+-- tasks + task-media storage, mileage_logs, expenses, onboarding fields
+-- (current mileage, working days, chosen stores), RLS on everything.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -640,3 +641,86 @@ on conflict (name) do nothing;
 update public.stores
    set user_id = (select id from public.profiles where role = 'admin' order by created_at limit 1)
  where user_id is null;
+
+-- ---------------------------------------------------------------------
+-- 11. Onboarding: odometer, working days and each person's own stores
+-- ---------------------------------------------------------------------
+-- Odometer reading in miles. Logged trips add to it automatically (below).
+alter table public.profiles add column if not exists current_mileage numeric(9, 1);
+-- Days of the week this person works, 0 = Sunday ... 6 = Saturday.
+alter table public.profiles add column if not exists working_days smallint[] not null default '{1,2,3,4,5}';
+-- Set when the onboarding flow is finished. NULL sends the person through it.
+alter table public.profiles add column if not exists onboarded_at timestamptz;
+
+alter table public.profiles drop constraint if exists profiles_current_mileage_check;
+alter table public.profiles add constraint profiles_current_mileage_check
+  check (current_mileage is null or current_mileage between 0 and 999999);
+alter table public.profiles drop constraint if exists profiles_working_days_check;
+alter table public.profiles add constraint profiles_working_days_check
+  check (working_days <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[] and cardinality(working_days) <= 7);
+
+-- Logging, editing or deleting a trip moves the odometer by the same miles.
+create or replace function public.apply_mileage_to_odometer()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user  uuid;
+  v_delta numeric;
+begin
+  if tg_op = 'INSERT' then
+    v_user := new.user_id; v_delta := new.miles;
+  elsif tg_op = 'DELETE' then
+    v_user := old.user_id; v_delta := -old.miles;
+  else
+    if new.user_id is distinct from old.user_id then
+      update public.profiles set current_mileage = greatest(0, current_mileage - old.miles)
+       where id = old.user_id and current_mileage is not null;
+      v_user := new.user_id; v_delta := new.miles;
+    else
+      v_user := new.user_id; v_delta := new.miles - old.miles;
+    end if;
+  end if;
+
+  if v_delta <> 0 then
+    update public.profiles
+       set current_mileage = least(999999, greatest(0, current_mileage + v_delta))
+     where id = v_user and current_mileage is not null;
+  end if;
+  return null;
+end;
+$$;
+revoke execute on function public.apply_mileage_to_odometer() from public, anon, authenticated;
+
+drop trigger if exists mileage_logs_odometer on public.mileage_logs;
+create trigger mileage_logs_odometer
+  after insert or update of miles, user_id or delete on public.mileage_logs
+  for each row execute function public.apply_mileage_to_odometer();
+
+-- Stores each person has chosen as theirs during onboarding (or later in
+-- My stores). When someone has none, the app falls back to route_managers.
+create table if not exists public.user_stores (
+  user_id    uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  store_id   uuid not null references public.stores (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, store_id)
+);
+alter table public.user_stores enable row level security;
+create index if not exists user_stores_store_idx on public.user_stores (store_id);
+
+drop policy if exists "user_stores: read own or admin" on public.user_stores;
+create policy "user_stores: read own or admin" on public.user_stores
+  for select to authenticated
+  using (user_id = (select auth.uid()) or public.is_admin());
+
+drop policy if exists "user_stores: insert own" on public.user_stores;
+create policy "user_stores: insert own" on public.user_stores
+  for insert to authenticated
+  with check (user_id = (select auth.uid()));
+
+drop policy if exists "user_stores: delete own" on public.user_stores;
+create policy "user_stores: delete own" on public.user_stores
+  for delete to authenticated
+  using (user_id = (select auth.uid()));

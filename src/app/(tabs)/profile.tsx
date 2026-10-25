@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { BRLogo } from '@/components/BRLogo';
 import { Field } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
@@ -11,7 +11,9 @@ import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { managerShort } from '@/lib/frequency';
 import { geocode, normalisePostcode } from '@/lib/geo';
+import { formatOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
+import { describeDays } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { PALETTES, phaseForDate } from '@/theme/palettes';
@@ -20,9 +22,9 @@ import { radius } from '@/theme/typography';
 
 const AMBIANCES: { value: AmbianceMode; label: string; icon: keyof typeof Ionicons.glyphMap; hint: string }[] = [
   { value: 'auto', label: 'Auto', icon: 'time', hint: 'Follows the clock' },
-  { value: 'dawn', label: 'Dawn', icon: 'sunny', hint: PALETTES.dawn.tagline },
-  { value: 'focus', label: 'Focus', icon: 'partly-sunny', hint: PALETTES.focus.tagline },
-  { value: 'cockpit', label: 'Cockpit', icon: 'moon', hint: PALETTES.cockpit.tagline },
+  { value: 'dawn', label: PALETTES.dawn.name, icon: 'sunny', hint: PALETTES.dawn.tagline },
+  { value: 'focus', label: PALETTES.focus.name, icon: 'partly-sunny', hint: PALETTES.focus.tagline },
+  { value: 'cockpit', label: PALETTES.cockpit.name, icon: 'moon', hint: PALETTES.cockpit.tagline },
 ];
 
 function LinkRow({ icon, label, hint, href, tone }: { icon: keyof typeof Ionicons.glyphMap; label: string; hint?: string; href: Href; tone?: 'gold' }) {
@@ -50,7 +52,7 @@ function LinkRow({ icon, label, hint, href, tone }: { icon: keyof typeof Ionicon
 export default function Me() {
   const { palette, mode, setMode } = useTheme();
   const { profile, isAdmin, updateProfile, signOut } = useAuth();
-  const { managers } = useData();
+  const { managers, myStores, chosenStoreIds } = useData();
   const vehicle = vehicleFor(profile?.vehicle_model);
   const [start, setStart] = useState(profile?.starting_location ?? '');
   const [saving, setSaving] = useState(false);
@@ -74,7 +76,7 @@ export default function Me() {
 
   return (
     <Screen inTabs kicker={isAdmin ? 'Admin' : 'Operational Manager'} title={profile?.name ?? 'Me'}>
-      <GlassCard glow="primary" padded={false} index={0}>
+      <GlassCard glow="gold" padded={false} index={0}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {vehicle && <Image source={vehicle.image} style={{ width: 120, height: 96 }} contentFit="cover" />}
           <View style={{ flex: 1, padding: 14, gap: 4 }}>
@@ -84,8 +86,8 @@ export default function Me() {
             <Txt variant="strong" numberOfLines={1}>
               {vehicle ? `${vehicle.year} X1 M Sport Hybrid` : 'No vehicle selected'}
             </Txt>
-            <Txt variant="caption" tone="primary">
-              Routes: {managers.map(managerShort).join(' + ')}
+            <Txt variant="caption" tone="primary" numberOfLines={1}>
+              {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
             </Txt>
           </View>
           <View style={{ paddingRight: 14 }}>
@@ -110,7 +112,7 @@ export default function Me() {
                 flexGrow: 1,
                 flexBasis: 140,
                 borderRadius: radius.md,
-                borderWidth: active ? 2 : 1,
+                borderWidth: active ? 1.5 : StyleSheet.hairlineWidth * 2,
                 borderColor: active ? palette.primary : palette.border,
                 backgroundColor: palette.surface,
                 padding: 12,
@@ -119,7 +121,7 @@ export default function Me() {
                 gap: 10,
               }}
             >
-              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: preview.bg[1], borderWidth: 2, borderColor: preview.primary, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: preview.bg[1], borderWidth: 1, borderColor: preview.primary, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name={a.icon} size={16} color={preview.gold} />
               </View>
               <View style={{ flex: 1 }}>
@@ -146,6 +148,8 @@ export default function Me() {
 
       <SectionHeader title="Settings" />
       <GlassCard>
+        <LinkRow icon="storefront" label="My stores" hint={`${myStores.length} stores on your patch`} href="/my-stores" />
+        <LinkRow icon="calendar" label="Working days" hint={describeDays(profile?.working_days ?? [])} href="/working-days" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
         <LinkRow icon="car-sport" label="Change vehicle" hint={vehicle?.plate} href="/vehicle" />
         {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="Assign stores to Jo, Pete or David" href="/admin/stores" tone="gold" />}

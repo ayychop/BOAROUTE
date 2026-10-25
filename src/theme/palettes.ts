@@ -6,9 +6,13 @@ export interface Palette {
   tagline: string;
   /** Three-stop background gradient, top to bottom. */
   bg: readonly [string, string, string];
-  /** Two ambient glow orb colours. */
-  orbs: readonly [string, string];
+  /** Colour of the drifting smoke wisps. */
+  smoke: string;
+  /** Peak opacity of the floating light particles. */
+  particles: number;
   surface: string;
+  /** Top edge of the frosted glass sheen. */
+  surfaceHighlight: string;
   surfaceStrong: string;
   border: string;
   borderStrong: string;
@@ -17,8 +21,14 @@ export interface Palette {
   textFaint: string;
   primary: string;
   primaryText: string;
+  /** Deeper end of the metallic gold gradient. */
+  primaryDeep: string;
   gold: string;
   goldText: string;
+  /** Neutral metallic second accent (platinum). */
+  platinum: string;
+  /** Warm third accent (rose gold), used for OOH. */
+  rose: string;
   success: string;
   danger: string;
   warning: string;
@@ -28,94 +38,82 @@ export interface Palette {
   tabBar: string;
   scrim: string;
   statusBar: 'light' | 'dark';
-  /** Grid line opacity for the cockpit HUD overlay (0 hides it). */
-  grid: number;
 }
+
+/** Shared BOA identity: rich blacks, charcoal, metallic gold and frosted glass. */
+const BOA = {
+  text: '#F5F0E6',
+  textDim: '#B9B0A0',
+  textFaint: '#7D766A',
+  primary: '#CDA960',
+  primaryText: '#17120A',
+  primaryDeep: '#8E6E33',
+  gold: '#E8CF94',
+  goldText: '#17120A',
+  platinum: '#C9CDD4',
+  rose: '#D19B82',
+  success: '#8FC29C',
+  danger: '#E4806F',
+  warning: '#E3B565',
+  scrim: 'rgba(0,0,0,0.7)',
+  statusBar: 'light',
+} as const;
 
 export const PALETTES: Record<Phase, Palette> = {
   dawn: {
+    ...BOA,
     phase: 'dawn',
-    name: 'Dawn',
-    tagline: 'Crisp and energised',
-    bg: ['#F7FBFF', '#E6F3FF', '#D3EAFF'],
-    orbs: ['rgba(0,170,255,0.30)', 'rgba(255,196,0,0.26)'],
-    surface: 'rgba(255,255,255,0.80)',
-    surfaceStrong: '#FFFFFF',
-    border: 'rgba(0,122,255,0.16)',
-    borderStrong: 'rgba(0,122,255,0.42)',
-    text: '#06182F',
-    textDim: '#355270',
-    textFaint: '#7A90AA',
-    primary: '#0094FF',
-    primaryText: '#FFFFFF',
-    gold: '#E8A600',
-    goldText: '#1F1500',
-    success: '#00A870',
-    danger: '#E5484D',
-    warning: '#E07B00',
-    glow: 'rgba(0,148,255,0.45)',
-    goldGlow: 'rgba(232,166,0,0.45)',
-    inputBg: 'rgba(255,255,255,0.92)',
-    tabBar: 'rgba(255,255,255,0.88)',
-    scrim: 'rgba(6,24,47,0.45)',
-    statusBar: 'dark',
-    grid: 0,
+    name: 'Champagne',
+    tagline: 'Morning light on charcoal',
+    bg: ['#1E1B16', '#14120F', '#0C0B09'],
+    smoke: '#FFF6E4',
+    particles: 0.7,
+    surface: 'rgba(255,248,235,0.06)',
+    surfaceHighlight: 'rgba(255,248,235,0.10)',
+    surfaceStrong: '#22201C',
+    border: 'rgba(255,240,215,0.10)',
+    borderStrong: 'rgba(225,195,130,0.55)',
+    gold: '#F0D9A2',
+    glow: 'rgba(225,190,120,0.30)',
+    goldGlow: 'rgba(240,217,162,0.32)',
+    inputBg: 'rgba(0,0,0,0.28)',
+    tabBar: 'rgba(22,20,17,0.94)',
   },
   focus: {
+    ...BOA,
     phase: 'focus',
-    name: 'Focus',
-    tagline: 'Sleek and balanced',
-    bg: ['#121A2A', '#182236', '#1F2B43'],
-    orbs: ['rgba(61,169,255,0.22)', 'rgba(242,193,78,0.16)'],
-    surface: 'rgba(34,46,70,0.74)',
-    surfaceStrong: '#26324B',
-    border: 'rgba(130,175,255,0.16)',
-    borderStrong: 'rgba(110,180,255,0.45)',
-    text: '#EBF2FF',
-    textDim: '#A8B6CE',
-    textFaint: '#6F7F99',
-    primary: '#3DA9FF',
-    primaryText: '#04121F',
-    gold: '#F2C14E',
-    goldText: '#1F1500',
-    success: '#3DD68C',
-    danger: '#FF6369',
-    warning: '#FFB224',
-    glow: 'rgba(61,169,255,0.38)',
-    goldGlow: 'rgba(242,193,78,0.35)',
-    inputBg: 'rgba(14,21,36,0.70)',
-    tabBar: 'rgba(18,26,42,0.92)',
-    scrim: 'rgba(0,0,0,0.55)',
-    statusBar: 'light',
-    grid: 0.04,
+    name: 'Graphite',
+    tagline: 'Composed and balanced',
+    bg: ['#18181A', '#111112', '#0A0A0B'],
+    smoke: '#F2EFEA',
+    particles: 0.55,
+    surface: 'rgba(255,255,255,0.05)',
+    surfaceHighlight: 'rgba(255,255,255,0.085)',
+    surfaceStrong: '#1D1D1F',
+    border: 'rgba(255,255,255,0.08)',
+    borderStrong: 'rgba(205,169,96,0.50)',
+    glow: 'rgba(205,169,96,0.28)',
+    goldGlow: 'rgba(232,207,148,0.28)',
+    inputBg: 'rgba(0,0,0,0.30)',
+    tabBar: 'rgba(17,17,18,0.95)',
   },
   cockpit: {
+    ...BOA,
     phase: 'cockpit',
-    name: 'Cockpit',
-    tagline: 'Deep night, neon glow',
-    bg: ['#010309', '#040A18', '#07132B'],
-    orbs: ['rgba(0,208,255,0.26)', 'rgba(255,200,61,0.18)'],
-    surface: 'rgba(8,20,42,0.74)',
-    surfaceStrong: '#0B1832',
-    border: 'rgba(0,208,255,0.20)',
-    borderStrong: 'rgba(0,224,255,0.60)',
-    text: '#E4F7FF',
-    textDim: '#8EB2CB',
-    textFaint: '#4F6A84',
-    primary: '#00D0FF',
-    primaryText: '#00121A',
-    gold: '#FFC83D',
-    goldText: '#1F1500',
-    success: '#2CF5A9',
-    danger: '#FF5C7A',
-    warning: '#FFB020',
-    glow: 'rgba(0,208,255,0.62)',
-    goldGlow: 'rgba(255,200,61,0.55)',
-    inputBg: 'rgba(2,8,20,0.75)',
-    tabBar: 'rgba(3,9,22,0.94)',
-    scrim: 'rgba(0,0,0,0.65)',
-    statusBar: 'light',
-    grid: 0.07,
+    name: 'Noir',
+    tagline: 'Deep black, glowing gold',
+    bg: ['#0D0C0A', '#060606', '#000000'],
+    smoke: '#E9DFC8',
+    particles: 0.85,
+    surface: 'rgba(255,245,225,0.045)',
+    surfaceHighlight: 'rgba(255,245,225,0.08)',
+    surfaceStrong: '#151413',
+    border: 'rgba(255,240,210,0.08)',
+    borderStrong: 'rgba(205,169,96,0.58)',
+    glow: 'rgba(205,169,96,0.40)',
+    goldGlow: 'rgba(232,207,148,0.40)',
+    inputBg: 'rgba(0,0,0,0.40)',
+    tabBar: 'rgba(8,8,8,0.96)',
   },
 };
 

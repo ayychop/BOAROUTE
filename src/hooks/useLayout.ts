@@ -17,7 +17,7 @@ export function useLayout() {
   const compact = size === 'compact';
   const expanded = size === 'expanded';
 
-  const gutter = compact ? 12 : expanded ? 28 : 16;
+  const gutter = compact ? 14 : expanded ? 32 : 20;
   const maxContent = 1180;
   const contentWidth = Math.min(width, maxContent) - gutter * 2;
   // Type scales gently with the screen. System font size still applies on top,

@@ -1,9 +1,10 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
-import { radius } from '@/theme/typography';
+import { radius, springs } from '@/theme/typography';
 
 interface Props {
   children: ReactNode;
@@ -19,30 +20,43 @@ interface Props {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+/** Frosted glass panel: translucent fill, top sheen, hairline edge and a soft gold aura when highlighted. */
 export function GlassCard({ children, style, glow = false, onPress, onLongPress, index = 0, padded = true, accessibilityLabel }: Props) {
   const { palette } = useTheme();
   const { compact } = useLayout();
   const pressed = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: pressed.value }] }));
 
-  const glowColor = glow === 'gold' ? palette.gold : palette.primary;
   const base: ViewStyle = {
     backgroundColor: palette.surface,
-    borderColor: glow ? (glow === 'gold' ? palette.goldGlow : palette.borderStrong) : palette.border,
+    borderColor: glow ? palette.borderStrong : palette.border,
     borderWidth: StyleSheet.hairlineWidth * 2,
-    borderRadius: compact ? radius.md : radius.lg,
-    padding: padded ? (compact ? 12 : 16) : 0,
+    borderRadius: compact ? radius.lg - 2 : radius.xl - 4,
+    padding: padded ? (compact ? 16 : 20) : 0,
     overflow: 'hidden',
-    ...(glow && palette.phase !== 'dawn'
-      ? { shadowColor: glowColor, shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 10 }
-      : { shadowColor: '#00264d', shadowOpacity: palette.phase === 'dawn' ? 0.08 : 0.25, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }),
+    ...(glow
+      ? { shadowColor: glow === 'gold' ? palette.gold : palette.primary, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 }
+      : { shadowColor: '#000000', shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 }),
   };
 
-  const entering = FadeInDown.delay(Math.min(index, 10) * 55).springify().damping(18);
+  const sheen = (
+    <>
+      <LinearGradient pointerEvents="none" colors={[palette.surfaceHighlight, 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0.9 }} style={StyleSheet.absoluteFill} />
+      {/* Light catching the top edge of the glass; gold-rimmed cards already have their edge. */}
+      {!glow && <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 24, right: 24, height: StyleSheet.hairlineWidth * 2, backgroundColor: palette.surfaceHighlight }} />}
+    </>
+  );
+
+  const entering = FadeInDown.delay(Math.min(index, 10) * 60)
+    .duration(520)
+    .springify()
+    .damping(springs.settle.damping)
+    .stiffness(springs.settle.stiffness);
 
   if (!onPress && !onLongPress) {
     return (
       <Animated.View entering={entering} style={[base, style]}>
+        {sheen}
         {children}
       </Animated.View>
     );
@@ -55,18 +69,26 @@ export function GlassCard({ children, style, glow = false, onPress, onLongPress,
         accessibilityLabel={accessibilityLabel}
         onPress={onPress}
         onLongPress={onLongPress}
-        onPressIn={() => pressed.set(withSpring(0.975, { damping: 20, stiffness: 400 }))}
-        onPressOut={() => pressed.set(withSpring(1, { damping: 14, stiffness: 300 }))}
+        onPressIn={() => pressed.set(withSpring(0.98, springs.press))}
+        onPressOut={() => pressed.set(withSpring(1, springs.release))}
         style={[base, style, pressStyle]}
       >
+        {sheen}
         {children}
       </AnimatedPressable>
     </Animated.View>
   );
 }
 
-/** Thin neon accent line along the top edge of a card. */
+/** Fine gold rule along the top edge of a card. */
 export function AccentBar({ color }: { color?: string }) {
   const { palette } = useTheme();
-  return <View style={{ position: 'absolute', top: 0, left: 16, right: 16, height: 2, borderRadius: 2, backgroundColor: color ?? palette.primary, opacity: 0.85 }} />;
+  return (
+    <LinearGradient
+      colors={['rgba(0,0,0,0)', color ?? palette.primary, 'rgba(0,0,0,0)']}
+      start={{ x: 0, y: 0.5 }}
+      end={{ x: 1, y: 0.5 }}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5 }}
+    />
+  );
 }

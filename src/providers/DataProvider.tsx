@@ -18,8 +18,11 @@ interface DataValue {
   loading: boolean;
   error: string | null;
   stores: Store[];
-  /** Stores this person routes (their managers' stores). */
+  /** Stores this person routes: the ones they chose, or their managers' stores if they chose none. */
   myStores: Store[];
+  /** Store ids this person picked as theirs (user_stores). */
+  chosenStoreIds: string[];
+  saveChosenStores: (storeIds: string[]) => Promise<void>;
   managers: Manager[];
   targets: GradeTargets;
   tallies: Record<string, VisitTally>;
@@ -46,7 +49,7 @@ function monthStart(d = new Date()): Date {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { session, profile } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
   const userId = session?.user.id ?? null;
   // Which user the data below belongs to; nothing is exposed for anyone else.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -56,20 +59,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<WorkEvent[]>([]);
   const [mileage, setMileage] = useState<MileageLog[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [chosen, setChosen] = useState<string[]>([]);
   const lastLoad = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!userId) return;
     const since = new Date(Date.now() - 120 * DAY_MS).toISOString();
     const sinceDate = localDateString(new Date(monthStart().getFullYear(), monthStart().getMonth() - 6, 1));
-    const [s, v, e, m, x] = await Promise.all([
+    const [s, v, e, m, x, u] = await Promise.all([
       supabase.from('stores').select(STORE_COLUMNS).order('name'),
       supabase.from('visits').select('id,store_id,user_id,visited_at').eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false }).limit(5000),
       supabase.from('events').select('*').eq('user_id', userId).order('event_date'),
       supabase.from('mileage_logs').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
       supabase.from('expenses').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
+      supabase.from('user_stores').select('store_id').eq('user_id', userId),
     ]);
-    const firstError = s.error ?? v.error ?? e.error ?? m.error ?? x.error;
+    const firstError = s.error ?? v.error ?? e.error ?? m.error ?? x.error ?? u.error;
     setError(firstError ? firstError.message : null);
     if (!s.error) setStores((s.data ?? []) as Store[]);
     if (!v.error) setVisits((v.data ?? []) as Visit[]);
@@ -80,6 +85,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     if (!m.error) setMileage((m.data ?? []) as MileageLog[]);
     if (!x.error) setExpenses((x.data ?? []) as Expense[]);
+    if (!u.error) setChosen((u.data ?? []).map((r: { store_id: string }) => r.store_id));
     lastLoad.current = Date.now();
     setLoadedFor(userId);
   }, [userId]);
@@ -109,6 +115,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const vEvents = mine ? events : EMPTY;
   const vMileage = mine ? mileage : EMPTY;
   const vExpenses = mine ? expenses : EMPTY;
+  const vChosen = mine ? chosen : EMPTY;
 
   const tallies = useMemo(() => {
     const start = monthStart().getTime();
@@ -122,7 +129,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [vVisits]);
 
   const managers = useMemo(() => managersFor(profile), [profile]);
-  const myStores = useMemo(() => storesInScope(vStores as Store[], managers), [vStores, managers]);
+  const myStores = useMemo(() => {
+    if (vChosen.length === 0) return storesInScope(vStores as Store[], managers);
+    const ids = new Set<string>(vChosen);
+    return (vStores as Store[]).filter((s) => ids.has(s.id));
+  }, [vStores, vChosen, managers]);
+
+  const saveChosenStores = useCallback(
+    async (storeIds: string[]) => {
+      if (!userId) throw new Error('Not signed in');
+      const next = new Set(storeIds);
+      const prev = new Set(chosen);
+      const add = storeIds.filter((id) => !prev.has(id));
+      const remove = chosen.filter((id) => !next.has(id));
+      if (add.length) {
+        const { error: err } = await supabase.from('user_stores').upsert(
+          add.map((store_id) => ({ user_id: userId, store_id })),
+          { onConflict: 'user_id,store_id', ignoreDuplicates: true },
+        );
+        if (err) throw err;
+      }
+      if (remove.length) {
+        const { error: err } = await supabase.from('user_stores').delete().eq('user_id', userId).in('store_id', remove);
+        if (err) throw err;
+      }
+      setChosen([...next]);
+    },
+    [userId, chosen],
+  );
   const targets = useMemo(() => targetsFor(profile), [profile]);
 
   const logVisit = useCallback(async (storeId: string) => {
@@ -218,13 +252,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .single();
     if (err) throw err;
     setMileage((prev) => [data as MileageLog, ...prev]);
-  }, []);
+    // The database adds the trip to the odometer; pull the new reading.
+    refreshProfile().catch(() => {});
+  }, [refreshProfile]);
 
   const deleteMileage = useCallback(async (id: string) => {
     const { error: err } = await supabase.from('mileage_logs').delete().eq('id', id);
     if (err) throw err;
     setMileage((prev) => prev.filter((m) => m.id !== id));
-  }, []);
+    refreshProfile().catch(() => {});
+  }, [refreshProfile]);
 
   const addExpense = useCallback<DataValue['addExpense']>(async (e) => {
     const { data, error: err } = await supabase
@@ -248,6 +285,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       error: mine ? error : null,
       stores: vStores as Store[],
       myStores,
+      chosenStoreIds: vChosen as string[],
+      saveChosenStores,
       managers,
       targets,
       tallies,
@@ -266,7 +305,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, managers, targets, tallies, vEvents, vMileage, vExpenses, refresh, logVisit, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, vChosen, saveChosenStores, managers, targets, tallies, vEvents, vMileage, vExpenses, refresh, logVisit, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

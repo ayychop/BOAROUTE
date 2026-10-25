@@ -37,7 +37,13 @@ export default function Stores() {
       inTabs
       kicker={`${myStores.length} stores in your patch`}
       title="Stores"
-      right={isAdmin ? <NeonButton size="sm" variant="gold" icon="shield-checkmark" label="Manage" onPress={() => router.push('/admin/stores')} /> : undefined}
+      right={
+        isAdmin ? (
+          <NeonButton size="sm" variant="gold" icon="shield-checkmark" label="Manage" onPress={() => router.push('/admin/stores')} />
+        ) : (
+          <NeonButton size="sm" variant="subtle" icon="create-outline" label="Edit" onPress={() => router.push('/my-stores')} />
+        )
+      }
       onRefresh={async () => {
         setRefreshing(true);
         await refresh().catch(() => {});
@@ -65,7 +71,7 @@ export default function Stores() {
       {loading ? (
         <LoadingBlock label="Loading stores" />
       ) : filtered.length === 0 ? (
-        <EmptyState icon="storefront-outline" title="No stores match" body={myStores.length ? 'Try a different search or filter.' : 'No stores are assigned to your patch yet. Ask your admin to assign some.'} />
+        <EmptyState icon="storefront-outline" title="No stores match" body={myStores.length ? 'Try a different search or filter.' : 'No stores on your patch yet. Tap Edit to choose yours.'} />
       ) : (
         <>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>

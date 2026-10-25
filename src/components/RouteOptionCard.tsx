@@ -43,7 +43,7 @@ export function RouteOptionCard({ option, selected, onSelect, live, note, index 
           padding: 14,
           gap: 10,
           shadowColor: accent,
-          shadowOpacity: selected && palette.phase !== 'dawn' ? 0.6 : 0,
+          shadowOpacity: selected ? 0.35 : 0,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 0 },
           elevation: selected ? 10 : 1,

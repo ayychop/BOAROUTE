@@ -21,7 +21,7 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-const PROFILE_COLUMNS = 'id,email,role,name,vehicle_model,starting_location,freq_a,freq_b,freq_c,freq_d,route_managers';
+const PROFILE_COLUMNS = 'id,email,role,name,vehicle_model,starting_location,freq_a,freq_b,freq_c,freq_d,route_managers,current_mileage,working_days,onboarded_at';
 
 async function loadProfile(session: Session): Promise<Profile | null> {
   const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', session.user.id).maybeSingle();
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       profileError,
       isAdmin: profile?.role === 'admin',
-      onboarded: !!profile?.vehicle_model && !!profile?.starting_location,
+      onboarded: !!profile?.onboarded_at,
       signIn,
       signUp,
       signOut,
