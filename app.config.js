@@ -17,6 +17,9 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
+    // Same key as the plugin above, also set in the classic location. It is read
+    // from the environment because the repository is public.
+    android: mapsKey ? { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: mapsKey } } } : config.android,
     plugins,
     extra: {
       ...config.extra,
