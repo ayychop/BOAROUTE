@@ -39,6 +39,8 @@ export interface DayPlan<S extends RoutableStore = RoutableStore> {
   visitsRemaining: number;
   /** Stores in scope that cannot be routed because they lack coordinates. */
   unlocated: S[];
+  /** Where the day finishes (home, or null for a one-way route). */
+  end: LatLng | null;
 }
 
 export interface PlanOptions {
@@ -48,6 +50,15 @@ export interface PlanOptions {
   now?: Date;
   /** Cost of 1 km away from the anchor store, in priority points. */
   detourWeight?: number;
+  /**
+   * Explicit finish point. Overrides returnToStart, so a route that starts at a
+   * store can still finish at home. null means the day ends at the last stop.
+   */
+  end?: LatLng | null;
+  /** Stores to leave out of today's stops (for example the store the route starts from). */
+  excludeIds?: string[];
+  /** Pick the day's cluster around the start point instead of anywhere on the patch. */
+  anchorNearStart?: boolean;
 }
 
 export const DEFAULT_MAX_STOPS = 6;
@@ -139,10 +150,10 @@ export function nearestNeighbourOrder<T>(start: LatLng, items: T[], at: (t: T) =
   return out;
 }
 
-/** 2-opt improvement of an ordered path (optionally returning to start). */
-export function twoOpt<T>(start: LatLng, order: T[], at: (t: T) => LatLng, returnToStart: boolean): T[] {
+/** 2-opt improvement of an ordered path. `finish` is true (back to start), false (one way) or a finish point. */
+export function twoOpt<T>(start: LatLng, order: T[], at: (t: T) => LatLng, finish: boolean | LatLng | null): T[] {
   let best = [...order];
-  const end = returnToStart ? start : null;
+  const end = finish === true ? start : finish === false ? null : finish;
   let bestLen = pathLength(start, best.map(at), end);
   let improved = true;
   let guard = 0;
@@ -176,17 +187,26 @@ export function planDayRoute<S extends RoutableStore>(
   const returnToStart = options.returnToStart ?? true;
   const detourWeight = options.detourWeight ?? 0.08;
   const now = options.now ?? new Date();
+  const end = options.end !== undefined ? options.end : returnToStart ? start : null;
+  const excluded = new Set(options.excludeIds ?? []);
 
   const located = stores.filter(hasCoords);
   const unlocated = stores.filter((s) => !hasCoords(s));
+  // Stores that already met their monthly target never appear: computeDue only returns what is still owed.
   const due = computeDue(located, tallies, targets, now);
+  const candidates = due.filter((d) => !excluded.has(d.store.id));
 
   let chosen: DueStore<S>[] = [];
-  if (due.length > 0) {
-    const anchor = due[0];
+  if (candidates.length > 0) {
+    // From home the most urgent store anchors the day; from a store, the best urgent store nearby does.
+    const anchor = options.anchorNearStart
+      ? candidates.reduce((best, d) =>
+          d.priority - detourWeight * haversineKm(start, toLatLng(d.store)) > best.priority - detourWeight * haversineKm(start, toLatLng(best.store)) ? d : best,
+        )
+      : candidates[0];
     const anchorPt = toLatLng(anchor.store);
-    const rest = due
-      .slice(1)
+    const rest = candidates
+      .filter((d) => d !== anchor)
       .map((d) => ({ d, utility: d.priority - detourWeight * haversineKm(anchorPt, toLatLng(d.store)) }))
       .sort((a, b) => b.utility - a.utility)
       .slice(0, maxStops - 1)
@@ -195,7 +215,7 @@ export function planDayRoute<S extends RoutableStore>(
   }
 
   const at = (d: DueStore<S>) => toLatLng(d.store);
-  const ordered = twoOpt(start, nearestNeighbourOrder(start, chosen, at), at, returnToStart);
+  const ordered = twoOpt(start, nearestNeighbourOrder(start, chosen, at), at, end);
 
   const stops: RouteStop<S>[] = [];
   let prev = start;
@@ -213,8 +233,8 @@ export function planDayRoute<S extends RoutableStore>(
   }
 
   let returnLeg: DayPlan<S>['returnLeg'] = null;
-  if (returnToStart && stops.length > 0) {
-    returnLeg = estimateDrive(prev, start);
+  if (end && stops.length > 0) {
+    returnLeg = estimateDrive(prev, end);
     totalKm += returnLeg.km;
     driveMinutes += returnLeg.minutes;
   }
@@ -228,13 +248,14 @@ export function planDayRoute<S extends RoutableStore>(
     dueCount: due.length,
     visitsRemaining: due.reduce((a, d) => a + d.remaining, 0),
     unlocated,
+    end: stops.length > 0 ? end : null,
   };
 }
 
-/** Points sent to the live routing service: start, stops, and optionally back home. */
+/** Points sent to the live routing service: start, stops, and the finish point if there is one. */
 export function planWaypoints(plan: DayPlan, start: LatLng): LatLng[] {
   const pts = [start, ...plan.stops.map((s) => toLatLng(s.store))];
-  if (plan.returnLeg) pts.push(start);
+  if (plan.end) pts.push(plan.end);
   return pts;
 }
 

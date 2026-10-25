@@ -20,8 +20,8 @@ interface ThemeValue {
 const ThemeContext = createContext<ThemeValue | null>(null);
 
 const MODES: AmbianceMode[] = ['auto', 'dawn', 'focus', 'cockpit'];
-const BG_FADE_MS = 1600;
-const DIP_MS = 220;
+const BG_FADE_MS = 900;
+const DIP_MS = 120;
 
 function readMode(): AmbianceMode {
   const saved = getPref('ambiance');

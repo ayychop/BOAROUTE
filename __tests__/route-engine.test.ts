@@ -119,6 +119,54 @@ describe('planDayRoute', () => {
   });
 });
 
+describe('smart routing and start point', () => {
+  const pt = (s: RoutableStore) => ({ lat: s.latitude!, lng: s.longitude! });
+
+  it('never routes a store that already met its grade target this month', () => {
+    const a = stores.find((s) => s.grade === 'A')!;
+    const tallies = { [a.id]: { count: DEFAULT_FREQUENCIES.A, last: now.toISOString() } };
+    const plan = planDayRoute(stores, tallies, DEFAULT_FREQUENCIES, HP13, { maxStops: 8, now });
+    expect(plan.stops.some((s) => s.store.id === a.id)).toBe(false);
+    expect(plan.dueCount).toBe(stores.length - 1);
+  });
+
+  it('counts only what is still owed', () => {
+    const a = stores.find((s) => s.grade === 'A')!;
+    const full = planDayRoute(stores, {}, DEFAULT_FREQUENCIES, HP13, { now }).visitsRemaining;
+    const after = planDayRoute(stores, { [a.id]: { count: 1, last: now.toISOString() } }, DEFAULT_FREQUENCIES, HP13, { now }).visitsRemaining;
+    expect(full - after).toBe(1);
+  });
+
+  it('starts from a chosen store, skips it as a stop and finishes at home', () => {
+    const origin = stores[stores.length - 1];
+    const plan = planDayRoute(stores, {}, DEFAULT_FREQUENCIES, pt(origin), { maxStops: 4, now, end: HP13, excludeIds: [origin.id], anchorNearStart: true });
+    expect(plan.stops).toHaveLength(4);
+    expect(plan.stops.some((s) => s.store.id === origin.id)).toBe(false);
+    expect(plan.end).toEqual(HP13);
+    const pts = planWaypoints(plan, pt(origin));
+    expect(pts[0]).toEqual(pt(origin));
+    expect(pts[pts.length - 1]).toEqual(HP13);
+  });
+
+  it('clusters the day around the starting store', () => {
+    // The store furthest from home: a from-store plan should stay near it, not drift back to the urgent home cluster.
+    const far = stores.reduce((best, s) => (haversineKm(HP13, pt(s)) > haversineKm(HP13, pt(best)) ? s : best));
+    const plan = planDayRoute(stores, {}, DEFAULT_FREQUENCIES, pt(far), { maxStops: 4, now, end: null, excludeIds: [far.id], anchorNearStart: true });
+    const firstLeg = haversineKm(pt(far), pt(plan.stops[0].store));
+    const fromHome = planDayRoute(stores, {}, DEFAULT_FREQUENCIES, HP13, { maxStops: 4, now });
+    const homeAnchorDistance = Math.min(...fromHome.stops.map((s) => haversineKm(pt(far), pt(s.store))));
+    expect(firstLeg).toBeLessThanOrEqual(homeAnchorDistance);
+  });
+
+  it('can run one way with no finish point', () => {
+    const origin = stores[0];
+    const plan = planDayRoute(stores, {}, DEFAULT_FREQUENCIES, pt(origin), { maxStops: 3, now, end: null, excludeIds: [origin.id] });
+    expect(plan.returnLeg).toBeNull();
+    expect(plan.end).toBeNull();
+    expect(planWaypoints(plan, pt(origin))).toHaveLength(4);
+  });
+});
+
 describe('ordering', () => {
   const at = (p: { lat: number; lng: number }) => p;
   it('2-opt never makes a path longer than nearest neighbour', () => {

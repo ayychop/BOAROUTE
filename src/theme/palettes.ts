@@ -8,6 +8,10 @@ export interface Palette {
   bg: readonly [string, string, string];
   /** Colour of the drifting smoke wisps. */
   smoke: string;
+  /** Three slow-moving colour fields that give each ambiance its mood. */
+  mesh: readonly [string, string, string];
+  /** Peak opacity of the mesh fields. */
+  meshPeak: number;
   /** Peak opacity of the floating light particles. */
   particles: number;
   surface: string;
@@ -73,6 +77,8 @@ export const PALETTES: Record<Phase, Palette> = {
     tagline: 'Bright, warm and light',
     bg: ['#FCF8EF', '#F4EBDA', '#E9DCC3'],
     smoke: '#C7A766',
+    mesh: ['#F6C98B', '#EBB39A', '#FFE3A3'],
+    meshPeak: 0.55,
     particles: 0.55,
     surface: 'rgba(255,255,255,0.66)',
     surfaceHighlight: 'rgba(255,255,255,0.95)',
@@ -109,6 +115,8 @@ export const PALETTES: Record<Phase, Palette> = {
     tagline: 'Cool charcoal, balanced',
     bg: ['#34353A', '#26272B', '#1A1B1E'],
     smoke: '#F2F3F5',
+    mesh: ['#8C95A8', '#6E7687', '#B7BDC8'],
+    meshPeak: 0.32,
     particles: 0.5,
     surface: 'rgba(255,255,255,0.075)',
     surfaceHighlight: 'rgba(255,255,255,0.12)',
@@ -130,6 +138,8 @@ export const PALETTES: Record<Phase, Palette> = {
     tagline: 'Pure black, glowing gold',
     bg: ['#000000', '#000000', '#000000'],
     smoke: '#E9DFC8',
+    mesh: ['#5A4317', '#3A2A12', '#2A2110'],
+    meshPeak: 0.3,
     particles: 0.85,
     surface: 'rgba(255,245,225,0.05)',
     surfaceHighlight: 'rgba(255,245,225,0.08)',

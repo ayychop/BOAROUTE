@@ -10,6 +10,8 @@ interface Props {
   width: number;
   height: number;
   start: LatLng;
+  /** Finish point when it differs from the start (a route that starts at a store and ends at home). */
+  end?: LatLng | null;
   stops: LatLng[];
   motorway: LngLat[] | null;
   standard: LngLat[];
@@ -43,15 +45,16 @@ function useProjection(points: LngLat[], width: number, height: number, pad: num
   }, [points, width, height, pad]);
 }
 
-export function HudMap({ width, height, start, stops, motorway, standard, selected }: Props) {
+export function HudMap({ width, height, start, end, stops, motorway, standard, selected }: Props) {
   const { palette } = useTheme();
   const all = useMemo<LngLat[]>(
-    () => [[start.lng, start.lat], ...stops.map((s) => [s.lng, s.lat] as LngLat), ...(motorway ?? []), ...standard],
-    [start, stops, motorway, standard],
+    () => [[start.lng, start.lat], ...(end ? [[end.lng, end.lat] as LngLat] : []), ...stops.map((s) => [s.lng, s.lat] as LngLat), ...(motorway ?? []), ...standard],
+    [start, end, stops, motorway, standard],
   );
   const project = useProjection(all, width, height, 28);
   const toPoints = (line: LngLat[]) => line.map((p) => project(p).join(',')).join(' ');
   const [sx, sy] = project([start.lng, start.lat]);
+  const finish = end && (end.lat !== start.lat || end.lng !== start.lng) ? project([end.lng, end.lat]) : null;
 
   const motorwayActive = selected === 'motorway' && motorway;
   const standardColor = palette.platinum;
@@ -97,7 +100,10 @@ export function HudMap({ width, height, start, stops, motorway, standard, select
           );
         })}
 
-        {/* Home */}
+        {/* Finish, when it is not where the day started */}
+        {finish && <Circle cx={finish[0]} cy={finish[1]} r={8} fill="none" stroke={palette.gold} strokeWidth={2.5} />}
+
+        {/* Start */}
         <Circle cx={sx} cy={sy} r={14} fill={palette.primary} fillOpacity={0.2} />
         <Circle cx={sx} cy={sy} r={7} fill={palette.primary} stroke={palette.text} strokeWidth={2} />
       </Svg>

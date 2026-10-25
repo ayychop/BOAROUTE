@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
@@ -85,31 +84,28 @@ export default function Me() {
 
   return (
     <Screen inTabs kicker={isAdmin ? 'Admin' : 'Operational Manager'} title={profile?.name ?? 'Me'}>
-      {/* Static, opaque card: no entrance or shadow animation, so nothing behind it can flicker. */}
-      <LinearGradient
-        colors={[palette.surfaceStrong, palette.bg[1]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong, paddingVertical: 14, paddingLeft: 12, paddingRight: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-      >
-        <View style={{ width: carWidth, flexShrink: 0, alignItems: 'center' }}>
-          <CarIllustration width={carWidth} accent={palette.gold} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
+      {/* Same glass as every other card; no entrance animation, so it never flickers on refocus. */}
+      <GlassCard glow="gold" animateIn={false} padded={false}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 12, paddingRight: 14 }}>
+          <View style={{ width: carWidth, flexShrink: 0, alignItems: 'center' }}>
+            <CarIllustration width={carWidth} accent={palette.gold} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
+          </View>
+          <View style={{ flex: 1, flexShrink: 1, minWidth: 0, gap: 3 }}>
+            <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">
+              {profile?.email}
+            </Txt>
+            <Txt variant="strong" numberOfLines={2}>
+              {vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected'}
+            </Txt>
+            <Txt variant="caption" tone="primary" numberOfLines={2}>
+              {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
+            </Txt>
+          </View>
+          <View style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
+            <BRLogo size={compact ? 26 : 32} glow={false} />
+          </View>
         </View>
-        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">
-            {profile?.email}
-          </Txt>
-          <Txt variant="strong" numberOfLines={2}>
-            {vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected'}
-          </Txt>
-          <Txt variant="caption" tone="primary" numberOfLines={2}>
-            {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
-          </Txt>
-        </View>
-        <View style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
-          <BRLogo size={compact ? 26 : 32} glow={false} />
-        </View>
-      </LinearGradient>
+      </GlassCard>
 
       <SectionHeader title="Ambiance" />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>

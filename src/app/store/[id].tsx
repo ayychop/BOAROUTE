@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
@@ -16,6 +17,7 @@ import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
 import { openMaps } from '@/lib/external';
+import { localDateString } from '@/lib/budget';
 import { daysSinceLabel } from '@/lib/format';
 import { legDirectionsUrl, searchUrl } from '@/lib/navigation';
 import { hasCoords, toLatLng } from '@/lib/route-engine';
@@ -99,15 +101,29 @@ export default function StoreDetail() {
     }
   };
 
-  const onLogVisit = async () => {
+  const visitedToday = !!tally?.last && localDateString(new Date(tally.last)) === localDateString(new Date(now));
+  const owed = Math.max(0, target - done);
+
+  const saveVisit = async () => {
     setVisitBusy(true);
     try {
       await logVisit(store.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       Alert.alert('Visit not saved', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setVisitBusy(false);
     }
+  };
+
+  // A second visit on the same day is usually a double tap, so confirm it.
+  const onLogVisit = () => {
+    if (visitBusy) return;
+    if (!visitedToday) return saveVisit();
+    Alert.alert('Already visited today', `Log another visit to ${store.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log another', onPress: saveVisit },
+    ]);
   };
 
   const onUndo = () =>
@@ -164,8 +180,14 @@ export default function StoreDetail() {
           ) : null}
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-        <NeonButton label="Log visit" icon="checkmark-circle" onPress={onLogVisit} loading={visitBusy} style={{ flexGrow: 1 }} />
+      <Txt variant="caption" tone={owed === 0 ? 'success' : 'dim'} style={{ marginTop: 16 }}>
+        {owed === 0
+          ? `Target met: ${done} of ${target} visits this month. This store is out of today's route.`
+          : `${done} of ${target} visits this month · ${owed} still owed`}
+        {visitedToday ? ' · Visited today' : ''}
+      </Txt>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <NeonButton label={visitedToday ? 'Visited today' : 'Mark as Visited'} icon={visitedToday ? 'checkmark-done' : 'checkmark-circle'} variant="gold" size="lg" onPress={onLogVisit} loading={visitBusy} style={{ flexGrow: 1, flexBasis: 200 }} full />
         {done > 0 && <NeonButton label="Undo" icon="arrow-undo" variant="ghost" onPress={onUndo} />}
       </View>
     </GlassCard>

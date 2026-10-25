@@ -172,6 +172,11 @@ export function AmbientBackground({ animated = true }: { animated?: boolean }) {
         <Layer key={p} phase={p} />
       ))}
 
+      {/* Mesh: three large colour fields orbiting slowly, the signature of each ambiance */}
+      <Wisp clock={clock} color={palette.mesh[0]} peak={palette.meshPeak} w={big * 1.1} h={big * 0.9} cx={width * 0.15} cy={height * 0.18} driftX={width * 0.22} driftY={height * 0.06} laps={1} phase={0.05} />
+      <Wisp clock={clock} color={palette.mesh[1]} peak={palette.meshPeak * 0.85} w={big * 1.0} h={big * 0.85} cx={width * 0.95} cy={height * 0.55} driftX={width * 0.18} driftY={height * 0.08} laps={1} phase={0.55} />
+      <Wisp clock={clock} color={palette.mesh[2]} peak={palette.meshPeak * 0.7} w={big * 0.9} h={big * 0.7} cx={width * 0.3} cy={height * 0.95} driftX={width * 0.2} driftY={height * 0.05} laps={2} phase={0.3} />
+
       {/* Warm key light from above, like a showroom spotlight */}
       <Wisp clock={clock} color={palette.gold} peak={0.16} w={width * 1.5} h={height * 0.55} cx={width * 0.5} cy={-height * 0.04} driftX={width * 0.05} driftY={8} laps={1} phase={0} />
       <Wisp clock={clock} color={palette.primary} peak={0.1} w={big * 0.8} h={big * 0.8} cx={width * 0.95} cy={height * 0.62} driftX={30} driftY={40} laps={1} phase={0.4} />

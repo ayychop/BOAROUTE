@@ -11,6 +11,7 @@ import { DataErrorBanner, EmptyState, LoadingBlock } from '@/components/misc';
 import { IconButton, NeonButton } from '@/components/NeonButton';
 import { RouteOptionCard } from '@/components/RouteOptionCard';
 import { Screen, SectionHeader } from '@/components/Screen';
+import { StartPointPicker } from '@/components/StartPointPicker';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { localDateString } from '@/lib/budget';
@@ -19,7 +20,7 @@ import { formatMinutes, formatMiles, kmToMiles } from '@/lib/format';
 import { geocode } from '@/lib/geo';
 import { legDirectionsUrl, optionDirectionsUrl } from '@/lib/navigation';
 import { getPref, setPref } from '@/lib/prefs';
-import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
+import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, hasCoords, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
 import type { LatLng } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
@@ -73,17 +74,36 @@ export default function RouteScreen() {
   const { profile } = useAuth();
   const { myStores, tallies, targets, logVisit, loading } = useData();
   const { contentWidth, expanded, compact } = useLayout();
-  const { point: start, error: startError } = useStartPoint(profile?.starting_location);
+  const { point: home, error: homeError } = useStartPoint(profile?.starting_location);
   const [maxStops, setMaxStops] = useState(readStops);
   const [returnHome, setReturnHome] = useState(getPref('route.returnHome') !== 'false');
+  // "Start route from": home by default, or a store on the patch.
+  const [startStoreId, setStartStoreId] = useState<string | null>(() => getPref('route.startStore'));
+  const startStore = useMemo(() => myStores.find((s) => s.id === startStoreId && hasCoords(s)) ?? null, [myStores, startStoreId]);
+  const start = useMemo(() => (startStore ? toLatLng(startStore) : home), [startStore, home]);
+  const end = returnHome ? home : null;
+  // A missing home only blocks routing when the route starts there.
+  const startError = startStore ? null : homeError;
+  const chooseStart = (id: string | null) => {
+    setStartStoreId(id);
+    setPref('route.startStore', id);
+  };
   // Live options are stored with the stop list they were computed for.
   const [routeState, setRouteState] = useState<{ key: string; result: RouteOptionsResult; liveError: string | null } | null>(null);
   const [selected, setSelected] = useState<'motorway' | 'standard'>('motorway');
   const [busyStop, setBusyStop] = useState<string | null>(null);
 
   const plan = useMemo(
-    () => (start ? planDayRoute(myStores, tallies, targets, start, { maxStops, returnToStart: returnHome }) : null),
-    [myStores, tallies, targets, start, maxStops, returnHome],
+    () =>
+      start
+        ? planDayRoute(myStores, tallies, targets, start, {
+            maxStops,
+            end,
+            excludeIds: startStore ? [startStore.id] : [],
+            anchorNearStart: !!startStore,
+          })
+        : null,
+    [myStores, tallies, targets, start, end, startStore, maxStops],
   );
   const points = useMemo(() => (plan && start && plan.stops.length ? planWaypoints(plan, start) : []), [plan, start]);
   const pointsKey = points.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
@@ -132,6 +152,8 @@ export default function RouteScreen() {
   const mapW = expanded ? Math.min(contentWidth * 0.5, 560) : contentWidth;
   const mapH = Math.round(Math.min(mapW * (compact ? 0.62 : 0.7), 420));
 
+  const startPicker = <StartPointPicker stores={myStores} selectedId={startStore?.id ?? null} homeLabel={profile?.starting_location ?? 'not set'} onChange={chooseStart} />;
+
   const settings = (
     <GlassCard index={0}>
       <Txt variant="label" tone="dim" style={{ marginBottom: 8 }}>
@@ -152,7 +174,7 @@ export default function RouteScreen() {
       </View>
       <ToggleRow
         label="Finish back at home"
-        hint={profile?.starting_location ?? undefined}
+        hint={startStore ? `${profile?.starting_location ?? 'Home'} · otherwise the day ends at the last stop` : profile?.starting_location ?? undefined}
         value={returnHome}
         onChange={(v) => {
           setReturnHome(v);
@@ -167,7 +189,9 @@ export default function RouteScreen() {
   if (startError) {
     return (
       <Screen inTabs title="Today's route" kicker="Route engine">
-        <EmptyState icon="home-outline" title="Where do you start?" body={startError} action={<NeonButton label="Open settings" size="sm" onPress={() => router.navigate('/profile')} />} />
+        {startPicker}
+        <View style={{ height: 12 }} />
+        <EmptyState icon="home-outline" title="Where do you start?" body={`${startError} Or start from a store above.`} action={<NeonButton label="Open settings" size="sm" onPress={() => router.navigate('/profile')} />} />
       </Screen>
     );
   }
@@ -181,14 +205,20 @@ export default function RouteScreen() {
     );
   }
 
-  if (!plan || !start) return <Screen inTabs title="Today's route" kicker="Route engine"><LoadingBlock label="Locating home" /></Screen>;
+  if (!plan || !start) return <Screen inTabs title="Today's route" kicker="Route engine">{startPicker}<LoadingBlock label="Locating home" /></Screen>;
 
   if (plan.stops.length === 0) {
     return (
       <Screen inTabs title="Today's route" kicker="Route engine">
+        {startPicker}
+        <View style={{ height: 12 }} />
         {settings}
         <View style={{ height: 12 }} />
-        <EmptyState icon="trophy-outline" title="All targets met" body="Every store in your patch has hit its monthly visit target. Enjoy the open road." />
+        <EmptyState
+          icon="trophy-outline"
+          title={plan.dueCount > 0 ? 'Nothing else owed nearby' : 'All targets met'}
+          body={plan.dueCount > 0 ? 'The only store still owed visits is the one you are starting from. Mark it visited from its store page.' : 'Every store in your patch has hit its monthly visit target. Enjoy the open road.'}
+        />
       </Screen>
     );
   }
@@ -242,17 +272,18 @@ export default function RouteScreen() {
   return (
     <Screen inTabs title="Today's route" kicker={`${plan.stops.length} stops · ${plan.visitsRemaining} visits owed this month`}>
       <DataErrorBanner />
+      <View style={{ marginBottom: 12 }}>{startPicker}</View>
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
           <View style={{ gap: 12 }}>
-            <HudMap width={mapW} height={mapH} start={start} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
+            <HudMap width={mapW} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
             {settings}
           </View>
           <View style={{ flex: 1 }}>{optionsBlock}</View>
         </View>
       ) : (
         <View style={{ gap: 12 }}>
-          <HudMap width={mapW} height={mapH} start={start} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
+          <HudMap width={mapW} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
           {optionsBlock}
           {settings}
         </View>

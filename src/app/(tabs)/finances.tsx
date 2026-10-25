@@ -108,7 +108,7 @@ export default function Finances() {
 
   const odometerCard = (
     <GlassCard glow="gold" index={0}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Txt variant="label" tone="dim" numberOfLines={2}>
             Current mileage
@@ -123,7 +123,7 @@ export default function Finances() {
           </View>
         )}
       </View>
-      <View style={{ alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: palette.inputBg, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.border }}>
+      <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 16, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.border }}>
         <Odometer value={odo} size={compact ? 'md' : 'lg'} />
       </View>
       <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 12 }}>
