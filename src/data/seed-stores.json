@@ -1,0 +1,1289 @@
+[
+ {
+  "name": "Newbury - Currys",
+  "address": "Unit 11 Newbury Retail Park, Pinchington Lane, Newbury",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.384718,
+  "longitude": -1.319272
+ },
+ {
+  "name": "Oxford Botley - Currys",
+  "address": "Unit 1, Lamarsh Road, Oxford",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.752455,
+  "longitude": -1.285872
+ },
+ {
+  "name": "John Lewis High Wycombe",
+  "address": "Holmers Farm Way, Cressex Centre, High Wycombe, Bucks",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.611126,
+  "longitude": -0.782828
+ },
+ {
+  "name": "John Lewis Reading",
+  "address": "Broad Street, Reading, Berkshire",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.455317,
+  "longitude": -0.972064
+ },
+ {
+  "name": "Didcot - Currys",
+  "address": "Unit 2 The Orchard Centre, Didcot",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.606985,
+  "longitude": -1.238805
+ },
+ {
+  "name": "Newbury Extra - Tesco",
+  "address": "Pinchington Lane, Newbury, Berkshire",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.384383,
+  "longitude": -1.319874
+ },
+ {
+  "name": "Reading Extra - Tesco",
+  "address": "Napier Road, Reading",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.459092,
+  "longitude": -0.957166
+ },
+ {
+  "name": "Reading West Extra - Tesco",
+  "address": "Portman Road, Reading",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.459011,
+  "longitude": -0.991716
+ },
+ {
+  "name": "Aylesbury Extra - Tesco",
+  "address": "Broadfield Retail Park, Bicester Road, Aylesbury",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.816394,
+  "longitude": -0.800318
+ },
+ {
+  "name": "Aylesbury 2 - Tesco",
+  "address": "Tring Road, Aylesbury",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.815187,
+  "longitude": -0.79222
+ },
+ {
+  "name": "Reading - Currys",
+  "address": "Unit 5 Reading Gate Retail Park, Reading",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.422445,
+  "longitude": -0.980079
+ },
+ {
+  "name": "High Wycombe - Currys",
+  "address": "Unit E Wycombe Retail Park, Ryemead Way, High Wycombe",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.619574,
+  "longitude": -0.719001
+ },
+ {
+  "name": "Aylesbury - EE",
+  "address": "40 Friars Square Shopping Centre, Aylesbury",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.815701,
+  "longitude": -0.813119
+ },
+ {
+  "name": "High Wycombe: Eden - EE",
+  "address": "Unit 3 16 Newland Street Eden Shopping Centre, High Wycombe",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.629633,
+  "longitude": -0.754493
+ },
+ {
+  "name": "Newbury - EE",
+  "address": "25a Northbrook Street, Newbury",
+  "grade": "B",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.403415,
+  "longitude": -1.324253
+ },
+ {
+  "name": "Aylesbury - Vodafone",
+  "address": "21 Market Square, Aylesbury",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.816042,
+  "longitude": -0.812468
+ },
+ {
+  "name": "High Wycombe - Vodafone",
+  "address": "Plot 105 12 Union Parade Eden Shopping Centre, High Wycombe",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.629652,
+  "longitude": -0.753172
+ },
+ {
+  "name": "Newbury Northbrook St - Vodafone",
+  "address": "85 Northbrook Street, Newbury",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.402978,
+  "longitude": -1.324436
+ },
+ {
+  "name": "Witney - Vodafone",
+  "address": "Unit 10 The Woolgate Centre, Witney",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.784968,
+  "longitude": -1.4847
+ },
+ {
+  "name": "Maidenhead - Vodafone",
+  "address": "1 Queens Walk (55 High St), The Nicholson Centre, Maidenhead",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.522748,
+  "longitude": -0.720922
+ },
+ {
+  "name": "Reading The Oracle Centre - Vodafone",
+  "address": "U13 Oracle Centre, Reading",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.454258,
+  "longitude": -0.972426
+ },
+ {
+  "name": "High Wycombe - O2",
+  "address": "Unit 44B, 27 Newland Street, High Wycombe",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.629697,
+  "longitude": -0.755681
+ },
+ {
+  "name": "Aylesbury - O2",
+  "address": "34 Friars Square, Aylesbury",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.815273,
+  "longitude": -0.813481
+ },
+ {
+  "name": "Oxford - O2",
+  "address": "Unit SU9a 218 Queen Street, Westgate Centre, Oxford",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.750771,
+  "longitude": -1.260779
+ },
+ {
+  "name": "Reading - O2",
+  "address": "20 Broad Street, Reading",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.45565,
+  "longitude": -0.973534
+ },
+ {
+  "name": "Maidenhead - O2",
+  "address": "61 High Street, Maidenhead",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.410668,
+  "longitude": -0.672303
+ },
+ {
+  "name": "Didcot - O2",
+  "address": "Unit 22B The Orchard Centre, Didcot",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.606985,
+  "longitude": -1.238805
+ },
+ {
+  "name": "Wokingham - Tesco",
+  "address": "78 Finchampstead Road, Wokingham",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.403644,
+  "longitude": -0.838074
+ },
+ {
+  "name": "Oxford 2 - Tesco",
+  "address": "Unit 7 Oxford Retail, Cowley, Oxford",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.728032,
+  "longitude": -1.203064
+ },
+ {
+  "name": "Abingdon - Tesco",
+  "address": "Marcham Road, Abingdon",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.668667,
+  "longitude": -1.305958
+ },
+ {
+  "name": "Aylesbury - Currys",
+  "address": "Aylesbury Shopping Park, Cambridge Street, Aylesbury",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.819819,
+  "longitude": -0.811249
+ },
+ {
+  "name": "Didcot - EE",
+  "address": "Unit 10 Orchard Centre Station Road, Didcot",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.607392,
+  "longitude": -1.240079
+ },
+ {
+  "name": "Reading: Broad Street - EE",
+  "address": "114/115 Broad Street, Reading",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.455346,
+  "longitude": -0.971821
+ },
+ {
+  "name": "Maidenhead High Street - H3G",
+  "address": "76-78 High Street, Maidenhead",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.522724,
+  "longitude": -0.722051
+ },
+ {
+  "name": "Oxford - Vodafone",
+  "address": "3 Cornmarket St, Oxford",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.752276,
+  "longitude": -1.257748
+ },
+ {
+  "name": "Wokingham - Vodafone",
+  "address": "11 Market Place, Wokingham",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.410148,
+  "longitude": -0.834101
+ },
+ {
+  "name": "High Wycombe Loudwater - Tesco",
+  "address": "London Road, Loudwater, High Wycombe",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.610932,
+  "longitude": -0.702859
+ },
+ {
+  "name": "Oxford: Westgate - EE",
+  "address": "Unit 31 Westgate Shopping Centre, Oxford",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.74957,
+  "longitude": -1.261835
+ },
+ {
+  "name": "John Lewis Oxford",
+  "address": "101 The Westgate, Queen Street, Oxford",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.749507,
+  "longitude": -1.262514
+ },
+ {
+  "name": "Oxford Westgate - H3G",
+  "address": "Unit U49 234 The Westgate, Oxford",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.750858,
+  "longitude": -1.260703
+ },
+ {
+  "name": "Didcot - Vodafone",
+  "address": "9a Orchard Street, Didcot",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.607155,
+  "longitude": -1.239111
+ },
+ {
+  "name": "Witney - O2",
+  "address": "Unit 22 Woolgate Shopping Centre, Witney",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.785116,
+  "longitude": -1.484379
+ },
+ {
+  "name": "Bracknell - Currys",
+  "address": "The Peel Centre, Skimped Hill Lane, Bracknell",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.413976,
+  "longitude": -0.75865
+ },
+ {
+  "name": "Andover - Currys",
+  "address": "Unit 2 Churchill Retail Park, New Street, Andover",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.215174,
+  "longitude": -1.474138
+ },
+ {
+  "name": "Farnborough - Currys",
+  "address": "Unit B Farnborough Gate, Farnborough Road, Farnborough",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.307465,
+  "longitude": -0.747348
+ },
+ {
+  "name": "Sandhurst Extra - Tesco",
+  "address": "The Meadows, Marshall Road, Sandhurst, Surrey",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.336784,
+  "longitude": -0.777852
+ },
+ {
+  "name": "Aldershot - Tesco",
+  "address": "5 Wellington Avenue, Aldershot, Hampshire",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.251115,
+  "longitude": -0.775389
+ },
+ {
+  "name": "Andover Extra - Tesco",
+  "address": "River Way, Andover, Hampshire",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.219715,
+  "longitude": -1.468514
+ },
+ {
+  "name": "Guildford - Tesco",
+  "address": "Ashenden Road, Guildford, Surrey",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.241665,
+  "longitude": -0.599306
+ },
+ {
+  "name": "Fleet - EE",
+  "address": "30B The Hart Ctr, Fleet",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.282039,
+  "longitude": -0.841222
+ },
+ {
+  "name": "Andover - EE",
+  "address": "51/53 High Street The Chantry Centre, Andover",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.208071,
+  "longitude": -1.479167
+ },
+ {
+  "name": "Guildford: High Street - EE",
+  "address": "92 High Street, Guildford",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.235502,
+  "longitude": -0.573159
+ },
+ {
+  "name": "Andover - Vodafone",
+  "address": "39 High Street, Andover",
+  "grade": "B",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.207824,
+  "longitude": -1.479584
+ },
+ {
+  "name": "Camberley - Vodafone",
+  "address": "11 Cambridge Walk, Camberley",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.337542,
+  "longitude": -0.746583
+ },
+ {
+  "name": "Farnborough Princes Mead - Vodafone",
+  "address": "Unit 1 Princes Mead Shopping Centre, Farnborough",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.291874,
+  "longitude": -0.757132
+ },
+ {
+  "name": "Farnham - Vodafone",
+  "address": "32 The Borough, Farnham",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.215036,
+  "longitude": -0.798365
+ },
+ {
+  "name": "Guildford 66 High Street - Vodafone",
+  "address": "66 High Street, Guildford",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.235281,
+  "longitude": -0.574007
+ },
+ {
+  "name": "Basingstoke Festival - Vodafone",
+  "address": "Unit 31A Festival Place, Basingstoke",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.265284,
+  "longitude": -1.0861
+ },
+ {
+  "name": "Basingstoke - H3G",
+  "address": "Unit 34, Wesley Walk, Festival Place, Basingstoke",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.262826,
+  "longitude": -1.086198
+ },
+ {
+  "name": "Camberley - H3G",
+  "address": "Unit 9 Princes Walk, Camberley",
+  "grade": "B",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.339284,
+  "longitude": -0.746098
+ },
+ {
+  "name": "Farnborough - H3G",
+  "address": "Unit 1, 39 Princes Mead, Farnborough",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.291763,
+  "longitude": -0.758031
+ },
+ {
+  "name": "Bracknell - H3G",
+  "address": "48 High Street, Bracknell",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.416815,
+  "longitude": -0.75025
+ },
+ {
+  "name": "Camberley - O2",
+  "address": "1 The Square, The Mall Main Square, Camberley",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.338088,
+  "longitude": -0.746306
+ },
+ {
+  "name": "Guildford - O2",
+  "address": "59 High Street, Guildford",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.235311,
+  "longitude": -0.574947
+ },
+ {
+  "name": "Farnborough - O2",
+  "address": "5 The Meads, Farnborough",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.291375,
+  "longitude": -0.754536
+ },
+ {
+  "name": "Bracknell - O2",
+  "address": "28 Bracknell Walk, Bracknell",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.416246,
+  "longitude": -0.749695
+ },
+ {
+  "name": "Basingstoke - O2",
+  "address": "Unit 31 Main Mall, Festival Place, Basingstoke",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.265671,
+  "longitude": -1.086224
+ },
+ {
+  "name": "Bracknell North - Tesco",
+  "address": "County Lane, Warfield, Bracknell",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.427501,
+  "longitude": -0.73272
+ },
+ {
+  "name": "Basingstoke - Tesco",
+  "address": "District Shopping Cen, Chincham, Basingstoke",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.283126,
+  "longitude": -1.060929
+ },
+ {
+  "name": "Alton - Vodafone",
+  "address": "72 High Street Alton",
+  "grade": "D",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.148399,
+  "longitude": -0.976065
+ },
+ {
+  "name": "Basingstoke - EE",
+  "address": "Unit 33 Wesley Walk Festival Place Shopping Ctr, Basingstoke",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.265642,
+  "longitude": -1.086493
+ },
+ {
+  "name": "Aldershot - EE",
+  "address": "39 Union Street, Aldershot",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.24935,
+  "longitude": -0.764966
+ },
+ {
+  "name": "Farnham - EE",
+  "address": "43 The Borough, Farnham",
+  "grade": "A",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.215244,
+  "longitude": -0.798208
+ },
+ {
+  "name": "Farnborough - EE",
+  "address": "SU4 The Meads, Farnborough",
+  "grade": "B",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.292221,
+  "longitude": -0.754592
+ },
+ {
+  "name": "Camberley - EE",
+  "address": "9 Cambridge Walk Main Square, Camberley",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.33755,
+  "longitude": -0.746694
+ },
+ {
+  "name": "Bracknell (The Lexicon) - Vodafone",
+  "address": "The Lexicon, 336, Bracknell Walk, Bracknell",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.415966,
+  "longitude": -0.749696
+ },
+ {
+  "name": "Guildford - Currys",
+  "address": "Ladymead Retail Park, Guildford",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.248569,
+  "longitude": -0.579354
+ },
+ {
+  "name": "Basingstoke (St. Michael's Retail Park) - Currys",
+  "address": "Unit 5-6 St Michael's Retail Park, The Harrow Way, Basingstoke",
+  "grade": "C",
+  "manager": "Joseph",
+  "vibe": "fun and lively",
+  "latitude": 51.25175,
+  "longitude": -1.10734
+ },
+ {
+  "name": "Slough - Currys",
+  "address": "Unit A Westgate Retail Park, Bath Road, Slough",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.517313,
+  "longitude": -0.627616
+ },
+ {
+  "name": "Chingford - Currys",
+  "address": "Unit 1 Corktree Retail Park, Hall Lane, Chingford",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.630887,
+  "longitude": 0.003996
+ },
+ {
+  "name": "Tottenham Hale - Currys",
+  "address": "Tottenham Hale Retail Park, Broad Lane, Tottenham Hale",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.587753,
+  "longitude": -0.061282
+ },
+ {
+  "name": "Romford - Currys",
+  "address": "Unit 2 Eastern Avenue RP, Romford",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.593442,
+  "longitude": 0.186322
+ },
+ {
+  "name": "Harlow - Currys",
+  "address": "Units 10-11 Queensgate Rp, Edinburgh Way, Harlow",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.784104,
+  "longitude": 0.10789
+ },
+ {
+  "name": "Beckton - Currys",
+  "address": "7 Beckton Triangle Retail Park, 5 Clapsgate Lane, Beckton",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.523591,
+  "longitude": 0.071503
+ },
+ {
+  "name": "Chadwell Heath - Currys",
+  "address": "Unit 5 Goodmayes Retail Park, High Road, Chadwell Heath",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.567743,
+  "longitude": 0.116709
+ },
+ {
+  "name": "Friern Barnet - Currys",
+  "address": "11 Friern Barnet Retail Park, Pegasus Way, Friern Barnet",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.61196,
+  "longitude": -0.144061
+ },
+ {
+  "name": "Slough Wellington Ext - Tesco",
+  "address": "Brunel Way, Wellington Street, Slough",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.510061,
+  "longitude": -0.589436
+ },
+ {
+  "name": "Goodmayes Extra - Tesco",
+  "address": "822 High Road, Romford",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.572974,
+  "longitude": 0.146471
+ },
+ {
+  "name": "Romford Extra - Tesco",
+  "address": "300 Hornchurch Road, Hornchurch",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.565652,
+  "longitude": 0.191796
+ },
+ {
+  "name": "Romford Gallions Cn Ext - Tesco",
+  "address": "Bryant Avenue, Romford",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.588857,
+  "longitude": 0.220638
+ },
+ {
+  "name": "Borehamwood Extra - Tesco",
+  "address": "Shenley Road, Borehamwood",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.659275,
+  "longitude": -0.269358
+ },
+ {
+  "name": "Cheshunt Extra - Tesco",
+  "address": "Brookfield Centre, Cheshunt, Waltham Cross",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.701825,
+  "longitude": -0.034104
+ },
+ {
+  "name": "Gallions Reach Extra - Tesco",
+  "address": "1 Armada Way, Royal Dock Road, Beckton",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.516824,
+  "longitude": 0.075844
+ },
+ {
+  "name": "Colney Hatch Extra - Tesco",
+  "address": "Coppetts Centre, North Circular Road, North Finchley",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.607247,
+  "longitude": -0.154955
+ },
+ {
+  "name": "Lea Valley Extra - Tesco",
+  "address": "1 Glover Drive, Upper Edmonton",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.609983,
+  "longitude": -0.048364
+ },
+ {
+  "name": "Ponders End Extra - Tesco",
+  "address": "288 High Street, Enfield",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.648058,
+  "longitude": -0.047665
+ },
+ {
+  "name": "Waltham Abbey - Tesco",
+  "address": "Sewardstone Road, Waltham Abbey",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.646475,
+  "longitude": -0.010479
+ },
+ {
+  "name": "Enfield - Currys",
+  "address": "De Mandeville Gate, 333 Southbury Road, Enfield",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.647761,
+  "longitude": -0.057464
+ },
+ {
+  "name": "London: Barking - EE",
+  "address": "Unit 16 Ripple Walk Vicarage Fields Shopping Ctr, Barking",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.538992,
+  "longitude": 0.080424
+ },
+ {
+  "name": "London: Beckton - EE",
+  "address": "14A Gallions Reach Beckton, London",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.516581,
+  "longitude": 0.078884
+ },
+ {
+  "name": "London: Crouch End - EE",
+  "address": "50 The Broadway Crouch End, London",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.579734,
+  "longitude": -0.123355
+ },
+ {
+  "name": "London: East Ham - EE",
+  "address": "109 High Street North East Ham, London",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.536226,
+  "longitude": 0.052056
+ },
+ {
+  "name": "Enfield - EE",
+  "address": "19 Church Street, Enfield",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.6522,
+  "longitude": -0.0815
+ },
+ {
+  "name": "Ilford - EE",
+  "address": "163 High Road, Ilford",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.559843,
+  "longitude": 0.071874
+ },
+ {
+  "name": "Romford - EE",
+  "address": "F4 Liberty Shopping Ctr, Romford",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.578175,
+  "longitude": 0.183102
+ },
+ {
+  "name": "Slough - EE",
+  "address": "162 High Street, Slough",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.497918,
+  "longitude": -0.544077
+ },
+ {
+  "name": "Uxbridge - EE",
+  "address": "53 High Street The Pavillions, Uxbridge",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.546584,
+  "longitude": -0.480184
+ },
+ {
+  "name": "London: Wood Green - EE",
+  "address": "14 Cheapside High Road Wood Green, London",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.594579,
+  "longitude": -0.10952
+ },
+ {
+  "name": "Harlow - EE",
+  "address": "Unit 5 Harvey Shopping Ctr, Harlow",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.783763,
+  "longitude": 0.108942
+ },
+ {
+  "name": "London: Tottenham Hale - EE",
+  "address": "UC2 Tottenham Hale Retail Prk Tottenham, London",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.587753,
+  "longitude": -0.061282
+ },
+ {
+  "name": "Enfield - Voda",
+  "address": "21 Church Street. Enfield. Middlesex",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.6522,
+  "longitude": -0.0815
+ },
+ {
+  "name": "Harlow Broadwalk - Voda",
+  "address": "33 Broadwalk. Harlow",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.770338,
+  "longitude": 0.094967
+ },
+ {
+  "name": "Slough - Voda",
+  "address": "139 High Street. Slough",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.509947,
+  "longitude": -0.596703
+ },
+ {
+  "name": "Brentwood II - H3G",
+  "address": "Unit 9, Baytree Centre, Brentwood",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.619327,
+  "longitude": 0.302304
+ },
+ {
+  "name": "Ilford - H3G",
+  "address": "Unit 73, The Exchange Shopping Centre, High Road, Ilford",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.558273,
+  "longitude": 0.071167
+ },
+ {
+  "name": "Uxbridge II - H3G",
+  "address": "119 The Chimes, Uxbridge",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.545445,
+  "longitude": -0.476483
+ },
+ {
+  "name": "Harlow - O2",
+  "address": "35 Broadwalk, HARLOW",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.770338,
+  "longitude": 0.094967
+ },
+ {
+  "name": "Ilford - O2",
+  "address": "Unit 70 Middle Level, The Exchange Centre, ILFORD",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.558273,
+  "longitude": 0.071167
+ },
+ {
+  "name": "Enfield - O2",
+  "address": "Unit 20 Shopping Precinct, Palace Gardens, ENFIELD",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.650953,
+  "longitude": -0.082389
+ },
+ {
+  "name": "Romford - O2",
+  "address": "G14 Lockwood Walk, Liberty Centre, ROMFORD",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.577629,
+  "longitude": 0.183192
+ },
+ {
+  "name": "Uxbridge - O2",
+  "address": "234 The Chimes Shopping Centre, UXBRIDGE",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.545706,
+  "longitude": -0.477538
+ },
+ {
+  "name": "Harlow Church Langley - Tesco",
+  "address": "Church Langley Way, Harlow",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.765923,
+  "longitude": 0.131021
+ },
+ {
+  "name": "Potters Bar - Tesco",
+  "address": "Mutton Lane, Potters Bar",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.692775,
+  "longitude": -0.182298
+ },
+ {
+  "name": "HARLOW EDINBURGH WAY - Tesco",
+  "address": "29 EAST ROAD, HARLOW",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.785513,
+  "longitude": 0.123838
+ },
+ {
+  "name": "Highams Park - Tesco",
+  "address": "405 Larkshall Road, Chingford, Highams Park, London",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.619361,
+  "longitude": -0.000046
+ },
+ {
+  "name": "Uxbridge Chimes Centre - Voda",
+  "address": "Unit 240. Chimes Centre. Uxbridge",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.545598,
+  "longitude": -0.477307
+ },
+ {
+  "name": "Hertford - Tesco",
+  "address": "Ware Rd Hertford",
+  "grade": "B",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.797221,
+  "longitude": -0.07241
+ },
+ {
+  "name": "Ilford The Exchange - Voda",
+  "address": "Unit 67 The Exchange Shopping Centre Ilford Essex",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.559843,
+  "longitude": 0.071874
+ },
+ {
+  "name": "London Wood Green - Voda",
+  "address": "Unit 46 Cavendish Walk Wood Green Shopping City Wood Green London",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.594579,
+  "longitude": -0.10952
+ },
+ {
+  "name": "Barkingside - Voda",
+  "address": "94 High Street, Barkingside",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.590978,
+  "longitude": 0.083121
+ },
+ {
+  "name": "Waltham Cross - Voda",
+  "address": "2 High Street .Waltham Cross",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.6861,
+  "longitude": -0.033116
+ },
+ {
+  "name": "London: Palmers Green - EE",
+  "address": "333 Green Lanes Palmers Green, London",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.61579,
+  "longitude": -0.109588
+ },
+ {
+  "name": "Waltham Cross - EE",
+  "address": "127/129 High Street Waltham Cross, Enfield",
+  "grade": "C",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.682374,
+  "longitude": -0.033438
+ },
+ {
+  "name": "Wood Green - O2",
+  "address": "81 High Road, WOOD GREEN",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.592658,
+  "longitude": -0.106375
+ },
+ {
+  "name": "Brentwood - Voda",
+  "address": "20 High Street, Brentwood",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.620694,
+  "longitude": 0.304304
+ },
+ {
+  "name": "Loughton - Voda",
+  "address": "210 High road, Loughton",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.647809,
+  "longitude": 0.055309
+ },
+ {
+  "name": "Borehamwood - Voda",
+  "address": "2 Keystone Passage, Shenley Road, Borehamwood",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.65553,
+  "longitude": -0.276405
+ },
+ {
+  "name": "Romford SC - H3G",
+  "address": "Unit 5, Liberty Centre, Romford",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.578175,
+  "longitude": 0.183102
+ },
+ {
+  "name": "Edmonton Green - EE",
+  "address": "30 South Mall Edmonton Green SC, London",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.623644,
+  "longitude": -0.058627
+ },
+ {
+  "name": "Wood Green HS - H3G",
+  "address": "Unit 3 The Mall, 88 High Road, Wood Green",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.59424,
+  "longitude": -0.109277
+ },
+ {
+  "name": "Slough HS - H3G",
+  "address": "Unit 2, 188 High St, Slough",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.507716,
+  "longitude": -0.588232
+ },
+ {
+  "name": "London Muswell Hill - Voda",
+  "address": "211 Muswell Hill Broadway, London",
+  "grade": "D",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.592516,
+  "longitude": -0.143269
+ },
+ {
+  "name": "Slough High Street - O2",
+  "address": "146 High Street, Slough",
+  "grade": "A",
+  "manager": "David",
+  "vibe": "reserved",
+  "latitude": 51.483653,
+  "longitude": -0.522189
+ }
+]

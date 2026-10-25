@@ -2,16 +2,20 @@
   "expo": {
     "name": "BOAROUTE",
     "slug": "BOAROUTE",
+    "scheme": "boaroute",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#03070F",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.boanets.boaroute"
     },
     "android": {
+      "package": "com.boanets.boaroute",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#071226",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -19,6 +23,44 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-sqlite",
+      "expo-image",
+      "expo-font",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#03070F"
+        }
+      ],
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#00B3FF",
+          "defaultChannel": "reminders",
+          "enableRemoteNotifications": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BOAROUTE needs your photos so you can attach pictures and videos to store tasks.",
+          "cameraPermission": "BOAROUTE uses the camera so you can photograph displays for your store tasks.",
+          "microphonePermission": "BOAROUTE records sound when you film a video for a store task."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }

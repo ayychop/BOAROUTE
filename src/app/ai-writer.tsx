@@ -1,0 +1,235 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Pressable, Share, View } from 'react-native';
+import Animated, { Easing, FadeInDown, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import type { Mood, WriterContext, WriterResult } from '../../supabase/functions/_shared/writer-prompt';
+import { Field, Segmented } from '@/components/controls';
+import { GlassCard } from '@/components/GlassCard';
+import { NeonButton } from '@/components/NeonButton';
+import { Screen, SectionHeader } from '@/components/Screen';
+import { Txt } from '@/components/Txt';
+import { firstName } from '@/lib/format';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/providers/AuthProvider';
+import { useData } from '@/providers/DataProvider';
+import { draftMessage } from '@/services/functions';
+import { useTheme } from '@/theme/ThemeProvider';
+import { radius } from '@/theme/typography';
+
+const MOODS: { value: Mood; icon: keyof typeof Ionicons.glyphMap; hint: string }[] = [
+  { value: 'Professional', icon: 'briefcase', hint: 'Calm and clear' },
+  { value: 'Urgent', icon: 'alarm', hint: 'Action needed now' },
+  { value: 'Friendly', icon: 'happy', hint: 'Warm and personal' },
+  { value: 'Stern', icon: 'hand-left', hint: 'Firm but fair' },
+];
+
+/** Reveals text a few characters at a time, like a live typist. */
+function useTypewriter(text: string) {
+  // Progress is stored with the text it belongs to, so a new draft restarts from zero.
+  const [progress, setProgress] = useState({ text: '', count: 0 });
+  useEffect(() => {
+    if (!text) return;
+    let i = 0;
+    const step = Math.max(2, Math.round(text.length / 120));
+    const timer = setInterval(() => {
+      i = Math.min(text.length, i + step);
+      setProgress({ text, count: i });
+      if (i >= text.length) clearInterval(timer);
+    }, 16);
+    return () => clearInterval(timer);
+  }, [text]);
+  return progress.text === text ? text.slice(0, progress.count) : '';
+}
+
+function ScanLoader() {
+  const { palette } = useTheme();
+  const x = useSharedValue(0);
+  useEffect(() => {
+    x.value = withRepeat(withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.quad) }), -1, true);
+    return () => cancelAnimation(x);
+  }, [x]);
+  const bar = useAnimatedStyle(() => ({ left: `${x.value * 70}%` }));
+  return (
+    <View style={{ gap: 10, paddingVertical: 8 }} accessibilityLabel="Drafting">
+      <View style={{ height: 4, borderRadius: 2, backgroundColor: palette.border, overflow: 'hidden' }}>
+        <Animated.View style={[{ position: 'absolute', top: 0, bottom: 0, width: '30%', borderRadius: 2, backgroundColor: palette.gold }, bar]} />
+      </View>
+      <Txt variant="label" tone="gold">
+        Composing in your voice
+      </Txt>
+    </View>
+  );
+}
+
+export default function AiWriter() {
+  const { storeId, notes: initialNotes } = useLocalSearchParams<{ storeId?: string; notes?: string }>();
+  const { palette } = useTheme();
+  const { profile } = useAuth();
+  const { stores } = useData();
+  const store = stores.find((s) => s.id === storeId);
+
+  const [context, setContext] = useState<WriterContext>('email');
+  const [mood, setMood] = useState<Mood>('Professional');
+  const [notes, setNotes] = useState(initialNotes ?? '');
+  const [recipient, setRecipient] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<WriterResult | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const typed = useTypewriter(result?.body ?? '');
+
+  const fullText = result ? (result.subject ? `Subject: ${result.subject}\n\n${result.body}` : result.body) : '';
+
+  const draft = async () => {
+    setError(null);
+    if (!notes.trim()) return setError('Jot down a few rough notes first.');
+    setBusy(true);
+    setResult(null);
+    setSaved(false);
+    try {
+      const r = await draftMessage({
+        notes,
+        context,
+        mood,
+        storeName: store?.name ?? null,
+        recipient: context === 'email' ? recipient : null,
+        senderName: firstName(profile?.name, profile?.email),
+      });
+      setResult(r);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not draft right now.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveAsTask = async () => {
+    if (!result) return;
+    setSaving(true);
+    const title = result.subject ?? result.body.split('\n')[0].slice(0, 120) ?? 'AI draft';
+    const { error: err } = await supabase.from('tasks').insert({
+      store_id: storeId ?? null,
+      title: title || 'AI draft',
+      content: result.subject ? result.body : result.body.split('\n').slice(1).join('\n').trim() || result.body,
+      media_urls: [],
+      task_type: context,
+    });
+    setSaving(false);
+    if (err) return setError(err.message);
+    setSaved(true);
+  };
+
+  return (
+    <Screen back kicker={store ? store.name : 'AI Typer'} title="Draft a Message">
+      <SectionHeader title="1 · What are you writing?" />
+      <Segmented
+        big
+        value={context}
+        onChange={setContext}
+        options={[
+          { value: 'note', label: 'Note', icon: 'document-text' },
+          { value: 'email', label: 'Email', icon: 'mail' },
+        ]}
+      />
+
+      <SectionHeader title="2 · Mood" />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {MOODS.map((m, i) => {
+          const active = mood === m.value;
+          return (
+            <Animated.View key={m.value} entering={FadeInDown.delay(i * 60)} style={{ flexGrow: 1, flexBasis: 140 }}>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${m.value} mood`}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setMood(m.value);
+                }}
+                style={{
+                  borderRadius: radius.md,
+                  borderWidth: active ? 2 : 1,
+                  borderColor: active ? palette.gold : palette.border,
+                  backgroundColor: active ? palette.goldGlow : palette.surface,
+                  padding: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Ionicons name={m.icon} size={20} color={active ? palette.text : palette.gold} />
+                <View style={{ flex: 1 }}>
+                  <Txt variant="strong">{m.value}</Txt>
+                  <Txt variant="caption" tone={active ? 'default' : 'faint'} numberOfLines={1}>
+                    {m.hint}
+                  </Txt>
+                </View>
+              </Pressable>
+            </Animated.View>
+          );
+        })}
+      </View>
+
+      <SectionHeader title="3 · Your rough notes" />
+      <GlassCard>
+        {context === 'email' && <Field label="To (optional)" icon="person-outline" value={recipient} onChangeText={setRecipient} placeholder="e.g. Dave, store manager" autoCapitalize="words" />}
+        <Field label="Notes" value={notes} onChangeText={setNotes} multiline placeholder="e.g. promo bay half empty, 14 units in back, need restock by fri, staff great" maxLength={6000} />
+        {error ? (
+          <Txt variant="caption" tone="danger" style={{ marginBottom: 12 }}>
+            {error}
+          </Txt>
+        ) : null}
+        <NeonButton label={result ? 'Rewrite again' : 'Draft with AI'} icon="sparkles" variant="gold" onPress={draft} loading={busy} size="lg" full />
+      </GlassCard>
+
+      {(busy || result) && (
+        <View>
+          <SectionHeader title="Your draft" />
+          <GlassCard glow="gold">
+            {busy ? (
+              <ScanLoader />
+            ) : result ? (
+              <>
+                {result.subject ? (
+                  <View style={{ marginBottom: 10 }}>
+                    <Txt variant="label" tone="gold">
+                      Subject
+                    </Txt>
+                    <Txt variant="heading" selectable>
+                      {result.subject}
+                    </Txt>
+                  </View>
+                ) : null}
+                <Txt variant="body" selectable style={{ lineHeight: 24 }}>
+                  {typed}
+                  {typed.length < result.body.length ? <Txt tone="gold">▍</Txt> : null}
+                </Txt>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+                  <NeonButton
+                    size="sm"
+                    icon={copied ? 'checkmark' : 'copy'}
+                    label={copied ? 'Copied' : 'Copy'}
+                    onPress={async () => {
+                      await Clipboard.setStringAsync(fullText);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                  />
+                  <NeonButton size="sm" variant="subtle" icon="share-social" label="Share" onPress={() => Share.share({ message: fullText, title: result.subject ?? undefined }).catch(() => {})} />
+                  <NeonButton size="sm" variant="subtle" icon={saved ? 'checkmark-done' : 'bookmark'} label={saved ? 'Saved to tasks' : 'Save as task'} onPress={saveAsTask} loading={saving} disabled={saved} />
+                  {saved && storeId ? <NeonButton size="sm" variant="ghost" label="Back to store" onPress={() => router.back()} /> : null}
+                </View>
+              </>
+            ) : null}
+          </GlassCard>
+        </View>
+      )}
+    </Screen>
+  );
+}
