@@ -52,6 +52,9 @@ export default function Navigate() {
 
   const [origin, setOrigin] = useState<LatLng | null>(req && req.from !== 'here' ? req.from : null);
   const [error, setError] = useState<string | null>(null);
+  // Asked once up front: Google Maps on Android throws if the blue location dot
+  // is switched on before the permission is granted, so the map waits for this.
+  const [locPerm, setLocPerm] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [options, setOptions] = useState<RouteOptionsResult | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [choice, setChoice] = useState<'motorway' | 'standard'>(req?.prefer ?? 'motorway');
@@ -81,14 +84,23 @@ export default function Navigate() {
   const other: RouteOption | null = options && options.motorway.available && !options.identical ? (option === options.motorway ? options.standard : options.motorway) : null;
   const prepared = useMemo(() => (option ? prepareRoute(option.geometry, option.steps) : null), [option]);
 
+  // 0. Location permission, before the map renders.
+  useEffect(() => {
+    let alive = true;
+    Location.requestForegroundPermissionsAsync()
+      .then((perm) => alive && setLocPerm(perm.granted ? 'granted' : 'denied'))
+      .catch(() => alive && setLocPerm('denied'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // 1. Where are we starting from?
   useEffect(() => {
-    if (!req || req.from !== 'here') return;
+    if (!req || req.from !== 'here' || locPerm !== 'granted') return;
     let alive = true;
     (async () => {
       try {
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (!perm.granted) throw new Error('Location is off for BOAROUTE. Allow it to navigate from where you are.');
         const last = await Location.getLastKnownPositionAsync({ maxAge: 60_000 });
         const fix = last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }));
         if (alive) setOrigin({ lat: fix.coords.latitude, lng: fix.coords.longitude });
@@ -99,7 +111,7 @@ export default function Navigate() {
     return () => {
       alive = false;
     };
-  }, [req]);
+  }, [req, locPerm]);
 
   // 2. Plan with live traffic.
   const plan = useCallback(async (from: LatLng, stops: NavDestination[]) => {
@@ -320,15 +332,16 @@ export default function Navigate() {
   const arrival = new Date(nowMs + remainingS * 1000);
   const liveHazards = hazards.filter((h) => isLiveHazard(h, nowMs));
   const destination = waypoints[waypoints.length - 1];
+  const shownError = error ?? (req?.from === 'here' && locPerm === 'denied' ? 'Location is off for BOAROUTE. Allow it to navigate from where you are.' : null);
 
-  const map = MAPS_READY ? (
+  const map = MAPS_READY && locPerm !== 'pending' ? (
     <MapView
       ref={mapRef}
       style={StyleSheet.absoluteFill}
       provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
       customMapStyle={COCKPIT_MAP_STYLE}
       userInterfaceStyle="dark"
-      showsUserLocation
+      showsUserLocation={locPerm === 'granted'}
       showsMyLocationButton={false}
       showsCompass={false}
       toolbarEnabled={false}
@@ -453,10 +466,10 @@ export default function Navigate() {
           width: Math.min(640, width - insets.left - insets.right - 24),
         }}
       >
-        {error ? (
+        {shownError ? (
           <View style={{ gap: 12 }}>
             <Txt variant="body" tone="danger">
-              {error}
+              {shownError}
             </Txt>
             <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
               <NeonButton label="Open settings" variant="subtle" onPress={() => Linking.openSettings().catch(() => {})} />
