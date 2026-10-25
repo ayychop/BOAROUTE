@@ -747,3 +747,104 @@ alter table public.profiles add constraint profiles_standard_budget_check
 alter table public.profiles drop constraint if exists profiles_sales_day_budget_check;
 alter table public.profiles add constraint profiles_sales_day_budget_check
   check (sales_day_budget between 0 and 5000);
+
+-- ---------------------------------------------------------------------
+-- 13. Crowdsourced hazard reports (police, speed cameras, accidents, hazards)
+--     Everyone on the team sees active reports. Anyone can report from where
+--     they are; reports cannot be backdated. Clearing goes through
+--     clear_hazard(), which records who cleared it, so clients get no
+--     direct update rights. The app shows reports from the last 2 hours.
+-- ---------------------------------------------------------------------
+create table if not exists public.hazard_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  hazard_type text not null check (hazard_type in ('police', 'speed_camera', 'accident', 'hazard')),
+  latitude double precision not null check (latitude between -90 and 90),
+  longitude double precision not null check (longitude between -180 and 180),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  cleared_by uuid references auth.users (id) on delete set null,
+  cleared_at timestamptz
+);
+
+-- Upgrade a table created earlier by hand (no defaults, numeric coordinates,
+-- an open update policy): add the missing columns, defaults and checks.
+alter table public.hazard_reports add column if not exists cleared_by uuid references auth.users (id) on delete set null;
+alter table public.hazard_reports add column if not exists cleared_at timestamptz;
+alter table public.hazard_reports alter column latitude type double precision using latitude::double precision;
+alter table public.hazard_reports alter column longitude type double precision using longitude::double precision;
+alter table public.hazard_reports alter column user_id set default auth.uid();
+update public.hazard_reports set is_active = true where is_active is null;
+alter table public.hazard_reports alter column is_active set default true;
+alter table public.hazard_reports alter column is_active set not null;
+alter table public.hazard_reports alter column created_at set default now();
+
+-- NOT VALID: enforce on new rows without failing on anything already stored.
+alter table public.hazard_reports drop constraint if exists hazard_reports_hazard_type_check;
+alter table public.hazard_reports add constraint hazard_reports_hazard_type_check
+  check (hazard_type in ('police', 'speed_camera', 'accident', 'hazard')) not valid;
+alter table public.hazard_reports drop constraint if exists hazard_reports_latitude_check;
+alter table public.hazard_reports add constraint hazard_reports_latitude_check
+  check (latitude between -90 and 90) not valid;
+alter table public.hazard_reports drop constraint if exists hazard_reports_longitude_check;
+alter table public.hazard_reports add constraint hazard_reports_longitude_check
+  check (longitude between -180 and 180) not valid;
+
+create index if not exists hazard_reports_active_recent_idx
+  on public.hazard_reports (created_at desc) where is_active;
+
+-- Hand-made policies from earlier: the open update policy let anyone edit any
+-- report (move it, retype it, keep it alive), and the read policy included anon.
+drop policy if exists "Anyone can view hazards" on public.hazard_reports;
+drop policy if exists "Users can insert hazards" on public.hazard_reports;
+drop policy if exists "Users can update hazards" on public.hazard_reports;
+
+alter table public.hazard_reports enable row level security;
+
+drop policy if exists "hazard_reports: team read" on public.hazard_reports;
+create policy "hazard_reports: team read" on public.hazard_reports
+  for select to authenticated
+  using (true);
+
+-- Report as yourself, timestamped now, at most 10 reports in 10 minutes.
+drop policy if exists "hazard_reports: insert own" on public.hazard_reports;
+create policy "hazard_reports: insert own" on public.hazard_reports
+  for insert to authenticated
+  with check (
+    user_id = (select auth.uid())
+    and is_active
+    and cleared_by is null
+    and cleared_at is null
+    and created_at between now() - interval '5 minutes' and now() + interval '1 minute'
+    and (
+      select count(*) from public.hazard_reports h
+      where h.user_id = (select auth.uid()) and h.created_at > now() - interval '10 minutes'
+    ) < 10
+  );
+
+create or replace function public.clear_hazard(p_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_rows integer;
+begin
+  if v_uid is null then
+    raise exception 'Please sign in again';
+  end if;
+  update public.hazard_reports
+     set is_active = false, cleared_by = v_uid, cleared_at = now()
+   where id = p_id and is_active;
+  get diagnostics v_rows = row_count;
+  return v_rows > 0;
+end;
+$$;
+
+revoke execute on function public.clear_hazard(uuid) from public, anon;
+grant execute on function public.clear_hazard(uuid) to authenticated;
+
+-- Make the new table and function visible to the API straight away.
+notify pgrst, 'reload schema';

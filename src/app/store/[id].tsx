@@ -16,10 +16,10 @@ import { TaskCard } from '@/components/TaskCard';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
-import { openMaps } from '@/lib/external';
 import { localDateString } from '@/lib/budget';
 import { daysSinceLabel } from '@/lib/format';
-import { legDirectionsUrl, searchUrl } from '@/lib/navigation';
+import { geocode } from '@/lib/geo';
+import { encodeNavRequest } from '@/lib/nav-request';
 import { hasCoords, toLatLng } from '@/lib/route-engine';
 import { supabase } from '@/lib/supabaseClient';
 import type { Task } from '@/lib/types';
@@ -41,6 +41,7 @@ export default function StoreDetail() {
   const [addrError, setAddrError] = useState<string | null>(null);
   const [addrNotice, setAddrNotice] = useState<string | null>(null);
   const [visitBusy, setVisitBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -82,6 +83,20 @@ export default function StoreDetail() {
       </Screen>
     );
   }
+
+  // In-app navigation from where the phone is. Stores without a map pin are looked up by address first.
+  const onNavigate = async () => {
+    let point = hasCoords(store) ? toLatLng(store) : null;
+    if (!point) {
+      if (!store.address?.trim()) return Alert.alert('No address yet', 'Tap Edit Address to add one, then you can navigate here.');
+      setLocating(true);
+      point = await geocode(`${store.name}, ${store.address}`).catch(() => null);
+      if (!point) point = await geocode(store.address).catch(() => null);
+      setLocating(false);
+      if (!point) return Alert.alert('Address not found', 'We could not place this address on the map. Adding a postcode usually fixes it.');
+    }
+    router.push({ pathname: '/navigate', params: { req: encodeNavRequest({ from: 'here', to: [{ ...point, label: store.name }], prefer: 'motorway', title: store.name }) } });
+  };
 
   const saveAddress = async () => {
     setAddrError(null);
@@ -234,27 +249,7 @@ export default function StoreDetail() {
               </Txt>
             ) : null}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-              <NeonButton
-                size="sm"
-                variant="subtle"
-                icon="navigate"
-                label="Navigate"
-                onPress={() => {
-                  if (hasCoords(store)) return openMaps(legDirectionsUrl(toLatLng(store)));
-                  if (!store.address?.trim()) return Alert.alert('No address yet', 'Tap Edit Address to add one, then you can navigate here.');
-                  openMaps(searchUrl(`${store.name}, ${store.address}`));
-                }}
-              />
-              <NeonButton
-                size="sm"
-                variant="subtle"
-                icon="map"
-                label="View on map"
-                onPress={() => {
-                  if (!store.address?.trim() && !hasCoords(store)) return Alert.alert('No address yet', 'Tap Edit Address to add one first.');
-                  openMaps(searchUrl(`${store.name}, ${store.address ?? ''}`.trim()));
-                }}
-              />
+              <NeonButton size="sm" variant="gold" icon="navigate" label="Navigate" onPress={onNavigate} loading={locating} />
             </View>
           </>
         )}

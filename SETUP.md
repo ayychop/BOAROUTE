@@ -40,16 +40,36 @@ npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_SUPABASE_
 ```
 npx supabase login
 npx supabase link --project-ref <project-ref>
-npx supabase secrets set MAPBOX_ACCESS_TOKEN=<mapbox token> ANTHROPIC_API_KEY=<anthropic key>
+npx supabase secrets set GOOGLE_MAPS_API_KEY=<directions key> ANTHROPIC_API_KEY=<anthropic key>
 npx supabase functions deploy route-options
 npx supabase functions deploy ai-writer
 ```
 
-- `route-options` uses the Mapbox Directions API (`driving-traffic` profile) for live
-  traffic and road classes. Without it the app falls back to clearly labelled
-  offline estimates.
+- `route-options` calls the Google Directions API with `departure_time=now` and
+  `traffic_model=best_guess` for live traffic, plus turn-by-turn steps for the in-app
+  navigator. Its key stays on the server and never ships in the app. If only
+  `MAPBOX_ACCESS_TOKEN` is set it uses Mapbox instead. With neither, the app falls back
+  to clearly labelled offline estimates.
 - `ai-writer` uses Claude (`claude-opus-5-5`) with server-side refusal fallback enabled.
   The prompt forbids em dashes and the output is cleaned again before it is returned.
+
+## 3b. In-app map (Google Maps SDK for Android)
+
+The map is drawn by Google Maps, which needs a key inside the APK. Use a separate key
+from the Directions one and restrict it in Google Cloud Console to **Android apps**,
+package `com.boanets.boaroute` plus the SHA-1 shown by `npx eas-cli@latest credentials`,
+with only "Maps SDK for Android" enabled.
+
+```
+# .env.local (local builds)
+GOOGLE_MAPS_API_KEY=<android maps key>
+
+# EAS builds
+npx eas-cli@latest env:create --environment preview --name GOOGLE_MAPS_API_KEY --value <android maps key> --visibility sensitive
+```
+
+Without this key the build still works: the navigator shows the HUD route view instead
+of the live map, and every other feature is unchanged.
 
 ## 4. Build
 

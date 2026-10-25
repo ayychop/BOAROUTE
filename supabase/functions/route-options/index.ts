@@ -1,9 +1,11 @@
 // route-options: live-traffic driving options for a multi-stop day route.
-// For every leg it asks Mapbox (driving-traffic profile) for alternatives,
-// then builds a motorway-preferred option and a standard fastest option.
-// Secrets: MAPBOX_ACCESS_TOKEN (supabase secrets set MAPBOX_ACCESS_TOKEN=...)
+// For every leg it asks Google Directions (departure_time=now,
+// traffic_model=best_guess) for alternatives, falling back to Mapbox
+// driving-traffic, then builds a motorway-preferred and a standard option
+// with turn-by-turn steps for the in-app navigator.
+// Secrets: GOOGLE_MAPS_API_KEY (preferred) or MAPBOX_ACCESS_TOKEN.
 import { corsHeaders, json, requireUser } from '../_shared/http.ts';
-import { buildRouteOptions, type MapboxRoute } from '../_shared/route-analysis.ts';
+import { buildRouteOptions, googleRouteToMapbox, type GoogleRoute, type MapboxRoute } from '../_shared/route-analysis.ts';
 
 const MAX_POINTS = 12;
 
@@ -25,6 +27,27 @@ function parsePoints(body: unknown): Point[] {
     }
     return { lat, lng };
   });
+}
+
+async function fetchGoogleLeg(from: Point, to: Point, key: string): Promise<MapboxRoute[]> {
+  const params = new URLSearchParams({
+    origin: `${from.lat},${from.lng}`,
+    destination: `${to.lat},${to.lng}`,
+    mode: 'driving',
+    alternatives: 'true',
+    departure_time: 'now',
+    traffic_model: 'best_guess',
+    region: 'uk',
+    units: 'metric',
+    key,
+  });
+  const res = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
+  if (!res.ok) throw new Error(`Google ${res.status}`);
+  const data = await res.json();
+  if (data.status !== 'OK' || !Array.isArray(data.routes) || data.routes.length === 0) {
+    throw new Error(`Google returned ${data.status ?? 'no routes'}${data.error_message ? `: ${data.error_message}` : ''}`);
+  }
+  return (data.routes as GoogleRoute[]).map(googleRouteToMapbox);
 }
 
 async function fetchLeg(from: Point, to: Point, token: string): Promise<MapboxRoute[]> {
@@ -52,8 +75,9 @@ Deno.serve(async (req) => {
   const userId = await requireUser(req);
   if (!userId) return json({ error: 'Please sign in again' }, 401);
 
+  const googleKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
   const token = Deno.env.get('MAPBOX_ACCESS_TOKEN');
-  if (!token) return json({ error: 'Live routing is not configured yet.' }, 503);
+  if (!googleKey && !token) return json({ error: 'Live routing is not configured yet.' }, 503);
 
   let points: Point[];
   try {
@@ -63,8 +87,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const legs = await Promise.all(points.slice(1).map((to, i) => fetchLeg(points[i], to, token)));
-    return json(buildRouteOptions(legs));
+    if (googleKey) {
+      try {
+        const legs = await Promise.all(points.slice(1).map((to, i) => fetchGoogleLeg(points[i], to, googleKey)));
+        return json(buildRouteOptions(legs, new Date(), 'google'));
+      } catch (error) {
+        if (!token) throw error;
+        console.error('route-options google, falling back to mapbox:', error);
+      }
+    }
+    const legs = await Promise.all(points.slice(1).map((to, i) => fetchLeg(points[i], to, token as string)));
+    return json(buildRouteOptions(legs, new Date(), 'mapbox'));
   } catch (error) {
     console.error('route-options:', error);
     return json({ error: 'Live traffic routing is unavailable right now.' }, 502);

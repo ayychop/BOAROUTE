@@ -11,6 +11,8 @@ export interface MapboxStep {
   ref?: string;
   geometry?: { coordinates: LngLat[] };
   intersections?: { mapbox_streets_v8?: { class?: string } }[];
+  /** Turn instruction and where it happens (present when steps are requested). */
+  maneuver?: { instruction?: string; location?: LngLat };
 }
 
 /** Subset of a Mapbox Directions API route that we rely on. */
@@ -174,6 +176,15 @@ export interface OptionLeg {
   via: LngLat | null;
 }
 
+/** One turn-by-turn instruction for in-app navigation. */
+export interface NavStep {
+  instruction: string;
+  distanceM: number;
+  durationS: number;
+  /** Where the manoeuvre happens. */
+  location: LngLat;
+}
+
 export interface RouteOption {
   kind: 'motorway' | 'standard';
   available: boolean;
@@ -185,10 +196,12 @@ export interface RouteOption {
   roads: string[];
   legs: OptionLeg[];
   geometry: LngLat[];
+  /** Turn-by-turn steps for the in-app navigator (empty for estimates). */
+  steps: NavStep[];
 }
 
 export interface RouteOptionsResult {
-  source: 'mapbox' | 'estimate';
+  source: 'google' | 'mapbox' | 'estimate';
   motorway: RouteOption;
   standard: RouteOption;
   /** Both options follow exactly the same roads. */
@@ -220,11 +233,24 @@ function sumOption(kind: RouteOption['kind'], picks: { stats: RouteStats; route:
       via: p.via,
     })),
     geometry: picks.flatMap((p) => p.route.geometry?.coordinates ?? []),
+    steps: picks.flatMap((p) => routeSteps(p.route)),
   };
 }
 
+function routeSteps(route: MapboxRoute): NavStep[] {
+  const out: NavStep[] = [];
+  for (const leg of route.legs) {
+    for (const step of leg.steps) {
+      const location = step.maneuver?.location ?? step.geometry?.coordinates[0];
+      const instruction = step.maneuver?.instruction?.trim();
+      if (location && instruction) out.push({ instruction, distanceM: step.distance, durationS: step.duration, location });
+    }
+  }
+  return out;
+}
+
 /** Builds the two whole-day options from per-leg alternatives. */
-export function buildRouteOptions(legsAlternatives: MapboxRoute[][], now = new Date()): RouteOptionsResult {
+export function buildRouteOptions(legsAlternatives: MapboxRoute[][], now = new Date(), source: RouteOptionsResult['source'] = 'mapbox'): RouteOptionsResult {
   const choices = legsAlternatives.map(chooseLeg);
 
   const standard = sumOption(
@@ -246,5 +272,107 @@ export function buildRouteOptions(legsAlternatives: MapboxRoute[][], now = new D
   motorway.available = fastKm >= MIN_MOTORWAY_KM;
   const identical = choices.every((c) => !c.significant || c.motorwayIndex === c.standardIndex);
 
-  return { source: 'mapbox', motorway, standard, identical, generatedAt: now.toISOString() };
+  return { source, motorway, standard, identical, generatedAt: now.toISOString() };
+}
+
+// ---------------------------------------------------------------------------
+// Google Directions adapter: converts Google routes into the shape analysed
+// above, so the motorway-preferred logic is identical for both providers.
+
+/** Subset of a Google Directions API route that we rely on. */
+export interface GoogleRoute {
+  legs: {
+    distance: { value: number };
+    duration: { value: number };
+    /** Present when departure_time is set: the live-traffic duration. */
+    duration_in_traffic?: { value: number };
+    steps: {
+      distance: { value: number };
+      duration: { value: number };
+      html_instructions?: string;
+      polyline: { points: string };
+      start_location: { lat: number; lng: number };
+    }[];
+  }[];
+}
+
+/** Decodes a Google encoded polyline into [lng, lat] pairs. */
+export function decodePolyline(encoded: string): LngLat[] {
+  const out: LngLat[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    for (const axis of [0, 1]) {
+      let result = 0;
+      let shift = 0;
+      let byte: number;
+      do {
+        byte = encoded.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20 && index < encoded.length);
+      const delta = result & 1 ? ~(result >> 1) : result >> 1;
+      if (axis === 0) lat += delta;
+      else lng += delta;
+    }
+    out.push([lng / 1e5, lat / 1e5]);
+  }
+  return out;
+}
+
+/** Plain text from Google's HTML instructions ("Turn <b>left</b> onto <b>A404</b>"). */
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<div[^>]*>/gi, '. ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .replace(/(\. )+/g, '. ')
+    .trim();
+}
+
+/**
+ * Google has no road class, so it comes from UK road numbers in the
+ * instruction: M roads and A(M) are motorways, A roads primary, B roads
+ * secondary, and unnumbered roads count as lanes and streets.
+ */
+export function googleRoadClass(text: string): string {
+  if (/\bM\d+\b/.test(text) || /\bA\d+\(M\)/.test(text)) return 'motorway';
+  if (/\bA\d+\b/.test(text)) return 'primary';
+  if (/\bB\d+\b/.test(text)) return 'secondary';
+  return 'street';
+}
+
+export function googleRouteToMapbox(route: GoogleRoute): MapboxRoute {
+  let distance = 0;
+  let duration = 0;
+  let typical = 0;
+  const coordinates: LngLat[] = [];
+  const legs = route.legs.map((leg) => {
+    const live = leg.duration_in_traffic?.value ?? leg.duration.value;
+    // Spread the live-traffic delay across the leg's steps.
+    const ratio = leg.duration.value > 0 ? live / leg.duration.value : 1;
+    distance += leg.distance.value;
+    duration += live;
+    typical += leg.duration.value;
+    const steps: MapboxStep[] = leg.steps.map((st) => {
+      const text = stripHtml(st.html_instructions ?? '');
+      const coords = decodePolyline(st.polyline.points);
+      coordinates.push(...coords);
+      const numbers = text.match(/\b[MAB]\d+(\(M\))?/g) ?? [];
+      return {
+        distance: st.distance.value,
+        duration: st.duration.value * ratio,
+        ref: numbers.join(';'),
+        name: text,
+        geometry: { coordinates: coords },
+        intersections: [{ mapbox_streets_v8: { class: googleRoadClass(text) } }],
+        maneuver: { instruction: text, location: [st.start_location.lng, st.start_location.lat] },
+      };
+    });
+    return { steps };
+  });
+  return { distance, duration, duration_typical: typical, geometry: { coordinates }, legs };
 }

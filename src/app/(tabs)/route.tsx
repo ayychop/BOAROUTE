@@ -13,15 +13,13 @@ import { RouteOptionCard } from '@/components/RouteOptionCard';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { StartPointPicker } from '@/components/StartPointPicker';
 import { Txt } from '@/components/Txt';
+import { useHomePoint } from '@/hooks/useHomePoint';
 import { useLayout } from '@/hooks/useLayout';
 import { localDateString } from '@/lib/budget';
-import { openMaps } from '@/lib/external';
 import { formatMinutes, formatMiles, kmToMiles } from '@/lib/format';
-import { geocode } from '@/lib/geo';
-import { legDirectionsUrl, optionDirectionsUrl } from '@/lib/navigation';
+import { encodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { getPref, setPref } from '@/lib/prefs';
 import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, hasCoords, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
-import type { LatLng } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { fetchRouteOptions } from '@/services/functions';
@@ -32,49 +30,12 @@ function readStops(): number {
   return Number.isInteger(n) && n >= 1 && n <= MAX_STOPS_LIMIT ? n : DEFAULT_MAX_STOPS;
 }
 
-function readCachedPoint(location: string): LatLng | null {
-  const cached = getPref(`start.${location.toUpperCase()}`);
-  if (!cached) return null;
-  try {
-    const p = JSON.parse(cached);
-    return Number.isFinite(p?.lat) && Number.isFinite(p?.lng) ? p : null;
-  } catch {
-    return null;
-  }
-}
-
-function useStartPoint(location: string | null | undefined) {
-  const cached = useMemo(() => (location ? readCachedPoint(location) : null), [location]);
-  // Geocode results are stored with the location they belong to.
-  const [lookup, setLookup] = useState<{ location: string; point: LatLng | null } | null>(null);
-
-  useEffect(() => {
-    if (!location || cached) return;
-    let alive = true;
-    geocode(location).then((p) => {
-      if (!alive) return;
-      if (p) setPref(`start.${location.toUpperCase()}`, JSON.stringify(p));
-      setLookup({ location, point: p });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [location, cached]);
-
-  if (!location) return { point: null, error: 'Set your starting location in Me > Starting location.' };
-  if (cached) return { point: cached, error: null };
-  if (lookup?.location !== location) return { point: null, error: null };
-  return lookup.point
-    ? { point: lookup.point, error: null }
-    : { point: null, error: `Could not locate "${location}". Check your connection or update your starting location.` };
-}
-
 export default function RouteScreen() {
   const { palette } = useTheme();
   const { profile } = useAuth();
   const { myStores, tallies, targets, logVisit, loading } = useData();
   const { contentWidth, expanded, compact } = useLayout();
-  const { point: home, error: homeError } = useStartPoint(profile?.starting_location);
+  const { point: home, error: homeError } = useHomePoint(profile?.starting_location);
   const [maxStops, setMaxStops] = useState(readStops);
   const [returnHome, setReturnHome] = useState(getPref('route.returnHome') !== 'false');
   // "Start route from": home by default, or a store on the patch.
@@ -128,15 +89,26 @@ export default function RouteScreen() {
   const liveError = current?.liveError ?? null;
   const fetching = points.length >= 2 && !current;
 
-  const live = options?.source === 'mapbox';
+  const live = !!options && options.source !== 'estimate';
   const motorwayAvailable = !!options?.motorway.available;
   const activeOption = options ? (selected === 'motorway' && motorwayAvailable ? options.motorway : options.standard) : null;
 
-  const startNavigation = async () => {
-    if (!points.length) return;
-    const url = optionDirectionsUrl(points, activeOption);
-    await openMaps(url);
+  // In-app navigation from wherever the phone is; the navigator reroutes if that is not the planned start.
+  const startNavigation = () => {
+    if (!plan || plan.stops.length === 0) return;
+    const to: NavDestination[] = plan.stops.map((s) => ({ ...toLatLng(s.store), label: s.store.name }));
+    if (plan.end) to.push({ ...plan.end, label: 'Home' });
+    router.push({
+      pathname: '/navigate',
+      params: { req: encodeNavRequest({ from: 'here', to, prefer: selected === 'motorway' && motorwayAvailable ? 'motorway' : 'standard', title: `Today's route · ${plan.stops.length} stops` }) },
+    });
   };
+
+  const navigateTo = (store: { name: string; latitude: number | null; longitude: number | null }) =>
+    router.push({
+      pathname: '/navigate',
+      params: { req: encodeNavRequest({ from: 'here', to: [{ lat: store.latitude as number, lng: store.longitude as number, label: store.name }], prefer: 'motorway', title: store.name }) },
+    });
 
   const markVisited = async (storeId: string) => {
     setBusyStop(storeId);
@@ -153,6 +125,25 @@ export default function RouteScreen() {
   const mapH = Math.round(Math.min(mapW * (compact ? 0.62 : 0.7), 420));
 
   const startPicker = <StartPointPicker stores={myStores} selectedId={startStore?.id ?? null} homeLabel={profile?.starting_location ?? 'not set'} onChange={chooseStart} />;
+
+  const goAnywhere = (
+    <GlassCard glow="gold" onPress={() => router.push('/go-anywhere')} accessibilityLabel="Go Anywhere" animateIn={false}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.goldGlow, borderWidth: 1, borderColor: palette.borderStrong }}>
+          <Ionicons name="navigate" size={22} color={palette.gold} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="title" numberOfLines={1}>
+            Go Anywhere
+          </Txt>
+          <Txt variant="caption" tone="dim" numberOfLines={2}>
+            Premium routing. Motorways preferred, country lanes avoided.
+          </Txt>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={palette.textFaint} />
+      </View>
+    </GlassCard>
+  );
 
   const settings = (
     <GlassCard index={0}>
@@ -210,6 +201,8 @@ export default function RouteScreen() {
   if (plan.stops.length === 0) {
     return (
       <Screen inTabs title="Today's route" kicker="Route engine">
+        {goAnywhere}
+        <View style={{ height: 12 }} />
         {startPicker}
         <View style={{ height: 12 }} />
         {settings}
@@ -272,7 +265,10 @@ export default function RouteScreen() {
   return (
     <Screen inTabs title="Today's route" kicker={`${plan.stops.length} stops · ${plan.visitsRemaining} visits owed this month`}>
       <DataErrorBanner />
-      <View style={{ marginBottom: 12 }}>{startPicker}</View>
+      <View style={{ marginBottom: 12, gap: 12 }}>
+        {goAnywhere}
+        {startPicker}
+      </View>
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
           <View style={{ gap: 12 }}>
@@ -323,7 +319,7 @@ export default function RouteScreen() {
                   </View>
                 </View>
                 <View style={{ gap: 8 }}>
-                  <IconButton icon="navigate" label={`Navigate to ${stop.store.name}`} tone="primary" onPress={() => openMaps(legDirectionsUrl(toLatLng(stop.store), leg?.via ?? null))} />
+                  <IconButton icon="navigate" label={`Navigate to ${stop.store.name}`} tone="primary" onPress={() => navigateTo(stop.store)} />
                   <IconButton icon={doneToday ? 'checkmark-done' : 'checkmark'} label={`Mark ${stop.store.name} visited`} tone={doneToday ? 'gold' : 'default'} onPress={() => (busyStop ? undefined : markVisited(stop.store.id))} />
                 </View>
               </View>

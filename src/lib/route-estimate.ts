@@ -21,6 +21,7 @@ export function estimateRouteOptions(points: LatLng[], now = new Date()): RouteO
     roads: [],
     legs,
     geometry,
+    steps: [],
   };
   return {
     source: 'estimate',

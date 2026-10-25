@@ -93,6 +93,8 @@ function RootNavigator() {
           <Stack.Screen name="my-stores" options={{ animation: PUSH }} />
           <Stack.Screen name="working-days" options={{ animation: PUSH }} />
           <Stack.Screen name="budget-settings" options={{ animation: PUSH }} />
+          <Stack.Screen name="go-anywhere" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="navigate" options={{ animation: 'fade', gestureEnabled: false }} />
         </Stack.Protected>
       </Stack>
     </Animated.View>
