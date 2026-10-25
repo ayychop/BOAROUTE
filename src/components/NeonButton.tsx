@@ -37,7 +37,7 @@ export function NeonButton({ label, onPress, variant = 'primary', icon, loading,
   const iconColor = variant === 'gold' ? palette.goldText : variant === 'primary' ? palette.primaryText : variant === 'danger' ? palette.primaryText : variant === 'subtle' ? palette.gold : palette.primary;
   // Metallic gold: highlight, body, shadow, like brushed metal under a spotlight.
   const metal: readonly [string, string, string] =
-    variant === 'danger' ? ['#F2A394', palette.danger, '#A9483A'] : variant === 'gold' ? ['#FFF1C9', palette.gold, '#B8954F'] : [palette.gold, palette.primary, palette.primaryDeep];
+    variant === 'danger' ? ['#F2A394', palette.danger, '#A9483A'] : variant === 'gold' ? palette.goldMetal : [palette.gold, palette.primary, palette.primaryDeep];
 
   const container: ViewStyle = {
     height,

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field, Segmented } from '@/components/controls';
 import { ExpenseForm } from '@/components/ExpenseForm';
@@ -35,6 +35,8 @@ export default function Finances() {
   const { profile, updateProfile } = useAuth();
   const { mileage, expenses, addMileage, deleteExpense, deleteMileage, refresh } = useData();
   const { compact, expanded } = useLayout();
+  // Matches GlassCard's inner padding.
+  const cardPad = compact ? 16 : 20;
   const month = monthKey(new Date());
 
   const budgets = useMemo(() => budgetsFor(profile), [profile]);
@@ -106,9 +108,9 @@ export default function Finances() {
 
   const odometerCard = (
     <GlassCard glow="gold" index={0}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Txt variant="label" tone="dim">
+          <Txt variant="label" tone="dim" numberOfLines={2}>
             Current mileage
           </Txt>
           <Txt variant="caption" tone="faint" numberOfLines={1}>
@@ -116,14 +118,12 @@ export default function Finances() {
           </Txt>
         </View>
         {odoEdit === null && (
-          <Pressable accessibilityRole="button" onPress={() => setOdoEdit(odo === null ? '' : String(Math.floor(odo)))} hitSlop={10}>
-            <Txt variant="label" tone="primary">
-              {odo === null ? 'Set' : 'Correct'}
-            </Txt>
-          </Pressable>
+          <View style={{ flexShrink: 0 }}>
+            <NeonButton size="sm" variant="subtle" icon="create-outline" label={odo === null ? 'Set' : 'Correct'} onPress={() => setOdoEdit(odo === null ? '' : String(Math.floor(odo)))} />
+          </View>
         )}
       </View>
-      <View style={{ alignItems: 'center' }}>
+      <View style={{ alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: palette.inputBg, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.border }}>
         <Odometer value={odo} size={compact ? 'md' : 'lg'} />
       </View>
       <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 12 }}>
@@ -160,7 +160,7 @@ export default function Finances() {
             <Txt variant="label" tone="faint" numberOfLines={1}>
               {CATEGORY_LABEL[c]}
             </Txt>
-            <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit>
+            <Txt variant="strong" numberOfLines={1}>
               {formatPence(budget.byCategory[c])}
             </Txt>
           </View>
@@ -245,8 +245,15 @@ export default function Finances() {
     <View>
       <SectionHeader title="End-of-month report" />
       <GlassCard glow="primary">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
-          {recentMonths(6).map((m) => (
+        {/* Bleeds to the card edges so older months clearly scroll in from the right. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={{ marginHorizontal: -cardPad, marginBottom: 14 }}
+          contentContainerStyle={{ gap: 8, paddingHorizontal: cardPad }}
+        >
+          {recentMonths(12).map((m) => (
             <Chip
               key={m}
               label={monthTitle(m)}

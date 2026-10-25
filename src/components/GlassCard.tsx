@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -18,12 +18,14 @@ interface Props {
   accessibilityLabel?: string;
   /** Off for list rows that mount while scrolling, so they don't replay the entrance. */
   animateIn?: boolean;
+  /** Stretch to the parent's height, so cards in a row line up. */
+  fill?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /** Frosted glass panel: translucent fill, top sheen, hairline edge and a soft gold aura when highlighted. */
-export function GlassCard({ children, style, glow = false, onPress, onLongPress, index = 0, padded = true, accessibilityLabel, animateIn = true }: Props) {
+export function GlassCard({ children, style, glow = false, onPress, onLongPress, index = 0, padded = true, accessibilityLabel, animateIn = true, fill = false }: Props) {
   const { palette } = useTheme();
   const { compact } = useLayout();
   const pressed = useSharedValue(1);
@@ -36,9 +38,14 @@ export function GlassCard({ children, style, glow = false, onPress, onLongPress,
     borderRadius: compact ? radius.lg - 2 : radius.xl - 4,
     padding: padded ? (compact ? 16 : 20) : 0,
     overflow: 'hidden',
-    ...(glow
-      ? { shadowColor: glow === 'gold' ? palette.gold : palette.primary, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 }
-      : { shadowColor: '#000000', shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 }),
+    ...(fill ? { flex: 1 } : null),
+    // Android draws elevation shadows through translucent glass as a dark box that
+    // flickers while the ambient background animates, so depth there comes from the rim and sheen.
+    ...(Platform.OS === 'android'
+      ? null
+      : glow
+        ? { shadowColor: glow === 'gold' ? palette.gold : palette.primary, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }
+        : { shadowColor: '#000000', shadowOpacity: palette.statusBar === 'dark' ? 0.1 : 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } }),
   };
 
   const sheen = (
@@ -67,7 +74,7 @@ export function GlassCard({ children, style, glow = false, onPress, onLongPress,
   }
 
   return (
-    <Animated.View entering={entering}>
+    <Animated.View entering={entering} style={fill ? { flex: 1 } : undefined}>
       <AnimatedPressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}

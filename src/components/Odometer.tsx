@@ -1,7 +1,7 @@
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { odometerDigits } from '@/lib/odometer';
-import { useTheme } from '@/theme/ThemeProvider';
+import { COCKPIT_INK } from '@/theme/palettes';
 import { fonts, radius } from '@/theme/typography';
 import { Txt } from './Txt';
 
@@ -10,7 +10,6 @@ import { Txt } from './Txt';
  * Cells shrink to fit `maxWidth` (defaults to the window minus card padding).
  */
 export function Odometer({ value, size = 'md', maxWidth }: { value: number | string | null | undefined; size?: 'sm' | 'md' | 'lg'; maxWidth?: number }) {
-  const { palette } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const digits = odometerDigits(value);
   const preferred = size === 'lg' ? 38 : size === 'sm' ? 22 : 30;
@@ -32,9 +31,10 @@ export function Odometer({ value, size = 'md', maxWidth }: { value: number | str
               width: cellW,
               height: cellH,
               borderRadius: size === 'sm' ? 5 : radius.sm - 2,
-              backgroundColor: 'rgba(0,0,0,0.45)',
+              // Instrument cells stay black in every ambiance, like a real dashboard.
+              backgroundColor: '#0D0C0A',
               borderWidth: StyleSheet.hairlineWidth * 2,
-              borderColor: palette.border,
+              borderColor: COCKPIT_INK.border,
               alignItems: 'center',
               justifyContent: 'center',
               overflow: 'hidden',
@@ -45,7 +45,7 @@ export function Odometer({ value, size = 'md', maxWidth }: { value: number | str
               key={`${i}-${d}`}
               entering={FadeInDown.duration(380)}
               maxFontSizeMultiplier={1}
-              style={{ fontFamily: fonts.numeric, fontSize, color: i >= 4 ? palette.gold : palette.text, includeFontPadding: false }}
+              style={{ fontFamily: fonts.numeric, fontSize, color: i >= 4 ? COCKPIT_INK.gold : COCKPIT_INK.text, includeFontPadding: false }}
             >
               {d}
             </Animated.Text>

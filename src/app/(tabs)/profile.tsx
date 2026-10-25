@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { BRLogo } from '@/components/BRLogo';
+import { CarIllustration } from '@/components/CarIllustration';
 import { Field } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
@@ -55,7 +57,8 @@ function LinkRow({ icon, label, hint, href, tone }: { icon: keyof typeof Ionicon
 
 export default function Me() {
   const { palette, mode, setMode } = useTheme();
-  const { compact } = useLayout();
+  const { compact, contentWidth } = useLayout();
+  const carWidth = Math.round(Math.min(150, Math.max(92, contentWidth * 0.34)));
   const { profile, isAdmin, updateProfile, signOut } = useAuth();
   const { managers, myStores, chosenStoreIds } = useData();
   const vehicle = vehicleFor(profile?.vehicle_model);
@@ -82,25 +85,31 @@ export default function Me() {
 
   return (
     <Screen inTabs kicker={isAdmin ? 'Admin' : 'Operational Manager'} title={profile?.name ?? 'Me'}>
-      <GlassCard glow="gold" padded={false} index={0}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {vehicle && <Image source={vehicle.image} style={{ width: '30%', maxWidth: 120, alignSelf: 'stretch', minHeight: 96 }} contentFit="cover" />}
-          <View style={{ flex: 1, minWidth: 0, padding: 14, gap: 4 }}>
-            <Txt variant="caption" tone="faint" numberOfLines={1}>
-              {profile?.email}
-            </Txt>
-            <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-              {vehicle ? `${vehicle.year} X1 M Sport Hybrid` : 'No vehicle selected'}
-            </Txt>
-            <Txt variant="caption" tone="primary" numberOfLines={1}>
-              {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
-            </Txt>
-          </View>
-          <View style={{ paddingRight: 14, flexShrink: 0 }}>
-            <BRLogo size={compact ? 28 : 36} glow={false} />
-          </View>
+      {/* Static, opaque card: no entrance or shadow animation, so nothing behind it can flicker. */}
+      <LinearGradient
+        colors={[palette.surfaceStrong, palette.bg[1]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong, paddingVertical: 14, paddingLeft: 12, paddingRight: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+      >
+        <View style={{ width: carWidth, flexShrink: 0, alignItems: 'center' }}>
+          <CarIllustration width={carWidth} accent={palette.gold} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
         </View>
-      </GlassCard>
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">
+            {profile?.email}
+          </Txt>
+          <Txt variant="strong" numberOfLines={2}>
+            {vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected'}
+          </Txt>
+          <Txt variant="caption" tone="primary" numberOfLines={2}>
+            {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
+          </Txt>
+        </View>
+        <View style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
+          <BRLogo size={compact ? 26 : 32} glow={false} />
+        </View>
+      </LinearGradient>
 
       <SectionHeader title="Ambiance" />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
@@ -113,7 +122,11 @@ export default function Me() {
               accessibilityRole="radio"
               accessibilityState={{ selected: active }}
               accessibilityLabel={`${a.label} ambiance`}
-              onPress={() => setMode(a.value)}
+              onPress={() => {
+                if (active) return;
+                Haptics.selectionAsync().catch(() => {});
+                setMode(a.value);
+              }}
               style={{
                 flexGrow: 1,
                 flexBasis: compact ? 120 : 150,
@@ -132,10 +145,10 @@ export default function Me() {
                 <Ionicons name={a.icon} size={16} color={preview.gold} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                <Txt variant="strong" numberOfLines={1}>
                   {a.label}
                 </Txt>
-                <Txt variant="caption" tone="faint" numberOfLines={1}>
+                <Txt variant="caption" tone="faint" numberOfLines={2}>
                   {a.hint}
                 </Txt>
               </View>

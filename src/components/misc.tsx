@@ -33,7 +33,7 @@ export function StatTile({
           {label}
         </Txt>
       </View>
-      <Txt variant="metric" style={{ color }} glow numberOfLines={1} adjustsFontSizeToFit>
+      <Txt variant="metric" style={{ color, fontSize: value.length > 7 ? 22 : 28, lineHeight: 34 }} glow numberOfLines={1}>
         {value}
       </Txt>
       {sub ? (

@@ -186,7 +186,7 @@ export function AmbientBackground({ animated = true }: { animated?: boolean }) {
       ))}
 
       {/* Vignette pulls focus to the content */}
-      <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']} start={{ x: 0.5, y: 0.45 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(0,0,0,0)', palette.vignette]} start={{ x: 0.5, y: 0.45 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
     </View>
   );
 }

@@ -72,6 +72,10 @@ function Pool({
   total: number;
 }) {
   const stroke = Math.max(5, Math.round(size * 0.07));
+  // Sized from the string so long amounts fit inside the ring without Android's clipped auto-fit.
+  const amount = formatPence(Math.abs(remaining));
+  const inner = size - stroke * 2 - 12;
+  const amountSize = Math.min(size * 0.17, inner / (amount.length * 0.62));
   return (
     <View style={{ width, alignItems: 'center', gap: 8 }}>
       <ProgressRing value={ratio} size={size} stroke={stroke} colors={colors} accessibilityLabel={`${title}: ${formatPence(remaining)} ${over ? 'over' : 'remaining'} of ${formatPence(total)}`}>
@@ -79,12 +83,10 @@ function Pool({
           variant="metric"
           tone={over ? 'danger' : 'default'}
           numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.5}
           maxFontSizeMultiplier={1}
-          style={{ fontSize: size * 0.17, lineHeight: size * 0.21 }}
+          style={{ fontSize: amountSize, lineHeight: amountSize * 1.25 }}
         >
-          {formatPence(Math.abs(remaining))}
+          {amount}
         </Txt>
         <Txt variant="label" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1} style={{ fontSize: Math.max(7.5, size * 0.065), lineHeight: Math.max(10, size * 0.09) }}>
           {over ? 'Over' : 'Left'}

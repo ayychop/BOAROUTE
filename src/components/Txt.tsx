@@ -1,4 +1,5 @@
-import { Text, type TextProps, type TextStyle } from 'react-native';
+import type { ReactNode } from 'react';
+import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
 import { fonts } from '@/theme/typography';
@@ -25,7 +26,18 @@ export interface TxtProps extends TextProps {
   glow?: boolean;
 }
 
-export function Txt({ variant = 'body', tone = 'default', align, glow, style, maxFontSizeMultiplier = 1.3, ...rest }: TxtProps) {
+/**
+ * Android measures text before applying textTransform, so uppercase labels are
+ * laid out at their narrower lowercase width and spill into their neighbours.
+ * Uppercasing the string itself keeps measurement and drawing in agreement.
+ */
+function upper(node: ReactNode): ReactNode {
+  if (typeof node === 'string') return node.toUpperCase();
+  if (Array.isArray(node)) return node.map(upper);
+  return node;
+}
+
+export function Txt({ variant = 'body', tone = 'default', align, glow, style, maxFontSizeMultiplier = 1.3, children, ...rest }: TxtProps) {
   const { palette } = useTheme();
   const { scale } = useLayout();
   const v = VARIANTS[variant];
@@ -46,12 +58,17 @@ export function Txt({ variant = 'body', tone = 'default', align, glow, style, ma
       ? { textShadowColor: tone === 'gold' || tone === 'primary' ? palette.goldGlow : 'rgba(255,240,210,0.18)', textShadowRadius: 12, textShadowOffset: { width: 0, height: 0 } }
       : null;
 
+  const flat = StyleSheet.flatten(style);
+  const uppercase = (flat?.textTransform ?? ('textTransform' in v ? v.textTransform : undefined)) === 'uppercase';
+
   // flexShrink lets text give way inside rows instead of pushing past the card edge.
   return (
     <Text
       maxFontSizeMultiplier={maxFontSizeMultiplier}
-      style={[{ flexShrink: 1, ...v, fontSize: v.fontSize * scale, lineHeight: v.lineHeight * scale, color, textAlign: align }, glowStyle, style]}
+      style={[{ flexShrink: 1, ...v, fontSize: v.fontSize * scale, lineHeight: v.lineHeight * scale, color, textAlign: align }, glowStyle, style, uppercase && { textTransform: 'none' }]}
       {...rest}
-    />
+    >
+      {uppercase ? upper(children) : children}
+    </Text>
   );
 }

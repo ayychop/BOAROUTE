@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { VEHICLES, type Vehicle } from '@/lib/vehicles';
+import { COCKPIT_INK } from '@/theme/palettes';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, springs } from '@/theme/typography';
 import { Txt } from './Txt';
@@ -93,17 +94,17 @@ function VehicleCard({ v, selected, onSelect, index, width }: { v: Vehicle; sele
             <CornerTicks color={selected ? palette.gold : 'rgba(255,240,210,0.35)'} />
             <View style={{ position: 'absolute', top: 18, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong }}>
-                <Txt variant="label" tone="gold">
+                <Txt variant="label" style={{ color: COCKPIT_INK.gold }}>
                   {v.plate}
                 </Txt>
               </View>
-              {selected && <Ionicons name="checkmark-circle" size={24} color={palette.gold} />}
+              {selected && <Ionicons name="checkmark-circle" size={24} color={COCKPIT_INK.gold} />}
             </View>
             <View style={{ position: 'absolute', left: 20, right: 20, bottom: 16 }}>
-              <Txt variant="label" style={{ color: 'rgba(245,240,230,0.7)' }}>
+              <Txt variant="label" style={{ color: COCKPIT_INK.dim }}>
                 {v.year} BMW X1
               </Txt>
-              <Txt variant="display" style={{ color: palette.text }} numberOfLines={1} adjustsFontSizeToFit>
+              <Txt variant="display" style={{ color: COCKPIT_INK.text }} numberOfLines={1}>
                 M Sport Hybrid
               </Txt>
             </View>

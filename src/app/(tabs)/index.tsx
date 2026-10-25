@@ -23,22 +23,22 @@ import { vehicleFor } from '@/lib/vehicles';
 import { isWorkingDay, workingDaysLeft } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
-import { greetingFor } from '@/theme/palettes';
+import { COCKPIT_INK, greetingFor } from '@/theme/palettes';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius } from '@/theme/typography';
 
 function ActionTile({ icon, label, sub, onPress, index, tone = 'primary' }: { icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void; index: number; tone?: 'primary' | 'gold' }) {
   const { palette } = useTheme();
   return (
-    <GlassCard index={index} onPress={onPress} accessibilityLabel={label} style={{ minHeight: 104 }} glow={tone === 'gold' ? 'gold' : false}>
+    <GlassCard index={index} onPress={onPress} accessibilityLabel={label} style={{ minHeight: 124 }} glow={tone === 'gold' ? 'gold' : false} fill>
       <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong, marginBottom: 12 }}>
         <Ionicons name={icon} size={18} color={palette.gold} />
       </View>
-      <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+      <Txt variant="strong" numberOfLines={2}>
         {label}
       </Txt>
       {sub ? (
-        <Txt variant="caption" tone="faint" numberOfLines={2}>
+        <Txt variant="caption" tone="faint" numberOfLines={3} style={{ marginTop: 2 }}>
           {sub}
         </Txt>
       ) : null}
@@ -94,10 +94,10 @@ export default function Hub() {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 12 : 16, marginBottom: compact ? 16 : 22 }}>
       <BRLogo size={compact ? 40 : expanded ? 60 : 50} animated={phase === 'cockpit'} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt variant="label" tone="primary" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        <Txt variant="label" tone="primary" numberOfLines={1}>
           {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </Txt>
-        <Txt variant={compact ? 'title' : 'display'} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6}>
+        <Txt variant={compact ? 'title' : 'display'} numberOfLines={2}>
           {greetingFor(phase, now.getHours())}, {firstName(profile?.name, profile?.email)}
         </Txt>
       </View>
@@ -113,13 +113,13 @@ export default function Hub() {
           <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
           <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <View style={{ flexShrink: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong }}>
-              <Txt variant="label" tone="gold" numberOfLines={1} style={{ fontSize: 9.5 }}>
+              <Txt variant="label" numberOfLines={1} style={{ color: COCKPIT_INK.gold, fontSize: 9.5 }}>
                 {vehicle.plate}
               </Txt>
             </View>
             <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workingToday ? palette.success : palette.textFaint }} />
-              <Txt variant="label" numberOfLines={1} style={{ color: palette.text, fontSize: 9.5 }}>
+              <Txt variant="label" numberOfLines={1} style={{ color: COCKPIT_INK.text, fontSize: 9.5 }}>
                 {workingToday ? 'Working day' : 'Day off'}
               </Txt>
             </View>
@@ -128,7 +128,7 @@ export default function Hub() {
             <Txt variant="label" tone="dim" numberOfLines={1} style={{ fontSize: 9.5 }}>
               {vehicle.year} BMW X1 · {vehicle.specs[0].value}
             </Txt>
-            <Txt variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            <Txt variant="title" numberOfLines={1}>
               M Sport Hybrid
             </Txt>
           </View>
@@ -255,10 +255,10 @@ function Metric({ label, value, divider }: { label: string; value: string; divid
   const { palette } = useTheme();
   return (
     <View style={{ flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 4, borderLeftWidth: divider ? StyleSheet.hairlineWidth * 2 : 0, borderLeftColor: palette.border }}>
-      <Txt variant="label" tone="faint" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontSize: 9 }}>
+      <Txt variant="label" tone="faint" numberOfLines={2} align="center" style={{ fontSize: 9, letterSpacing: 1.2 }}>
         {label}
       </Txt>
-      <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: 2 }}>
+      <Txt variant="strong" numberOfLines={1} align="center" style={{ marginTop: 2, fontSize: value.length > 7 ? 13 : 15.5 }}>
         {value}
       </Txt>
     </View>
