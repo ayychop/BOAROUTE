@@ -224,7 +224,7 @@ export default function RouteScreen() {
         <LoadingBlock label="Checking live traffic" />
       ) : options ? (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: 12 }}>
             {motorwayAvailable && (
               <RouteOptionCard
                 index={0}
@@ -273,11 +273,11 @@ export default function RouteScreen() {
       </View>
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: 12, alignSelf: 'flex-start' }}>
             <HudMap width={mapW} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
             {settings}
           </View>
-          <View style={{ flex: 1 }}>{optionsBlock}</View>
+          <View style={{ flex: 1, minWidth: 0, alignSelf: 'flex-start', justifyContent: 'flex-start' }}>{optionsBlock}</View>
         </View>
       ) : (
         <View style={{ gap: 12 }}>

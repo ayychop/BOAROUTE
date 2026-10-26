@@ -28,73 +28,77 @@ export function RouteOptionCard({ option, selected, onSelect, live, note, index 
   const scale = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(selected ? 1 : 0.98, { damping: 16 }) }] }));
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 90).springify().damping(17)} style={[{ flex: 1, minWidth: 240 }, scale]}>
-      <Pressable
-        accessibilityRole="radio"
-        accessibilityState={{ selected }}
-        accessibilityLabel={`${title}: ${formatMinutes(option.durationS / 60)}, ${units.distance(option.distanceM / 1000)}`}
-        onPress={() => {
-          Haptics.selectionAsync().catch(() => {});
-          onSelect();
-        }}
-        style={{
-          borderRadius: radius.lg,
-          borderWidth: selected ? 2 : 1,
-          borderColor: selected ? accent : palette.border,
-          backgroundColor: palette.surface,
-          padding: 14,
-          gap: 10,
-          shadowColor: accent,
-          shadowOpacity: selected ? 0.35 : 0,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 0 },
-          elevation: selected ? 10 : 1,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: motorway ? palette.goldGlow : palette.glow }}>
-            <MaterialCommunityIcons name={motorway ? 'highway' : 'road-variant'} size={22} color={palette.text} />
+    // Entrance and selection scale sit on separate views: sharing one transform can strand the
+    // entrance offset on Android and leave the card sitting lower than the map beside it.
+    <Animated.View entering={FadeInDown.delay(index * 90).springify().damping(17)} style={{ flex: 1, minWidth: 240 }}>
+      <Animated.View style={scale}>
+        <Pressable
+          accessibilityRole="radio"
+          accessibilityState={{ selected }}
+          accessibilityLabel={`${title}: ${formatMinutes(option.durationS / 60)}, ${units.distance(option.distanceM / 1000)}`}
+          onPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            onSelect();
+          }}
+          style={{
+            borderRadius: radius.lg,
+            borderWidth: selected ? 2 : 1,
+            borderColor: selected ? accent : palette.border,
+            backgroundColor: palette.surface,
+            padding: 14,
+            gap: 10,
+            shadowColor: accent,
+            shadowOpacity: selected ? 0.35 : 0,
+            shadowRadius: 18,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: selected ? 10 : 1,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: motorway ? palette.goldGlow : palette.glow }}>
+              <MaterialCommunityIcons name={motorway ? 'highway' : 'road-variant'} size={22} color={palette.text} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Txt variant="label" style={{ color: accent }} numberOfLines={1}>
+                {motorway ? 'Motorway Route' : 'Standard Route'}
+              </Txt>
+              <Txt variant="strong" numberOfLines={2}>
+                {title}
+              </Txt>
+            </View>
+            <MaterialCommunityIcons name={selected ? 'radiobox-marked' : 'radiobox-blank'} size={22} color={selected ? accent : palette.textFaint} />
           </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Txt variant="label" style={{ color: accent }} numberOfLines={1}>
-              {motorway ? 'Motorway Route' : 'Standard Route'}
+
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14 }}>
+            <Txt variant="metric" style={{ color: accent }} glow>
+              {formatMinutes(option.durationS / 60)}
             </Txt>
-            <Txt variant="strong" numberOfLines={2}>
-              {title}
+            <Txt variant="strong" tone="dim" style={{ marginBottom: 4 }}>
+              {units.distance(option.distanceM / 1000)}
             </Txt>
           </View>
-          <MaterialCommunityIcons name={selected ? 'radiobox-marked' : 'radiobox-blank'} size={22} color={selected ? accent : palette.textFaint} />
-        </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14 }}>
-          <Txt variant="metric" style={{ color: accent }} glow>
-            {formatMinutes(option.durationS / 60)}
-          </Txt>
-          <Txt variant="strong" tone="dim" style={{ marginBottom: 4 }}>
-            {units.distance(option.distanceM / 1000)}
-          </Txt>
-        </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {live && (
+              <Tag icon="traffic-light" text={delayMin > 1 ? `+${delayMin} min traffic` : 'Traffic flowing'} color={delayMin > 5 ? palette.warning : palette.success} />
+            )}
+            {live && option.fastRoadShare > 0 && <Tag icon="speedometer" text={`${Math.round(option.fastRoadShare * 100)}% motorway / dual`} color={palette.textDim} />}
+            {live && option.minorShare > 0.05 && <Tag icon="pine-tree" text={`${Math.round(option.minorShare * 100)}% lanes`} color={palette.textDim} />}
+            {!live && <Tag icon="wifi-off" text="Estimate, no live traffic" color={palette.warning} />}
+          </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {live && (
-            <Tag icon="traffic-light" text={delayMin > 1 ? `+${delayMin} min traffic` : 'Traffic flowing'} color={delayMin > 5 ? palette.warning : palette.success} />
+          {option.roads.length > 0 && (
+            <Txt variant="caption" tone="faint" numberOfLines={1}>
+              Via {option.roads.slice(0, 5).join(', ')}
+            </Txt>
           )}
-          {live && option.fastRoadShare > 0 && <Tag icon="speedometer" text={`${Math.round(option.fastRoadShare * 100)}% motorway / dual`} color={palette.textDim} />}
-          {live && option.minorShare > 0.05 && <Tag icon="pine-tree" text={`${Math.round(option.minorShare * 100)}% lanes`} color={palette.textDim} />}
-          {!live && <Tag icon="wifi-off" text="Estimate, no live traffic" color={palette.warning} />}
-        </View>
-
-        {option.roads.length > 0 && (
-          <Txt variant="caption" tone="faint" numberOfLines={1}>
-            Via {option.roads.slice(0, 5).join(', ')}
-          </Txt>
-        )}
-        {note ? (
-          <Txt variant="caption" tone="faint">
-            {note}
-          </Txt>
-        ) : null}
-      </Pressable>
+          {note ? (
+            <Txt variant="caption" tone="faint">
+              {note}
+            </Txt>
+          ) : null}
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }
