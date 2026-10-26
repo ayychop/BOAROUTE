@@ -55,6 +55,8 @@ export default function RouteScreen() {
   const [routeState, setRouteState] = useState<{ key: string; result: RouteOptionsResult; liveError: string | null } | null>(null);
   const [selected, setSelected] = useState<'motorway' | 'standard'>('motorway');
   const [busyStop, setBusyStop] = useState<string | null>(null);
+  // Natural height of the right column on wide screens, so the map can grow to match it.
+  const [sideH, setSideH] = useState(0);
 
   const plan = useMemo(
     () =>
@@ -273,11 +275,10 @@ export default function RouteScreen() {
       </View>
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
-          <View style={{ alignSelf: 'flex-start' }}>
-            <HudMap width={mapW} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
-          </View>
-          {/* Stops today sits under the start button so the column balances the map beside it. */}
-          <View style={{ flex: 1, minWidth: 0, gap: 12, alignSelf: 'flex-start', justifyContent: 'flex-start' }}>
+          {/* The map stretches to the right column's height so neither side leaves dead space. */}
+          <HudMap width={mapW} height={Math.max(mapH, sideH)} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
+          {/* Stops today sits under the start button; this column sets the row height the map matches. */}
+          <View style={{ flex: 1, minWidth: 0, gap: 12 }} onLayout={(e) => setSideH(Math.round(e.nativeEvent.layout.height))}>
             {optionsBlock}
             {settings}
           </View>
