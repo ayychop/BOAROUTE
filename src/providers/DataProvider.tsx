@@ -59,7 +59,7 @@ interface DataValue {
   deleteEvent: (id: string) => Promise<void>;
   addMileage: (m: { miles: number; type: MileageType; notes: string | null; date?: string }) => Promise<void>;
   deleteMileage: (id: string) => Promise<void>;
-  addExpense: (e: { amount: number; location: string; recipient: string; category: ExpenseCategory; date?: string; eventBudget?: number | null }) => Promise<void>;
+  addExpense: (e: { amount: number; location: string; recipient: string; category: ExpenseCategory; date?: string; eventBudget?: number | null; customLabel?: string | null }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
 }
 
@@ -315,12 +315,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         date: e.date ?? localDateString(new Date()),
         // Town Takeovers carry their own day budget; other categories must not send the column.
         ...(e.category === 'town_takeover' ? { event_budget: e.eventBudget ?? null } : {}),
+        // Only sent when filled in, so expenses still save before the column exists.
+        ...(e.customLabel?.trim() ? { custom_label: e.customLabel.trim().slice(0, 60) } : {}),
       })
       .select('*')
       .single();
     if (err) {
       // The database enforces the session and weekly caps; its message is written for people.
       if (err.code === '23514' && /cap/i.test(err.message)) throw new Error(err.message.replace(/GBP\s?/g, '£'));
+      if (/custom_label/.test(err.message)) throw new Error('Expense labels need the latest database update. Ask your admin to re-run the SQL file.');
       if (/event_budget|town_takeover|expenses_category_check/.test(err.message)) throw new Error('Town Takeovers need the latest database update. Ask your admin to re-run the SQL file.');
       throw err;
     }

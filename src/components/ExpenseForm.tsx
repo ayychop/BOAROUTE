@@ -44,6 +44,7 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
   const [amount, setAmount] = useState('');
   const [location, setLocation] = useState('');
   const [recipient, setRecipient] = useState('');
+  const [label, setLabel] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('standard');
   const [dayBudget, setDayBudget] = useState('');
   const [busy, setBusy] = useState(false);
@@ -72,9 +73,10 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
     if (rule) return setError(rule);
     setBusy(true);
     try {
-      await addExpense({ amount: pence / 100, location: location.trim(), recipient: recipient.trim(), category, eventBudget: eventBudget === null ? null : eventBudget / 100 });
+      await addExpense({ amount: pence / 100, location: location.trim(), recipient: recipient.trim(), category, eventBudget: eventBudget === null ? null : eventBudget / 100, customLabel: label.trim() || null });
       onSaved?.(`£${(pence / 100).toFixed(2)} at ${recipient.trim()}`);
       setAmount('');
+      setLabel('');
       setLocation('');
       setRecipient('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -88,6 +90,7 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
   return (
     <>
       <Dropdown label="Category" value={category} onChange={pickCategory} options={categoryOptions(budgets)} />
+      <Field label="Expense Label (Optional)" icon="pricetag-outline" value={label} onChangeText={setLabel} placeholder="e.g., Parking, Train, Supplies" maxLength={60} autoCapitalize="sentences" returnKeyType="next" />
       {isSession ? (
         <Txt variant="caption" tone={week.sessions.left > 0 ? 'dim' : 'danger'} style={{ marginBottom: 10 }}>
           {week.sessions.left > 0

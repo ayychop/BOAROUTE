@@ -1041,6 +1041,13 @@ alter table public.expenses add constraint expenses_event_budget_check
   ) not valid;
 create index if not exists expenses_user_session_idx on public.expenses (user_id, session_type, session_date);
 
+-- Optional free-text label shown with the category ("Standard - Parking").
+-- The category still drives every budget rule.
+alter table public.expenses add column if not exists custom_label text;
+alter table public.expenses drop constraint if exists expenses_custom_label_check;
+alter table public.expenses add constraint expenses_custom_label_check
+  check (custom_label is null or char_length(btrim(custom_label)) between 1 and 60);
+
 -- Fills session_type and session_date, and enforces the session rules:
 -- a session costs at most the person's allowance (GBP 25), and the
 -- Sunday-to-Saturday week never passes their weekly cap (GBP 150).

@@ -1,4 +1,4 @@
-import { buildMonthlyReport, monthTitle, ukDate } from '../src/lib/report';
+import { buildMonthlyReport, expenseLabel, monthTitle, ukDate } from '../src/lib/report';
 
 describe('monthly report', () => {
   const report = buildMonthlyReport({
@@ -23,12 +23,28 @@ describe('monthly report', () => {
   });
 
   it('lists every expense of the month in date order', () => {
-    const costa = report.indexOf('02/10/2026 | £12.50 | Reading | Costa | Standard');
-    const pret = report.indexOf('09/10/2026 | £8.99 | Oxford Westgate | Pret | Sales Day');
+    const costa = report.indexOf('02/10/2026 | Standard: £12.50 | Reading | Costa');
+    const pret = report.indexOf('09/10/2026 | Sales Day: £8.99 | Oxford Westgate | Pret');
     expect(costa).toBeGreaterThan(-1);
     expect(pret).toBeGreaterThan(costa);
     expect(report).not.toContain('Nope');
     expect(report).toContain('Total expenses: £21.49');
+  });
+
+  it('shows a custom label next to the category and amount', () => {
+    const labelled = buildMonthlyReport({
+      month: '2026-10',
+      mileage: [],
+      expenses: [
+        { date: '2026-10-05', amount: 5, location: 'Reading', recipient: 'NCP', category: 'standard', custom_label: ' Parking ' },
+        { date: '2026-10-06', amount: 3, location: 'Reading', recipient: 'Shop', category: 'standard', custom_label: '' },
+      ],
+    });
+    expect(labelled).toContain('05/10/2026 | Standard - Parking: £5.00 | Reading | NCP');
+    expect(labelled).toContain('06/10/2026 | Standard: £3.00 | Reading | Shop');
+    expect(expenseLabel({ category: 'town_takeover', custom_label: 'Train' })).toBe('Town Takeover - Train');
+    // The label never changes which budget the expense counts against.
+    expect(labelled).toContain('Standard budget: £8.00 of £60.00 used, £52.00 left');
   });
 
   it('reports both budgets', () => {

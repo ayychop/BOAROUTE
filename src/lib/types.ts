@@ -122,5 +122,7 @@ export interface Expense {
   session_date?: string | null;
   /** Town Takeover only: the custom budget for that day (numeric, may arrive as a string). */
   event_budget?: number | string | null;
+  /** Optional free-text label, e.g. "Parking". The category still decides the budget. */
+  custom_label?: string | null;
   created_at: string;
 }

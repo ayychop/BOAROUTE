@@ -19,7 +19,7 @@ import { CATEGORY_LABEL, budgetsFor, formatPence, inMonth, monthKey, parseMiles,
 import { copyText } from '@/lib/external';
 import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
-import { buildMonthlyReport, monthTitle, ukDate } from '@/lib/report';
+import { buildMonthlyReport, expenseLabel, monthTitle, ukDate } from '@/lib/report';
 import type { ExpenseCategory, MileageType } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
@@ -230,7 +230,7 @@ export default function Finances() {
               <Row
                 icon={e.category === 'standard' ? 'wallet' : e.category === 'sales_day' ? 'flash' : 'moon'}
                 title={`${formatPence(toPence(e.amount))} · ${e.recipient}`}
-                sub={`${ukDate(e.date)} · ${e.location} · ${CATEGORY_LABEL[e.category]}`}
+                sub={`${ukDate(e.date)} · ${e.location} · ${expenseLabel(e)}`}
                 onDelete={() => confirmDelete('expense', () => deleteExpense(e.id))}
               />
             </Animated.View>

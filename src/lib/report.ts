@@ -16,6 +16,12 @@ export function ukDate(iso: string): string {
 
 const fmtMiles = (n: number) => `${n.toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`;
 
+/** "Standard - Parking", or just "Standard" when no label was added. */
+export function expenseLabel(e: Pick<Expense, 'category'> & Partial<Pick<Expense, 'custom_label'>>): string {
+  const label = e.custom_label?.trim();
+  return label ? `${CATEGORY_LABEL[e.category]} - ${label}` : CATEGORY_LABEL[e.category];
+}
+
 /**
  * Plain-text end-of-month report, laid out to paste cleanly into expense forms,
  * emails or spreadsheets. Uses only plain ASCII separators.
@@ -24,7 +30,7 @@ export function buildMonthlyReport(params: {
   month: string;
   name?: string | null;
   mileage: Pick<MileageLog, 'date' | 'miles' | 'type'>[];
-  expenses: Pick<Expense, 'date' | 'amount' | 'location' | 'recipient' | 'category'>[];
+  expenses: (Pick<Expense, 'date' | 'amount' | 'location' | 'recipient' | 'category'> & Partial<Pick<Expense, 'custom_label'>>)[];
   /** The person's own budgets; defaults (GBP 60 / GBP 150) when omitted. */
   budgets?: Budgets;
 }): string {
@@ -49,9 +55,9 @@ export function buildMonthlyReport(params: {
   if (rows.length === 0) {
     lines.push('No expenses logged this month.');
   } else {
-    lines.push('Date | Amount | Location | Recipient | Category');
+    lines.push('Date | Category: Amount | Location | Recipient');
     for (const e of rows) {
-      lines.push(`${ukDate(e.date)} | ${formatPence(toPence(e.amount))} | ${e.location} | ${e.recipient} | ${CATEGORY_LABEL[e.category]}`);
+      lines.push(`${ukDate(e.date)} | ${expenseLabel(e)}: ${formatPence(toPence(e.amount))} | ${e.location} | ${e.recipient}`);
     }
   }
   lines.push('');
