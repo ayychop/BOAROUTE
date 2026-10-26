@@ -81,7 +81,20 @@
             "extraProguardRules": "# WorkManager (pulled in by react-native-maps) starts at launch and creates its\n# Room database and input mergers by reflection, so R8 must keep their constructors.\n-keep class * extends androidx.room.RoomDatabase { void <init>(); }\n-keep class * extends androidx.work.InputMerger { void <init>(); }\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class * extends androidx.work.ListenableWorker { <init>(android.content.Context, androidx.work.WorkerParameters); }"
           }
         }
-      ]
+      ],
+      [
+        "react-native-car-projection",
+        {
+          "carAppCategory": "navigation",
+          "minCarApiLevel": 1,
+          "targetCarApiLevel": 6,
+          "mediaSupport": false,
+          "customPermissions": [
+            "androidx.car.app.NAVIGATION_TEMPLATES"
+          ]
+        }
+      ],
+      "./plugins/withCarAppDescriptor"
     ],
     "experiments": {
       "typedRoutes": true

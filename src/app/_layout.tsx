@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { Alert, Platform, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { CarAppService } from '@/car/CarAppService';
 import { BRLogo } from '@/components/BRLogo';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
@@ -22,6 +23,7 @@ import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 configureNotifications().catch(() => {});
+CarAppService.start();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({

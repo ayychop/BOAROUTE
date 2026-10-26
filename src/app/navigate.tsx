@@ -19,6 +19,7 @@ import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
 import { useUnits } from '@/hooks/useUnits';
 import { spokenDistance } from '@/lib/units';
+import { CarAppService } from '@/car/CarAppService';
 import { formatMinutes, formatTime } from '@/lib/format';
 import { haversineKm } from '@/lib/geo';
 import { hazardMeta, isLiveHazard, type HazardReport, type HazardType } from '@/lib/hazards';
@@ -438,6 +439,30 @@ export default function Navigate() {
     // Position drives this effect; the rest is read at the moment of each fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position]);
+
+  // 5. Android Auto: mirror the live route onto the car screen while navigating.
+  useEffect(() => {
+    if (!navigating || !option || !req) return;
+    const remainingM = progress ? progress.remainingM : option.distanceM;
+    const remainingS = prepared && progress && prepared.totalM ? option.durationS * (progress.remainingM / prepared.totalM) : option.durationS;
+    const ahead = prepared && progress ? (remainingWaypoints(prepared, waypoints, progress.vertex) as NavDestination[]) : waypoints;
+    CarAppService.showRoute({
+      title: req.title,
+      instruction: progress?.nextStep?.instruction ?? option.steps[0]?.instruction ?? null,
+      distanceToNext: progress?.nextStep ? units.nav(progress.distanceToNextM) : null,
+      arrival: formatTime(new Date(Date.now() + remainingS * 1000)),
+      remaining: `${formatMinutes(remainingS / 60)} · ${units.distance(remainingM / 1000)}`,
+      // Arriving at the destination leaves no waypoints ahead; keep it named on the car.
+      stops: (ahead.length || !progress?.arrived ? ahead : waypoints.slice(-1)).map((w) => w.label),
+      arrived: !!progress?.arrived,
+      rerouting,
+    });
+  }, [navigating, option, prepared, progress, waypoints, rerouting, req, units]);
+
+  useEffect(() => {
+    if (!navigating) return;
+    return () => CarAppService.clear();
+  }, [navigating]);
 
   const start = async () => {
     const perm = await Location.requestForegroundPermissionsAsync().catch(() => null);
