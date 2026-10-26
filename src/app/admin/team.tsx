@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
-import { Chip, Field } from '@/components/controls';
+import { Chip, Field, ToggleRow } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
 import { EmptyState, LoadingBlock } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
@@ -20,7 +20,7 @@ interface TeamMember {
   route_managers: StoreOwner[] | null;
 }
 
-type Account = Pick<Profile, 'id' | 'email' | 'name' | 'role'> & { created_at?: string };
+type Account = Pick<Profile, 'id' | 'email' | 'name' | 'role' | 'show_training'> & { created_at?: string };
 
 interface TeamData {
   members: TeamMember[];
@@ -34,7 +34,7 @@ const EMAIL = /^\S+@\S+\.\S+$/;
 async function fetchTeam(): Promise<TeamData> {
   const [members, accounts, stores] = await Promise.all([
     supabase.from('team_members').select('email,role,manager_name,route_managers').order('role').order('email'),
-    supabase.from('profiles').select('id,email,name,role,created_at').order('created_at', { ascending: false }),
+    supabase.from('profiles').select('id,email,name,role,show_training,created_at').order('created_at', { ascending: false }),
     // The admin reads every store (RLS), so this covers every owner in use.
     supabase.from('stores').select('assigned_manager').limit(10000),
   ]);
@@ -105,7 +105,7 @@ function OwnerPicker({ owners, value, onChange }: { owners: TeamData['owners']; 
 }
 
 export default function TeamManagement() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile, refreshProfile } = useAuth();
   const [data, setData] = useState<TeamData | null>(null);
   const [picks, setPicks] = useState<Record<string, TeamSeat>>({});
   // Whose stores each pending request or team member works, keyed by profile id or email.
@@ -219,7 +219,38 @@ export default function TeamManagement() {
 
   const pending = data.accounts.filter((a) => a.role === 'unassigned');
   const denied = data.accounts.filter((a) => a.role === 'denied');
-  const nameFor = (email: string) => data.accounts.find((a) => a.email.toLowerCase() === email)?.name ?? null;
+  const accountFor = (email: string) => data.accounts.find((a) => a.email.toLowerCase() === email) ?? null;
+  const nameFor = (email: string) => accountFor(email)?.name ?? null;
+
+  // Daily Samsung IQ on their Home screen. Needs their account, so not before they sign up.
+  const trainingToggle = (email: string) => {
+    const account = accountFor(email);
+    if (!account) {
+      return (
+        <Txt variant="caption" tone="faint" style={{ marginBottom: 10 }}>
+          Daily Samsung IQ can be switched on once they sign up.
+        </Txt>
+      );
+    }
+    return (
+      <View style={{ marginBottom: 10, opacity: busy === `training:${account.id}` ? 0.5 : 1 }}>
+        <ToggleRow
+          label="Daily Samsung IQ"
+          hint="Five training questions a day on their Home screen"
+          value={!!account.show_training}
+          onChange={(on) => {
+            if (busy) return;
+            run(`training:${account.id}`, async () => {
+              const res = await supabase.from('profiles').update({ show_training: on }).eq('id', account.id);
+              // Their own switch changes their Home straight away.
+              if (!res.error && account.id === profile?.id) await refreshProfile();
+              return res;
+            });
+          }}
+        />
+      </View>
+    );
+  };
 
   const requestCard = (a: Account, i: number, wasDenied: boolean) => (
     <GlassCard key={a.id} index={i} glow={wasDenied ? false : 'gold'}>
@@ -286,6 +317,7 @@ export default function TeamManagement() {
               <Txt variant="caption" tone="faint" style={{ marginBottom: 10 }}>
                 {m.role === 'admin' ? 'Admin' : SEAT_LABEL[m.manager_name as TeamSeat] ?? 'Merchandiser'} · {name ? m.email : 'not signed up yet'}
               </Txt>
+              {trainingToggle(m.email)}
               {m.role === 'admin' ? (
                 <Txt variant="caption" tone="dim">
                   Your daily patch is Jo&apos;s stores. The full master list is in Store Management.

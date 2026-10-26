@@ -79,10 +79,11 @@ export function cleanPlate(raw: string): string {
  * Font size that fits a plate's lettering into `width` without squashing it:
  * as big as the plate's height allows, stepping down only when the characters
  * would run out of room (KMKM25ML). Spaces count as narrow, like real plates.
+ * `fill` is the share of the plate's height the letters may take.
  */
-export function plateFontSize(label: string, width: number, height: number): number {
+export function plateFontSize(label: string, width: number, height: number, fill = 0.7): number {
   const ems = [...label].reduce((sum, ch) => sum + (ch === ' ' ? 0.35 : 0.74), 0);
-  return Math.min(height * 0.7, width / Math.max(ems, 1));
+  return Math.min(height * fill, width / Math.max(ems, 1));
 }
 
 /** What the car's plate shows: their custom plate, or their first name when it's empty. */

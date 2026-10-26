@@ -76,6 +76,8 @@ interface DataValue {
   /** Grade and monthly frequency for a store. frequency null = use the grade default. */
   updateStoreSettings: (storeId: string, grade: Grade, frequency: number | null) => Promise<void>;
   undoLastVisit: (storeId: string) => Promise<void>;
+  /** Adds visits done earlier this month, without the 25-minute timer. Coverage updates straight away. */
+  logPastVisits: (storeId: string, count: number) => Promise<void>;
   updateStoreAddress: (storeId: string, address: string) => Promise<{ located: boolean }>;
   assignStores: (storeIds: string[], manager: Manager) => Promise<void>;
   addEvent: (e: { title: string; description: string | null; event_date: string; reminder_before: boolean; reminder_on_day: boolean; event_type: EventType }) => Promise<void>;
@@ -197,7 +199,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     for (const v of vVisits as Visit[]) {
       const t = (out[v.store_id] ??= { count: 0, last: null });
       if (new Date(v.visited_at).getTime() >= start) t.count++;
-      if (!t.last || v.visited_at > t.last) t.last = v.visited_at;
+      // Past visits logged by hand are stamped when logged, not when they happened, so they don't set "last visited".
+      if (!v.is_manual && (!t.last || v.visited_at > t.last)) t.last = v.visited_at;
     }
     return out;
   }, [vVisits]);
@@ -306,6 +309,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     [visits],
   );
+
+  const logPastVisits = useCallback(async (storeId: string, count: number) => {
+    const { data, error: err } = await supabase.rpc('log_past_visits', { p_store_id: storeId, p_count: count });
+    if (err) {
+      if (/log_past_visits|is_manual/.test(err.message) && /not find|does not exist|schema cache/.test(err.message)) throw new Error('Logging past visits needs the latest database update. Ask your admin to re-run the SQL file.');
+      throw new Error(err.message);
+    }
+    const added = (data ?? []) as Visit[];
+    setVisits((prev) => [...added, ...prev]);
+  }, []);
 
   const updateStoreAddress = useCallback(
     async (storeId: string, address: string) => {
@@ -471,6 +484,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       refresh,
       updateStoreSettings,
       undoLastVisit,
+      logPastVisits,
       updateStoreAddress,
       assignStores,
       addEvent,
@@ -480,7 +494,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, logPastVisits, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -212,6 +212,7 @@ export default function Me() {
         <LinkRow icon="flame" label="Premium Motivation" hint="Longer reads for your break" href="/motivation" tone="gold" />
         {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="The full master list: assign stores to Jo, Pete, Marcia, Jermaine, Kishan or Raphael" href="/admin/stores" tone="gold" />}
         {isAdmin && <LinkRow icon="people" label="Team Management" hint="Approve sign-ups and choose whose stores each person works" href="/admin/team" tone="gold" />}
+        {isAdmin && <LinkRow icon="school" label="Training Center" hint="Daily Samsung IQ: add, edit, approve and generate questions with AI" href="/admin/training" tone="gold" />}
         <LinkRow icon="images" label="Image credits" href="/credits" />
       </GlassCard>
 

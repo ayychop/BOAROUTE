@@ -9,7 +9,8 @@
 -- tasks + task-media storage, mileage_logs, expenses, onboarding fields
 -- (current mileage, working days, chosen stores), personal budgets,
 -- timed visits, shift calendar, preferences, expense receipts,
--- per-person store hand-outs (store_assignees),
+-- per-person store hand-outs (store_assignees), Daily Samsung IQ
+-- training questions and the per-person show_training switch,
 -- RLS on everything.
 -- =====================================================================
 
@@ -107,6 +108,19 @@ alter table public.profiles add column if not exists manager_name text;
 alter table public.profiles add column if not exists distance_unit text not null default 'mi';
 alter table public.profiles drop constraint if exists profiles_distance_unit_check;
 alter table public.profiles add constraint profiles_distance_unit_check check (distance_unit in ('mi', 'km'));
+-- Daily Samsung IQ on Home. Only the admin switches it on, per person, in
+-- Team Management. The admin has it on from the start.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'show_training'
+  ) then
+    alter table public.profiles add column show_training boolean not null default false;
+    update public.profiles set show_training = true where role = 'admin';
+  end if;
+end;
+$$;
 
 -- Role check used by every policy below. SECURITY DEFINER so it can read
 -- profiles without recursing through the profiles RLS policies. The email
@@ -181,6 +195,9 @@ begin
     if new.route_managers is distinct from old.route_managers or new.manager_name is distinct from old.manager_name then
       raise exception 'Only an admin can change route assignments';
     end if;
+    if new.show_training is distinct from old.show_training then
+      raise exception 'Only an admin can change who sees training';
+    end if;
   end if;
 
   if tg_op = 'UPDATE' then
@@ -189,6 +206,8 @@ begin
     -- The email always comes from the auth account.
     select u.email into v_email from auth.users u where u.id = new.id;
     new.email := coalesce(v_email, new.email);
+    -- A new account never switches training on for itself.
+    new.show_training := false;
   end if;
 
   select * into v_member from public.team_members t where t.email = lower(btrim(new.email));
@@ -198,6 +217,9 @@ begin
     new.route_managers := public.team_patch(v_member.role, v_member.manager_name, v_member.route_managers);
     if v_member.role = 'admin' then
       new.starting_location := coalesce(new.starting_location, 'HP13 6BU');
+      if tg_op = 'INSERT' then
+        new.show_training := true;
+      end if;
     end if;
   else
     new.role := case when new.role = 'denied' then 'denied' else 'unassigned' end;
@@ -1305,14 +1327,29 @@ alter table public.visits add constraint visits_min_duration_check check (
   or visit_end_time >= visit_start_time + interval '25 minutes'
 );
 
+-- Past visits logged by hand (Store > Log Past Visit) for visits done this
+-- month before the app was in use. They carry no times and only
+-- log_past_visits() may write them.
+alter table public.visits add column if not exists is_manual boolean not null default false;
+
 -- New visits must carry both times, finish no later than now, and count on
--- the day they finished.
+-- the day they finished. Manual visits skip the timer but only through
+-- log_past_visits(), which sets boaroute.manual_visits for its own transaction.
 create or replace function public.visits_timing_guard()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
+  if new.is_manual then
+    if coalesce(current_setting('boaroute.manual_visits', true), '') <> 'on' then
+      raise exception 'Log past visits from the store page' using errcode = '42501';
+    end if;
+    new.visit_start_time := null;
+    new.visit_end_time := null;
+    new.visited_at := now();
+    return new;
+  end if;
   if new.visit_start_time is null or new.visit_end_time is null then
     raise exception 'Start the visit on the store page, then complete it after 25 minutes'
       using errcode = '23514';
@@ -1333,6 +1370,54 @@ create trigger visits_timing_guard
   before insert on public.visits
   for each row execute function public.visits_timing_guard();
 
+-- Adds p_count visits done earlier this month to a store the caller can see.
+-- They count straight away towards this month's coverage.
+create or replace function public.log_past_visits(p_store_id uuid, p_count integer)
+returns setof public.visits
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_month_total integer;
+begin
+  if v_uid is null then
+    raise exception 'Not signed in';
+  end if;
+  if not public.is_member() then
+    raise exception 'Your account is waiting for approval';
+  end if;
+  if p_count is null or p_count < 1 or p_count > 31 then
+    raise exception 'Enter between 1 and 31 visits' using errcode = '22023';
+  end if;
+  if not exists (
+    select 1 from public.stores s
+    where s.id = p_store_id
+      and (public.is_admin() or s.assigned_manager = any (public.my_route_managers()) or s.id = any (public.my_assigned_store_ids()))
+  ) then
+    raise exception 'Store not found';
+  end if;
+  select count(*) into v_month_total from public.visits v
+   where v.user_id = v_uid and v.store_id = p_store_id
+     and v.visited_at >= date_trunc('month', now());
+  if v_month_total + p_count > 31 then
+    raise exception 'That would be more than 31 visits this month' using errcode = '22023';
+  end if;
+
+  perform set_config('boaroute.manual_visits', 'on', true);
+  return query
+    with added as (
+      insert into public.visits (store_id, user_id, is_manual)
+      select p_store_id, v_uid, true from generate_series(1, p_count)
+      returning *
+    )
+    select * from added;
+end;
+$$;
+revoke execute on function public.log_past_visits(uuid, integer) from public, anon;
+grant execute on function public.log_past_visits(uuid, integer) to authenticated;
+
 -- Shift calendar: the exact dates someone works (YYYY-MM-DD). NULL means
 -- they have not set it yet, so their weekly working_days still apply.
 alter table public.profiles add column if not exists shift_dates date[];
@@ -1352,6 +1437,64 @@ alter table public.expenses add column if not exists receipt_paths text[] not nu
 alter table public.expenses drop constraint if exists expenses_receipt_paths_check;
 alter table public.expenses add constraint expenses_receipt_paths_check
   check (cardinality(receipt_paths) <= 4);
+
+-- ---------------------------------------------------------------------
+-- 15. Daily Samsung IQ: training questions
+-- ---------------------------------------------------------------------
+-- The admin manages the pool in Admin > Training Center. Questions written
+-- by the AI arrive with is_approved = false and stay hidden until approved.
+-- Home shows five a day (see src/lib/training.ts) to anyone with
+-- profiles.show_training on.
+create table if not exists public.training_questions (
+  id          uuid primary key default gen_random_uuid(),
+  topic       text not null check (char_length(btrim(topic)) between 1 and 40),
+  question    text not null check (char_length(btrim(question)) between 3 and 400),
+  answer      text not null check (char_length(btrim(answer)) between 1 and 1000),
+  is_active   boolean not null default true,
+  is_approved boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+alter table public.training_questions enable row level security;
+revoke all on public.training_questions from anon;
+grant select, insert, update, delete on public.training_questions to authenticated;
+-- One copy of each question, so the seed below can re-run.
+create unique index if not exists training_questions_question_key on public.training_questions (lower(btrim(question)));
+
+-- The team reads live questions; the admin reads and edits everything.
+drop policy if exists "training_questions: read live or admin" on public.training_questions;
+create policy "training_questions: read live or admin" on public.training_questions
+  for select to authenticated
+  using (public.is_admin() or (public.is_member() and is_active and is_approved));
+
+drop policy if exists "training_questions: admin add" on public.training_questions;
+create policy "training_questions: admin add" on public.training_questions
+  for insert to authenticated
+  with check (public.is_admin());
+
+drop policy if exists "training_questions: admin edit" on public.training_questions;
+create policy "training_questions: admin edit" on public.training_questions
+  for update to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "training_questions: admin remove" on public.training_questions;
+create policy "training_questions: admin remove" on public.training_questions
+  for delete to authenticated
+  using (public.is_admin());
+
+insert into public.training_questions (topic, question, answer)
+values
+  ('DeX', 'What is Samsung DeX?', 'It turns a Galaxy phone or tablet into a desktop-style workspace on a monitor or TV, with resizable windows, a taskbar, and keyboard and mouse support.'),
+  ('DeX', 'How can a customer start DeX on a Samsung smart TV without a cable?', 'Swipe down to the quick panel, tap DeX and pick the TV. It connects wirelessly to compatible Samsung TVs and Miracast screens.'),
+  ('Bixby', 'What are the two quickest ways to wake Bixby?', 'Say "Hi Bixby", or press and hold the side key when it is set to Bixby in Settings > Advanced features > Side key.'),
+  ('Bixby', 'What do Modes and Routines (formerly Bixby Routines) do?', 'They change settings automatically on a trigger. For example, when the phone connects to the car''s Bluetooth it can turn on Driving mode and open Maps.'),
+  ('Bixby', 'What can Bixby Vision do with the camera?', 'Point the camera (or open a photo) to translate text, identify objects and places, and find similar products to shop for.'),
+  ('GoodLock', 'What is Good Lock?', 'A free Samsung app from the Galaxy Store with modules that customise One UI, such as the lock screen, quick panel, navigation bar and home screen.'),
+  ('GoodLock', 'Name two Good Lock modules and what they change.', 'LockStar customises the lock screen, QuickStar the quick panel, NavStar the navigation bar and Home Up the home screen and recent apps.'),
+  ('Gemini AI', 'How does a customer bring up Gemini on a recent Galaxy phone?', 'Press and hold the side key (set to the digital assistant) or say "Hey Google". Gemini opens over the current app.'),
+  ('Gemini AI', 'What is Circle to Search?', 'Long-press the home button or navigation handle, then circle, tap or highlight anything on screen to search it with Google without leaving the app.'),
+  ('Gemini AI', 'What is Gemini Live?', 'A hands-free, back-and-forth voice conversation with Gemini. On supported Galaxy phones the customer can also share the camera or screen and ask about what it sees.')
+on conflict do nothing;
 
 -- Make the new table and function visible to the API straight away.
 notify pgrst, 'reload schema';

@@ -12,6 +12,7 @@ import { EmptyState, LoadingBlock } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Screen, SectionHeader } from '@/components/Screen';
+import { PastVisitSheet } from '@/components/PastVisitSheet';
 import { StoreSettingsSheet } from '@/components/StoreSettingsSheet';
 import { TaskCard } from '@/components/TaskCard';
 import { Txt } from '@/components/Txt';
@@ -34,7 +35,7 @@ export default function StoreDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { palette } = useTheme();
   const { expanded } = useLayout();
-  const { stores, tallies, targets, activeVisit, startVisit, completeVisit, cancelVisit, undoLastVisit, updateStoreAddress, updateStoreSettings } = useData();
+  const { stores, tallies, targets, activeVisit, startVisit, completeVisit, cancelVisit, undoLastVisit, logPastVisits, updateStoreAddress, updateStoreSettings } = useData();
   const store = stores.find((s) => s.id === id);
   const visitHere = !!activeVisit && activeVisit.storeId === id;
   const visitElsewhere = activeVisit && !visitHere ? stores.find((s) => s.id === activeVisit.storeId) ?? null : null;
@@ -49,6 +50,7 @@ export default function StoreDetail() {
   const [visitBusy, setVisitBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
   const [cheer, setCheer] = useState<{ text: string; done: boolean } | null>(null);
 
   // The encouragement after a visit fades after a few seconds.
@@ -313,6 +315,7 @@ export default function StoreDetail() {
             />
             {done > 0 && <NeonButton label="Undo" icon="arrow-undo" variant="ghost" onPress={onUndo} />}
           </View>
+          <NeonButton label="Log Past Visit" icon="time-outline" variant="outline" onPress={() => setPastOpen(true)} disabled={visitBusy} style={{ marginTop: 10 }} accessibilityHint="Add visits you already did this month" full />
           {visitElsewhere ? (
             <Txt variant="caption" tone="dim" style={{ marginTop: 8 }} onPress={() => router.replace({ pathname: '/store/[id]', params: { id: visitElsewhere.id } })}>
               You are on a visit at {visitElsewhere.name}. Complete or cancel it there first.
@@ -426,6 +429,18 @@ export default function StoreDetail() {
           {address}
           {tasksBlock}
         </View>
+      )}
+      {pastOpen && (
+        <PastVisitSheet
+          store={store}
+          done={done}
+          open={pastOpen}
+          onClose={() => setPastOpen(false)}
+          onSave={async (count) => {
+            await logPastVisits(store.id, count);
+            setCheer({ text: `${count} past ${count === 1 ? 'visit' : 'visits'} logged. ${remainingMessage(done + count, target)}`, done: done + count >= target });
+          }}
+        />
       )}
       {settingsOpen && (
         <StoreSettingsSheet store={store} targets={targets} open={settingsOpen} onClose={() => setSettingsOpen(false)} onSave={(grade, frequency) => updateStoreSettings(store.id, grade, frequency)} />

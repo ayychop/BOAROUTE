@@ -155,6 +155,11 @@ describe('number plate lettering', () => {
     expect(size).toBeGreaterThan(24 * 0.5);
   });
 
+  it('lets the plate fill more of its height when asked, still fitting KMKM25ML', () => {
+    expect(plateFontSize('JO', 100, 24, 0.8)).toBeCloseTo(24 * 0.8);
+    expect(plateFontSize('KMKM25ML', 100, 24, 0.8) * 8 * 0.74).toBeLessThanOrEqual(100 + 0.001);
+  });
+
   it('treats spaces as narrow, like a real registration', () => {
     expect(plateFontSize('AB12 CDE', 82, 24)).toBeGreaterThan(plateFontSize('AB12XCDE', 82, 24));
   });

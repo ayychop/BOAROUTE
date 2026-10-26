@@ -112,3 +112,14 @@ export function summariseVisitTimes(visits: Pick<Visit, 'store_id' | 'visited_at
     .sort((a, b) => b.avgMinutes - a.avgMinutes || a.name.localeCompare(b.name));
   return { timedVisits: count, overallAvgMinutes: count ? total / count : null, perStore };
 }
+
+/** Most visits one store can hold in a month; matches log_past_visits() in the database. */
+export const MAX_MONTH_VISITS = 31;
+
+/** The number typed in Log Past Visit, or why it can't be logged. `done` is this month's count so far. */
+export function parsePastVisitCount(raw: string, done: number): number | string {
+  const n = Number(raw.trim());
+  if (!raw.trim() || !Number.isInteger(n) || n < 1) return 'Enter how many visits to add, from 1.';
+  if (done + n > MAX_MONTH_VISITS) return `That would be more than ${MAX_MONTH_VISITS} visits this month.`;
+  return n;
+}

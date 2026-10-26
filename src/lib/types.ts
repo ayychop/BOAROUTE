@@ -50,6 +50,8 @@ export interface Profile {
   sales_day_budget: number | string | null;
   /** Per OOH / Sales Day session allowance in GBP (default 25). */
   ooh_session_allowance?: number | string | null;
+  /** Daily Samsung IQ on Home. Only the admin switches it, per person, in Team Management. */
+  show_training?: boolean;
 }
 
 export interface Store {
@@ -77,6 +79,8 @@ export interface Visit {
   /** Set on timed visits (Start Visit / Complete Visit); NULL on older ones. */
   visit_start_time?: string | null;
   visit_end_time?: string | null;
+  /** Logged by hand from Store > Log Past Visit, without the visit timer. */
+  is_manual?: boolean;
 }
 
 export type CarIconId = 'car-sport' | 'car' | 'arrow' | 'diamond' | 'bolt' | 'star';

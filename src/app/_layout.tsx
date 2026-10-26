@@ -93,6 +93,7 @@ function RootNavigator() {
           <Stack.Screen name="route-settings" options={{ animation: PUSH }} />
           <Stack.Screen name="admin/stores" options={{ animation: PUSH }} />
           <Stack.Screen name="admin/team" options={{ animation: PUSH }} />
+          <Stack.Screen name="admin/training" options={{ animation: PUSH }} />
           <Stack.Screen name="credits" options={{ animation: PUSH }} />
           <Stack.Screen name="vehicle" options={{ animation: PUSH }} />
           <Stack.Screen name="my-stores" options={{ animation: PUSH }} />

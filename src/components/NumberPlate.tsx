@@ -1,4 +1,7 @@
-import { View } from 'react-native';
+import { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { Easing, cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
 import { plateFontSize } from '@/lib/preferences';
 import { fonts } from '@/theme/typography';
 import { Txt } from './Txt';
@@ -6,18 +9,60 @@ import { Txt } from './Txt';
 const PLATE_YELLOW = '#F6C445';
 const PLATE_INK = '#121212';
 const BAND_BLUE = '#1F4AA8';
+const SHEEN_PAUSE = 2000;
+const SHEEN_SWEEP = 900;
+
+/**
+ * A soft diagonal glint that sweeps across the yellow every couple of seconds,
+ * like light catching the acrylic. Held still when Reduce Motion is on.
+ */
+function Sheen({ height }: { height: number }) {
+  const reduced = useReducedMotion();
+  const areaWidth = useSharedValue(0);
+  const t = useSharedValue(0);
+  const sheenWidth = height * 1.1;
+
+  useEffect(() => {
+    if (reduced) return;
+    t.set(withRepeat(withDelay(SHEEN_PAUSE, withTiming(1, { duration: SHEEN_SWEEP, easing: Easing.inOut(Easing.quad) })), -1, false));
+    return () => cancelAnimation(t);
+  }, [reduced, t]);
+
+  const style = useAnimatedStyle(() => {
+    const from = -sheenWidth * 1.5;
+    const to = areaWidth.get() + sheenWidth * 0.5;
+    return { transform: [{ translateX: from + (to - from) * t.get() }, { rotate: '20deg' }] };
+  });
+
+  if (reduced) return null;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill} onLayout={(e) => areaWidth.set(e.nativeEvent.layout.width)}>
+      <Animated.View style={[{ position: 'absolute', top: -height, bottom: -height, width: sheenWidth, opacity: 0.3 }, style]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0)', '#FFFFFF', 'rgba(255,255,255,0)']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </View>
+  );
+}
 
 /**
  * A UK rear number plate showing the driver's name (SARAH, JO, DAVID), with
  * the blue UK band. Scales from a badge on a card to the hero on Your vehicle.
+ * `sheen` adds the sweeping glass reflection used on the Home car card.
  */
-export function NumberPlate({ text, height = 30 }: { text: string; height?: number }) {
+export function NumberPlate({ text, height = 30, sheen = false }: { text: string; height?: number; sheen?: boolean }) {
   const label = text.toUpperCase().slice(0, 8) || 'BOA';
   // Real UK plate proportions, so a short name and KMKM25ML sit on the same size plate.
   const width = height * 4.4;
   const band = height * 0.48;
-  const padding = height * 0.25;
-  const fontSize = plateFontSize(label, width - band - padding * 2, height);
+  const border = Math.max(1, height * 0.05);
+  const padding = height * 0.1;
+  // Letters fill the yellow almost to the border, like a pressed plate rather than a sticker.
+  const fontSize = plateFontSize(label, width - band - border * 2 - padding * 2, height, 0.8);
   return (
     <View
       accessibilityRole="image"
@@ -30,7 +75,7 @@ export function NumberPlate({ text, height = 30 }: { text: string; height?: numb
         alignItems: 'stretch',
         borderRadius: height * 0.14,
         backgroundColor: PLATE_YELLOW,
-        borderWidth: Math.max(1, height * 0.05),
+        borderWidth: border,
         borderColor: PLATE_INK,
         overflow: 'hidden',
         shadowColor: '#000',
@@ -45,16 +90,17 @@ export function NumberPlate({ text, height = 30 }: { text: string; height?: numb
           UK
         </Txt>
       </View>
-      <View style={{ flex: 1, paddingHorizontal: padding, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, paddingHorizontal: padding, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <Txt
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={0.7}
+          minimumFontScale={0.5}
           maxFontSizeMultiplier={1}
-          style={{ color: PLATE_INK, fontFamily: fonts.bodyBold, fontSize, lineHeight: fontSize * 1.15, letterSpacing: fontSize * 0.04, textAlign: 'center', includeFontPadding: false, textAlignVertical: 'center' }}
+          style={{ color: PLATE_INK, fontFamily: fonts.bodyBold, fontSize, lineHeight: fontSize * 1.05, letterSpacing: fontSize * 0.03, textAlign: 'center', includeFontPadding: false, textAlignVertical: 'center' }}
         >
           {label}
         </Txt>
+        {sheen && <Sheen height={height} />}
       </View>
     </View>
   );

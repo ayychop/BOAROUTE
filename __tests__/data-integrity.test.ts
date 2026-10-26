@@ -32,7 +32,7 @@ describe('seed data', () => {
   it('enables RLS on every table', () => {
     const all = migration;
     const tables = [...all.matchAll(/create table if not exists public\.(\w+)/g)].map((m) => m[1]);
-    expect(tables.sort()).toEqual(['events', 'expenses', 'hazard_reports', 'mileage_logs', 'profiles', 'store_assignees', 'stores', 'tasks', 'team_members', 'user_stores', 'visits']);
+    expect(tables.sort()).toEqual(['events', 'expenses', 'hazard_reports', 'mileage_logs', 'profiles', 'store_assignees', 'stores', 'tasks', 'team_members', 'training_questions', 'user_stores', 'visits']);
     for (const t of tables) expect(all).toContain(`alter table public.${t} enable row level security`);
   });
 

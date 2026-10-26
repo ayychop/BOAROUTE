@@ -1,6 +1,7 @@
 import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import type { RouteOptionsResult } from '../../supabase/functions/_shared/route-analysis';
 import type { Mood, WriterContext, WriterResult } from '../../supabase/functions/_shared/writer-prompt';
+import type { TrainingQuestion } from '@/lib/training';
 import { estimateRouteOptions } from '@/lib/route-estimate';
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import type { LatLng } from '@/lib/types';
@@ -101,4 +102,16 @@ export async function draftMessage(req: {
   }
   console.log('[ai-writer] ok', { chars: data.body.length, hasSubject: !!data.subject });
   return data;
+}
+
+/** Three new Daily Samsung IQ questions from the specs, saved unapproved for the admin to review. */
+export async function generateTrainingQuestions(specs: string): Promise<TrainingQuestion[]> {
+  if (!isSupabaseConfigured) throw new Error('This build has no Supabase URL or anon key. Add them to the EAS environment and rebuild.');
+  const { data, error } = await supabase.functions.invoke<{ questions: TrainingQuestion[] }>('training-generator', { body: { specs } });
+  if (error) {
+    const info = await describeFunctionError('training-generator', error);
+    throw new Error(info.message);
+  }
+  if (!data?.questions?.length) throw new Error('The AI returned no questions. Please try again.');
+  return data.questions;
 }

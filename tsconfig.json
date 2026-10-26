@@ -24,6 +24,7 @@
     "node_modules",
     "supabase/functions/ai-writer",
     "supabase/functions/route-options",
+    "supabase/functions/training-generator",
     "supabase/functions/_shared/http.ts"
   ]
 }
