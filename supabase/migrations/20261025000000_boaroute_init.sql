@@ -9,6 +9,7 @@
 -- tasks + task-media storage, mileage_logs, expenses, onboarding fields
 -- (current mileage, working days, chosen stores), personal budgets,
 -- timed visits, shift calendar, preferences, expense receipts,
+-- per-person store hand-outs (store_assignees),
 -- RLS on everything.
 -- =====================================================================
 
@@ -412,13 +413,57 @@ create trigger stores_defaults
   before insert or update on public.stores
   for each row execute function public.stores_set_defaults();
 
--- The admin sees the full master list; a merchandiser sees only their patch;
--- a pending or denied account sees nothing.
+-- Stores the admin hands to one person on top of their patch (Store
+-- Management > "Also visible to"). The owner (assigned_manager) never
+-- changes, so the store keeps its owner's badge.
+create table if not exists public.store_assignees (
+  store_id   uuid not null references public.stores (id) on delete cascade,
+  user_id    uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (store_id, user_id)
+);
+alter table public.store_assignees enable row level security;
+revoke all on public.store_assignees from anon;
+create index if not exists store_assignees_user_idx on public.store_assignees (user_id);
+
+drop policy if exists "store_assignees: read own or admin" on public.store_assignees;
+create policy "store_assignees: read own or admin" on public.store_assignees
+  for select to authenticated
+  using (user_id = (select auth.uid()) or public.is_admin());
+
+drop policy if exists "store_assignees: admin add" on public.store_assignees;
+create policy "store_assignees: admin add" on public.store_assignees
+  for insert to authenticated
+  with check (public.is_admin());
+
+drop policy if exists "store_assignees: admin remove" on public.store_assignees;
+create policy "store_assignees: admin remove" on public.store_assignees
+  for delete to authenticated
+  using (public.is_admin());
+
+-- Stores handed to the signed-in person. Empty unless approved.
+create or replace function public.my_assigned_store_ids()
+returns uuid[]
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(array_agg(a.store_id), '{}'::uuid[])
+  from public.store_assignees a
+  join public.profiles p on p.id = a.user_id and p.role in ('admin', 'user')
+  where a.user_id = auth.uid();
+$$;
+revoke execute on function public.my_assigned_store_ids() from public, anon;
+grant execute on function public.my_assigned_store_ids() to authenticated;
+
+-- The admin sees the full master list; a merchandiser sees their patch plus
+-- any store handed to them; a pending or denied account sees nothing.
 drop policy if exists "stores: read for signed-in users" on public.stores;
 drop policy if exists "stores: read own patch or admin" on public.stores;
 create policy "stores: read own patch or admin" on public.stores
   for select to authenticated
-  using (public.is_admin() or assigned_manager = any (public.my_route_managers()));
+  using (public.is_admin() or assigned_manager = any (public.my_route_managers()) or id = any (public.my_assigned_store_ids()));
 
 drop policy if exists "stores: admin insert" on public.stores;
 create policy "stores: admin insert" on public.stores
@@ -470,7 +515,7 @@ begin
          latitude  = coalesce(p_latitude, latitude),
          longitude = coalesce(p_longitude, longitude)
    where id = p_store_id
-     and (public.is_admin() or assigned_manager = any (public.my_route_managers()))
+     and (public.is_admin() or assigned_manager = any (public.my_route_managers()) or id = any (public.my_assigned_store_ids()))
   returning * into v_row;
 
   if not found then
@@ -512,7 +557,7 @@ begin
          frequency_custom   = p_frequency is not null,
          required_frequency = coalesce(p_frequency, required_frequency)
    where id = p_store_id
-     and (public.is_admin() or assigned_manager = any (public.my_route_managers()))
+     and (public.is_admin() or assigned_manager = any (public.my_route_managers()) or id = any (public.my_assigned_store_ids()))
   returning * into v_row;
 
   if v_row.id is null then

@@ -5,7 +5,7 @@ import { isMember, managersFor, targetsFor } from '@/lib/frequency';
 import { geocode } from '@/lib/geo';
 import { getPref, setPref } from '@/lib/prefs';
 import type { VisitTally } from '@/lib/route-engine';
-import { storesInScope } from '@/lib/route-engine';
+import { storesForPerson } from '@/lib/store-selection';
 import { supabase } from '@/lib/supabaseClient';
 import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, StoreOwner, Visit, WorkEvent } from '@/lib/types';
 import { canCompleteVisit, parseActiveVisit, type ActiveVisit } from '@/lib/visit-timer';
@@ -34,14 +34,23 @@ function cleanStore(raw: Store): Store {
 }
 const EMPTY: never[] = [];
 
+export interface StoreAssignee {
+  store_id: string;
+  user_id: string;
+}
+
 interface DataValue {
   loading: boolean;
   error: string | null;
   stores: Store[];
-  /** Stores this person routes: the ones they chose, or their managers' stores if they chose none. */
+  /** Stores this person routes: the ones they chose, or their managers' stores if they chose none, plus any handed to them. */
   myStores: Store[];
   /** Every store in this person's patch (pickers). The admin's full list stays in stores, for Store Management. */
   patchStores: Store[];
+  /** Stores handed to one person on top of their patch, owner unchanged. The admin gets every row, everyone else their own. */
+  storeAssignees: StoreAssignee[];
+  /** Admin: show a store to one team member (on) or stop (off). */
+  setStoreAssignee: (storeId: string, userId: string, on: boolean) => Promise<void>;
   /** Store ids this person picked as theirs (user_stores). */
   chosenStoreIds: string[];
   saveChosenStores: (storeIds: string[]) => Promise<void>;
@@ -100,6 +109,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [mileage, setMileage] = useState<MileageLog[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
+  const [assignees, setAssignees] = useState<StoreAssignee[]>([]);
   const lastLoad = useRef(0);
   const retried = useRef<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
@@ -119,7 +129,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!userId || !accessKey) return;
     const sinceDate = localDateString(new Date(monthStart().getFullYear(), monthStart().getMonth() - 6, 1));
     const since = new Date(`${sinceDate}T00:00:00`).toISOString();
-    const [s, v, e, m, x, u] = await Promise.all([
+    const [s, v, e, m, x, u, a] = await Promise.all([
       supabase.from('stores').select(STORE_COLUMNS).order('name'),
       // '*' so visits load before and after the visit-time columns exist.
       supabase.from('visits').select('*').eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false }).limit(5000),
@@ -127,6 +137,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('mileage_logs').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
       supabase.from('expenses').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
       supabase.from('user_stores').select('store_id').eq('user_id', userId),
+      supabase.from('store_assignees').select('store_id,user_id'),
     ]);
     const firstError = s.error ?? v.error ?? e.error ?? m.error ?? x.error ?? u.error;
     setError(firstError ? firstError.message : null);
@@ -140,6 +151,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!m.error) setMileage((m.data ?? []) as MileageLog[]);
     if (!x.error) setExpenses((x.data ?? []) as Expense[]);
     if (!u.error) setChosen((u.data ?? []).map((r: { store_id: string }) => r.store_id));
+    // Left out of the error banner: before the SQL update there is no table, and the patch still works.
+    setAssignees(a.error ? [] : ((a.data ?? []) as StoreAssignee[]));
     lastLoad.current = Date.now();
     setLoadedFor(accessKey);
     // A brand-new approval can reach the app a moment before the database
@@ -176,6 +189,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const vMileage = mine ? mileage : EMPTY;
   const vExpenses = mine ? expenses : EMPTY;
   const vChosen = mine ? chosen : EMPTY;
+  const vAssignees = mine ? assignees : EMPTY;
 
   const tallies = useMemo(() => {
     const start = monthStart().getTime();
@@ -189,14 +203,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [vVisits]);
 
   const managers = useMemo(() => managersFor(profile), [profile]);
-  const patchStores = useMemo(() => storesInScope(vStores as Store[], managers), [vStores, managers]);
-  // Chosen stores never reach outside the patch, even if a store was reassigned since.
-  const myStores = useMemo(() => {
-    if (vChosen.length === 0) return patchStores;
-    const ids = new Set<string>(vChosen);
-    const chosen = patchStores.filter((s) => ids.has(s.id));
-    return chosen.length ? chosen : patchStores;
-  }, [patchStores, vChosen]);
+  const handedToMe = useMemo(() => (vAssignees as StoreAssignee[]).filter((r) => r.user_id === userId).map((r) => r.store_id), [vAssignees, userId]);
+  const { patch: patchStores, mine: myStores } = useMemo(
+    () => storesForPerson(vStores as Store[], managers, vChosen as string[], handedToMe),
+    [vStores, managers, vChosen, handedToMe],
+  );
 
   const saveChosenStores = useCallback(
     async (storeIds: string[]) => {
@@ -336,6 +347,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [stores],
   );
 
+  const setStoreAssignee = useCallback(async (storeId: string, assignee: string, on: boolean) => {
+    const row = { store_id: storeId, user_id: assignee };
+    const same = (r: StoreAssignee) => r.store_id === storeId && r.user_id === assignee;
+    setAssignees((prev) => (on ? [...prev.filter((r) => !same(r)), row] : prev.filter((r) => !same(r))));
+    const { error: err } = on
+      ? await supabase.from('store_assignees').upsert(row, { onConflict: 'store_id,user_id', ignoreDuplicates: true })
+      : await supabase.from('store_assignees').delete().eq('store_id', storeId).eq('user_id', assignee);
+    if (err) {
+      setAssignees((prev) => (on ? prev.filter((r) => !same(r)) : [...prev, row]));
+      if (/store_assignees/.test(err.message)) throw new Error('Handing stores to one person needs the latest database update. Re-run the SQL file in Supabase.');
+      throw err;
+    }
+  }, []);
+
   const addEvent = useCallback<DataValue['addEvent']>(async (e) => {
     const { data, error: err } = await supabase.from('events').insert(e).select('*').single();
     if (err) throw err;
@@ -427,6 +452,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       stores: vStores as Store[],
       myStores,
       patchStores,
+      storeAssignees: vAssignees as StoreAssignee[],
+      setStoreAssignee,
       chosenStoreIds: vChosen as string[],
       saveChosenStores,
       managers,
@@ -453,7 +480,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, patchStores, vChosen, saveChosenStores, managers, targets, tallies, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

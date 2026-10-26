@@ -1,4 +1,25 @@
+import type { RoutableStore } from './route-engine';
 import type { Store, StoreOwner } from './types';
+
+/**
+ * Whose stores someone works. patch: every store under their managers plus
+ * any store the admin handed them (pickers). mine: the stores they picked
+ * from that patch (all of it when they picked none), always including the
+ * handed stores, which they never have to pick.
+ */
+export function storesForPerson<S extends RoutableStore>(
+  stores: readonly S[],
+  managers: readonly StoreOwner[],
+  chosen: readonly string[],
+  assigned: readonly string[],
+): { patch: S[]; mine: S[] } {
+  const handed = new Set(assigned);
+  const patch = stores.filter((s) => managers.includes(s.assigned_manager) || handed.has(s.id));
+  // Picks never reach outside the patch, even if a store was reassigned since.
+  const picked = new Set(chosen);
+  const mine = patch.some((s) => picked.has(s.id)) ? patch.filter((s) => picked.has(s.id) || handed.has(s.id)) : patch;
+  return { patch, mine };
+}
 
 /** Jo (the admin) starts with every Joseph store ticked; everyone else picks from scratch. */
 export function defaultSelection(stores: readonly Store[], isAdmin: boolean): string[] {

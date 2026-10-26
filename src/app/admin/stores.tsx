@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, View, type ListRenderItem } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { GradeBadge, managerColor } from '@/components/badges';
@@ -12,10 +12,15 @@ import { Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { MANAGERS, isLegacyOwner, managerShort } from '@/lib/frequency';
-import type { Manager, Store } from '@/lib/types';
+import { supabase } from '@/lib/supabaseClient';
+import type { Manager, Profile, Store } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { useTheme } from '@/theme/ThemeProvider';
+
+type TeamUser = Pick<Profile, 'id' | 'email' | 'name'>;
+
+const firstName = (u: TeamUser) => (u.name?.trim() || u.email).split(/[\s@]/)[0];
 
 /** Only the first screenful plays the entrance; rows that mount while scrolling appear instantly. */
 const ANIMATED_ROWS = 8;
@@ -23,7 +28,7 @@ const ANIMATED_ROWS = 8;
 export default function StoreManagement() {
   const { palette } = useTheme();
   const { isAdmin } = useAuth();
-  const { stores, assignStores } = useData();
+  const { stores, assignStores, storeAssignees, setStoreAssignee } = useData();
   const { columns } = useLayout();
   const listColumns = Math.min(columns, 2);
   const [query, setQuery] = useState('');
@@ -31,6 +36,30 @@ export default function StoreManagement() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  // Approved merchandisers, for handing a single store to one of them.
+  const [team, setTeam] = useState<TeamUser[]>([]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let live = true;
+    supabase
+      .from('profiles')
+      .select('id,email,name')
+      .eq('role', 'user')
+      .order('name')
+      .then(({ data }) => {
+        if (live && data) setTeam(data as TeamUser[]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [isAdmin]);
+
+  const handedTo = useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    for (const r of storeAssignees) (out[r.store_id] ??= new Set()).add(r.user_id);
+    return out;
+  }, [storeAssignees]);
 
   const counts = useMemo(
     () => Object.fromEntries(MANAGERS.map((m) => [m, stores.filter((s) => s.assigned_manager === m).length])) as Record<Manager, number>,
@@ -63,6 +92,20 @@ export default function StoreManagement() {
       }
     } catch (e) {
       Alert.alert('Could not reassign', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const hand = async (store: Store, user: TeamUser, on: boolean) => {
+    const key = `${store.id}:${user.id}`;
+    if (busy === key) return;
+    setBusy(key);
+    try {
+      await setStoreAssignee(store.id, user.id, on);
+      Haptics.selectionAsync().catch(() => {});
+    } catch (e) {
+      Alert.alert('Could not update', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setBusy(null);
     }
@@ -112,6 +155,20 @@ export default function StoreManagement() {
                   }}
                 />
               ))}
+            </View>
+          )}
+          {!selecting && team.length > 0 && (
+            // Keeps the owner (and their badge); the store just also shows up for these people.
+            <View style={{ marginTop: 12, gap: 8 }}>
+              <Txt variant="label" tone="dim">
+                Also visible to
+              </Txt>
+              <View accessibilityLabel={`Who else sees ${s.name}`} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {team.map((u) => {
+                  const on = !!handedTo[s.id]?.has(u.id);
+                  return <Chip key={u.id} label={firstName(u)} tone="gold" active={on} icon={on ? 'checkmark' : 'person-add-outline'} onPress={() => hand(s, u, !on)} />;
+                })}
+              </View>
             </View>
           )}
         </GlassCard>
@@ -193,7 +250,7 @@ export default function StoreManagement() {
           data={list}
           keyExtractor={(st) => st.id}
           renderItem={renderItem}
-          extraData={{ selecting, selected, busy }}
+          extraData={{ selecting, selected, busy, team, handedTo }}
           numColumns={listColumns}
           columnWrapperStyle={listColumns > 1 ? { gap: 10 } : undefined}
           ItemSeparatorComponent={Separator}
