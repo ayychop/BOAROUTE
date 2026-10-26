@@ -41,6 +41,7 @@ export const DEFAULT_ROUTE_COLOR: RouteColorId = 'gold';
 
 export const MAX_MAKE_MODEL = 40;
 export const MAX_REG = 8;
+export const MAX_PLATE = 8;
 
 /** The person's preferences with every unknown or missing value replaced by its default. */
 export function prefsFor(profile: Pick<Profile, 'preferences'> | null | undefined): Required<Pick<UserPreferences, 'car_icon' | 'route_color'>> & UserPreferences {
@@ -67,6 +68,16 @@ export function formatReg(raw: string): string {
   // Current UK format: two letters, two digits, three letters.
   if (/^[A-Z]{2}\d{2}[A-Z]{3}$/.test(compact)) return `${compact.slice(0, 4)} ${compact.slice(4)}`;
   return clean.slice(0, MAX_REG);
+}
+
+/** Plate text as typed: upper case, letters, digits and single spaces, at most 8 characters. */
+export function cleanPlate(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, MAX_PLATE);
+}
+
+/** What the car's plate shows: their custom plate, or their first name when it's empty. */
+export function displayPlate(profile: Pick<Profile, 'name' | 'email' | 'preferences'> | null | undefined): string {
+  return cleanPlate(profile?.preferences?.custom_plate ?? '').trim() || plateName(profile?.name, profile?.email);
 }
 
 /** The name on the dynamic number plate: "SARAH", "JO". Falls back to the email's first part. */

@@ -8,7 +8,7 @@
 -- Contents: profiles, stores (Jo / Sarah / David seeds), visits, events,
 -- tasks + task-media storage, mileage_logs, expenses, onboarding fields
 -- (current mileage, working days, chosen stores), personal budgets,
--- timed visits, shift calendar, preferences,
+-- timed visits, shift calendar, preferences, expense receipts,
 -- RLS on everything.
 -- =====================================================================
 
@@ -1293,11 +1293,20 @@ create trigger visits_timing_guard
 alter table public.profiles add column if not exists shift_dates date[];
 
 -- App settings that need no column of their own: car indicator, route
--- colour, car make/model and registration.
+-- colour, car make/model, registration and custom_plate (the text on the
+-- Home car's number plate; empty means their first name).
 alter table public.profiles add column if not exists preferences jsonb not null default '{}'::jsonb;
 alter table public.profiles drop constraint if exists profiles_preferences_check;
 alter table public.profiles add constraint profiles_preferences_check
   check (jsonb_typeof(preferences) = 'object' and pg_column_size(preferences) < 8192);
+
+-- Receipt photos on expenses: object paths in the private task-media bucket,
+-- e.g. '<user id>/receipts/<folder>/1-image.jpg', so the owner-only storage
+-- policies above already cover them. The app signs them on read.
+alter table public.expenses add column if not exists receipt_paths text[] not null default '{}';
+alter table public.expenses drop constraint if exists expenses_receipt_paths_check;
+alter table public.expenses add constraint expenses_receipt_paths_check
+  check (cardinality(receipt_paths) <= 4);
 
 -- Make the new table and function visible to the API straight away.
 notify pgrst, 'reload schema';

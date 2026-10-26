@@ -30,7 +30,7 @@ function Plate({ text }: { text: string }) {
   const label = text.toUpperCase().slice(0, 8);
   const x = 122;
   const w = 82;
-  const fontSize = label.length > 6 ? 9.5 : 11.5;
+  const fontSize = label.length > 6 ? 8.5 : 11.5;
   return (
     <G>
       <Rect x={x} y={87} width={w} height={18} rx={2.5} fill="#F6C445" stroke="#121212" strokeWidth={1} />
@@ -38,7 +38,7 @@ function Plate({ text }: { text: string }) {
       <SvgText x={x + 5} y={102} fontSize={4.2} fontFamily={fonts.bodyBold} fill="#FFFFFF" textAnchor="middle">
         UK
       </SvgText>
-      <SvgText x={x + 9 + (w - 9) / 2} y={100} fontSize={fontSize} fontFamily={fonts.bodyBold} fill="#121212" textAnchor="middle" letterSpacing={0.8}>
+      <SvgText x={x + 9 + (w - 9) / 2} y={100} fontSize={fontSize} fontFamily={fonts.bodyBold} fill="#121212" textAnchor="middle" letterSpacing={label.length > 6 ? 0.3 : 0.8}>
         {label}
       </SvgText>
     </G>

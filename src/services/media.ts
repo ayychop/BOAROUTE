@@ -5,6 +5,10 @@ import { supabase } from '@/lib/supabaseClient';
 export const TASK_MEDIA_BUCKET = 'task-media';
 export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 export const MAX_ATTACHMENTS = 6;
+export const MAX_RECEIPTS = 4;
+
+type MediaKinds = ImagePicker.MediaType[];
+const PHOTOS_AND_VIDEOS: MediaKinds = ['images', 'videos'];
 
 export interface PickedMedia {
   uri: string;
@@ -22,9 +26,9 @@ function toPicked(a: ImagePicker.ImagePickerAsset): PickedMedia {
 }
 
 /** Pick photos and videos from the gallery. Returns [] when cancelled. */
-export async function pickFromLibrary(limit: number): Promise<PickedMedia[]> {
+export async function pickFromLibrary(limit: number, kinds: MediaKinds = PHOTOS_AND_VIDEOS): Promise<PickedMedia[]> {
   const res = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images', 'videos'],
+    mediaTypes: kinds,
     allowsMultipleSelection: true,
     selectionLimit: Math.max(1, limit),
     quality: 0.7,
@@ -35,10 +39,10 @@ export async function pickFromLibrary(limit: number): Promise<PickedMedia[]> {
 }
 
 /** Take a photo or a short video with the camera. */
-export async function captureWithCamera(): Promise<PickedMedia[]> {
+export async function captureWithCamera(kinds: MediaKinds = PHOTOS_AND_VIDEOS): Promise<PickedMedia[]> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) throw new Error('Camera access is off. You can enable it in Settings.');
-  const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images', 'videos'], quality: 0.7, videoMaxDuration: 60 });
+  const res = await ImagePicker.launchCameraAsync({ mediaTypes: kinds, quality: 0.7, videoMaxDuration: 60 });
   if (res.canceled) return [];
   return res.assets.map(toPicked);
 }
@@ -48,8 +52,7 @@ function folderId(): string {
 }
 
 /** Uploads into <user id>/<folder>/ so storage RLS lets only the owner read it. Returns object paths. */
-export async function uploadTaskMedia(userId: string, media: PickedMedia[], onProgress?: (done: number, total: number) => void): Promise<string[]> {
-  const folder = folderId();
+export async function uploadTaskMedia(userId: string, media: PickedMedia[], onProgress?: (done: number, total: number) => void, folder = folderId()): Promise<string[]> {
   const paths: string[] = [];
   for (let i = 0; i < media.length; i++) {
     const m = media[i];
@@ -67,6 +70,11 @@ export async function uploadTaskMedia(userId: string, media: PickedMedia[], onPr
     onProgress?.(i + 1, media.length);
   }
   return paths;
+}
+
+/** Receipt photos for an expense, kept under <user id>/receipts/ in the same private bucket. */
+export function uploadReceipts(userId: string, photos: PickedMedia[], onProgress?: (done: number, total: number) => void): Promise<string[]> {
+  return uploadTaskMedia(userId, photos, onProgress, `receipts/${folderId()}`);
 }
 
 /** Time-limited URLs for private media (1 hour). */

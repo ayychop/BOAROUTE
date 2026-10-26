@@ -1,53 +1,32 @@
-/** Short daily quotes for the Hub, written for people who spend the day on the road and on the shop floor. */
-export const DAILY_QUOTES: string[] = [
-  'Your grind today builds your empire tomorrow.',
-  'Every store you walk into is a chance to leave it better than you found it.',
-  'Miles on the clock, standards on the shelf.',
-  'Consistency beats talent when talent does not show up.',
-  'The best displays are built by people who care about the details nobody notices.',
-  'One great visit at a time. That is how targets fall.',
-  'You are the face of the brand in every aisle you touch.',
-  'Plan the route, work the plan, own the day.',
-  'Small wins stacked daily turn into big months.',
-  'Pressure is a privilege. It means your work matters.',
-  'Show up sharp. Leave it sharper.',
-  'Discipline is choosing what you want most over what you want now.',
-  'Every mile is a step closer to the goal.',
-  'Good merchandisers fill shelves. Great ones change how a store sells.',
-  'Be the reason a store manager is glad you came in today.',
-  'Your standards are your signature.',
-  'Fast is fine. Right first time is better.',
-  'The road is long, but so is your ambition.',
-  'Nobody remembers easy days. Make today one worth remembering.',
-  'Effort is the one thing nobody can take from you.',
-  'Turn every visit into a result.',
-  'Greatness is just ordinary work done extraordinarily well, every day.',
-  'Your future self is watching. Make them proud.',
-  'Do it properly or do it again. Choose properly.',
-  'A full route and a full heart. Let us go.',
-  'Progress over perfection, but never stop chasing perfection.',
-  'The shelf does not lie. Let it tell your story.',
-  'Hard work compounds. Keep depositing.',
-  'Win the morning and the day follows.',
-  'Champions are built on the days they did not feel like it.',
-  'You do not find momentum. You build it, one store at a time.',
-];
+import { MANAGER_QUOTES, MERCHANDISER_QUOTES } from '@/data/quotes';
+
+/** One "Real Talk" quote per day of the year for the Hub: merchandisers by default. */
+export const DAILY_QUOTES: string[] = MERCHANDISER_QUOTES;
+/** The manager's set: training, store relationships, Elites and launch game plans. */
+export const MANAGER_DAILY_QUOTES: string[] = MANAGER_QUOTES;
+
+/** The list for someone's job: managers (the admin role) get their own quotes. */
+export function quotesFor(manager: boolean): string[] {
+  return manager ? MANAGER_DAILY_QUOTES : DAILY_QUOTES;
+}
 
 const DAY_MS = 86_400_000;
 
-/** Days since 1 Jan 1970 in local time, so the quote changes at local midnight. */
-function localDayNumber(date: Date): number {
-  return Math.floor((date.getTime() - date.getTimezoneOffset() * 60_000) / DAY_MS);
+/** Day of the year in local time: 1 on 1 Jan, up to 365 (366 in a leap year). */
+export function dayOfYear(date: Date): number {
+  const start = new Date(date.getFullYear(), 0, 1);
+  const today = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((today.getTime() - start.getTime()) / DAY_MS) + 1;
 }
 
-/** Index of today's quote; `offset` steps through the list from there. */
-export function dailyQuoteIndex(date: Date, offset = 0): number {
-  const n = DAILY_QUOTES.length;
-  return (((localDayNumber(date) + offset) % n) + n) % n;
+/** Index of today's quote (dayOfYear % length), so it changes at local midnight; `offset` steps through the list from there. */
+export function dailyQuoteIndex(date: Date, offset = 0, quotes: string[] = DAILY_QUOTES): number {
+  const n = quotes.length;
+  return (((dayOfYear(date) + offset) % n) + n) % n;
 }
 
-export function dailyQuote(date: Date, offset = 0): string {
-  return DAILY_QUOTES[dailyQuoteIndex(date, offset)];
+export function dailyQuote(date: Date, offset = 0, quotes: string[] = DAILY_QUOTES): string {
+  return quotes[dailyQuoteIndex(date, offset, quotes)];
 }
 
 export interface LongRead {

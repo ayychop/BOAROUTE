@@ -1,6 +1,6 @@
 import { distinctOwners } from '../src/lib/frequency';
-import { DAILY_QUOTES, LONG_READS, dailyQuote, dailyQuoteIndex } from '../src/lib/motivation';
-import { CAR_ICONS, DEFAULT_CAR_ICON, DEFAULT_ROUTE_COLOR, ROUTE_COLORS, formatReg, plateName, prefsFor } from '../src/lib/preferences';
+import { DAILY_QUOTES, LONG_READS, MANAGER_DAILY_QUOTES, dailyQuote, dailyQuoteIndex, dayOfYear, quotesFor } from '../src/lib/motivation';
+import { CAR_ICONS, DEFAULT_CAR_ICON, DEFAULT_ROUTE_COLOR, ROUTE_COLORS, cleanPlate, displayPlate, formatReg, plateName, prefsFor } from '../src/lib/preferences';
 import { CURRENT_RELEASE, shouldShowWhatsNew } from '../src/lib/whats-new';
 import { datesFromPattern, datesInMonth, isWorkingDate, normaliseDates, toggleDate, workingDatesLeft } from '../src/lib/workdays';
 
@@ -78,6 +78,14 @@ describe('preferences', () => {
     expect(plateName(null, 'david@example.com')).toBe('DAVID');
     expect(plateName('', '')).toBe('BOA');
   });
+
+  it('shows the custom plate, upper case and capped at 8, or falls back to the first name', () => {
+    expect(cleanPlate('ab12 cde')).toBe('AB12 CDE');
+    expect(cleanPlate('  boa-route  2026')).toBe('BOAROUTE');
+    expect(displayPlate({ name: 'Jo Smith', email: 'jo@example.com', preferences: { custom_plate: 'jo 1' } })).toBe('JO 1');
+    expect(displayPlate({ name: 'Jo Smith', email: 'jo@example.com', preferences: { custom_plate: '   ' } })).toBe('JO');
+    expect(displayPlate({ name: 'Sarah', email: '', preferences: null })).toBe('SARAH');
+  });
 });
 
 describe('motivation', () => {
@@ -91,9 +99,36 @@ describe('motivation', () => {
     expect(dailyQuote(new Date(2026, 9, 26, 23, 59))).toBe(dailyQuote(new Date(2026, 9, 26, 0, 1)));
   });
 
+  it('has a unique Real Talk quote for every day of the year, picked by dayOfYear % length', () => {
+    expect(DAILY_QUOTES).toHaveLength(365);
+    expect(new Set(DAILY_QUOTES).size).toBe(365);
+    expect(dayOfYear(new Date(2026, 0, 1))).toBe(1);
+    expect(dayOfYear(new Date(2026, 11, 31, 23, 59))).toBe(365);
+    expect(dayOfYear(new Date(2028, 11, 31))).toBe(366);
+    // Across the clock change (29 Mar 2026 in the UK) the count still steps by one.
+    expect(dayOfYear(new Date(2026, 2, 30)) - dayOfYear(new Date(2026, 2, 29))).toBe(1);
+    const d = new Date(2026, 9, 26, 9);
+    expect(dailyQuoteIndex(d)).toBe(dayOfYear(d) % DAILY_QUOTES.length);
+    // New Year still moves on to a different quote.
+    expect(dailyQuote(new Date(2027, 0, 1))).not.toBe(dailyQuote(new Date(2026, 11, 31)));
+    // Every day of a year gets its own quote.
+    const year = new Set(Array.from({ length: 365 }, (_, i) => dailyQuote(new Date(2026, 0, 1 + i))));
+    expect(year.size).toBe(365);
+  });
+
+  it('gives managers their own 365 quotes on the same daily rotation', () => {
+    expect(MANAGER_DAILY_QUOTES).toHaveLength(365);
+    expect(new Set(MANAGER_DAILY_QUOTES).size).toBe(365);
+    expect(quotesFor(true)).toBe(MANAGER_DAILY_QUOTES);
+    expect(quotesFor(false)).toBe(DAILY_QUOTES);
+    const d = new Date(2026, 9, 26, 9);
+    expect(dailyQuote(d, 0, MANAGER_DAILY_QUOTES)).toBe(MANAGER_DAILY_QUOTES[dayOfYear(d) % 365]);
+    expect(dailyQuote(new Date(2026, 9, 26, 23, 59), 0, MANAGER_DAILY_QUOTES)).toBe(dailyQuote(new Date(2026, 9, 26, 0, 1), 0, MANAGER_DAILY_QUOTES));
+  });
+
   it('has premium long reads and no em or en dashes anywhere', () => {
     expect(LONG_READS.length).toBeGreaterThanOrEqual(5);
-    const all = [...DAILY_QUOTES, ...LONG_READS.flatMap((r) => [r.title, ...r.paragraphs])].join(' ');
+    const all = [...DAILY_QUOTES, ...MANAGER_DAILY_QUOTES, ...LONG_READS.flatMap((r) => [r.title, ...r.paragraphs])].join(' ');
     expect(all).not.toMatch(/[–—]/);
   });
 });

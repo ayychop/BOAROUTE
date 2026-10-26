@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import type { ReactNode } from 'react';
 import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isVideoPath } from '@/services/media';
@@ -13,8 +14,8 @@ function VideoPlayer({ uri, width, height }: { uri: string; width: number; heigh
   return <VideoView player={player} style={{ width, height }} nativeControls contentFit="contain" fullscreenOptions={{ enable: true }} />;
 }
 
-/** Full-screen viewer for one task photo or video. */
-export function MediaViewer({ path, url, onClose }: { path: string | null; url: string | null; onClose: () => void }) {
+/** Full-screen viewer for one task photo, receipt or video. `footer` sits along the bottom edge (e.g. paging). */
+export function MediaViewer({ path, url, onClose, footer }: { path: string | null; url: string | null; onClose: () => void; footer?: ReactNode }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const open = !!path && !!url;
@@ -36,6 +37,7 @@ export function MediaViewer({ path, url, onClose }: { path: string | null; url: 
         >
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
+        {footer ? <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, alignItems: 'center' }}>{footer}</View> : null}
       </View>
     </Modal>
   );

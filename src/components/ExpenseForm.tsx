@@ -1,5 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { useState } from 'react';
+import { Alert, Pressable, View } from 'react-native';
+import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { Field } from '@/components/controls';
 import { Dropdown } from '@/components/Dropdown';
 import { NeonButton } from '@/components/NeonButton';
@@ -20,6 +24,9 @@ import {
 import type { ExpenseCategory } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
+import { MAX_RECEIPTS, captureWithCamera, deleteMedia, pickFromLibrary, uploadReceipts, type PickedMedia } from '@/services/media';
+import { useTheme } from '@/theme/ThemeProvider';
+import { radius } from '@/theme/typography';
 
 type Icon = 'wallet' | 'flash' | 'moon' | 'megaphone';
 
@@ -35,10 +42,11 @@ function categoryOptions(b: Budgets): { value: ExpenseCategory; label: string; h
 
 const toInput = (pence: number) => (pence % 100 === 0 ? String(pence / 100) : (pence / 100).toFixed(2));
 
-/** Amount, location, recipient and category, saved straight to expenses. */
+/** Amount, location, recipient, category and receipt photos, saved straight to expenses. */
 export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?: (summary: string) => void; submitLabel?: string }) {
   const { addExpense, expenses } = useData();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
+  const { palette } = useTheme();
   const budgets = budgetsFor(profile);
   const today = localDateString(new Date());
   const [amount, setAmount] = useState('');
@@ -47,6 +55,7 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
   const [label, setLabel] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('standard');
   const [dayBudget, setDayBudget] = useState('');
+  const [receipts, setReceipts] = useState<PickedMedia[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +70,15 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
     if ((c === 'sales_day' || c === 'ooh') && !amount) setAmount(toInput(budgets.session));
   };
 
+  const addReceipt = async (source: 'camera' | 'library') => {
+    try {
+      const picked = source === 'camera' ? await captureWithCamera(['images']) : await pickFromLibrary(MAX_RECEIPTS - receipts.length, ['images']);
+      setReceipts((prev) => [...prev, ...picked].slice(0, MAX_RECEIPTS));
+    } catch (e) {
+      Alert.alert('Could not add receipt', e instanceof Error ? e.message : 'Please try again.');
+    }
+  };
+
   const save = async () => {
     setError(null);
     const pence = toPence(amount);
@@ -71,14 +89,24 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
     const eventBudget = category === 'town_takeover' ? parseBudget(dayBudget) : null;
     const rule = checkExpense({ category, amount: pence, date: today, eventBudget }, expenses, budgets);
     if (rule) return setError(rule);
+    if (receipts.length && !session) return setError('Sign in again to upload receipts.');
     setBusy(true);
+    let receiptPaths: string[] = [];
     try {
-      await addExpense({ amount: pence / 100, location: location.trim(), recipient: recipient.trim(), category, eventBudget: eventBudget === null ? null : eventBudget / 100, customLabel: label.trim() || null });
+      if (receipts.length && session) receiptPaths = await uploadReceipts(session.user.id, receipts);
+      try {
+        await addExpense({ amount: pence / 100, location: location.trim(), recipient: recipient.trim(), category, eventBudget: eventBudget === null ? null : eventBudget / 100, customLabel: label.trim() || null, receiptPaths });
+      } catch (e) {
+        // Don't leave orphaned photos behind when the expense itself was refused.
+        deleteMedia(receiptPaths).catch(() => {});
+        throw e;
+      }
       onSaved?.(`£${(pence / 100).toFixed(2)} at ${recipient.trim()}`);
       setAmount('');
       setLabel('');
       setLocation('');
       setRecipient('');
+      setReceipts([]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -112,6 +140,39 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
       )}
       <Field label="Location" icon="location-outline" value={location} onChangeText={setLocation} placeholder="e.g. Reading Oracle" maxLength={200} />
       <Field label="Recipient" icon="storefront-outline" value={recipient} onChangeText={setRecipient} placeholder="e.g. Costa" maxLength={200} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <Ionicons name="receipt-outline" size={16} color={palette.gold} />
+        <Txt variant="label" tone="gold">
+          Receipt photos ({receipts.length}/{MAX_RECEIPTS})
+        </Txt>
+      </View>
+      {receipts.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12, paddingTop: 6 }}>
+          {receipts.map((r, i) => (
+            <Animated.View key={`${r.uri}-${i}`} entering={ZoomIn.springify()} exiting={ZoomOut.duration(150)}>
+              <View style={{ width: 72, height: 96, borderRadius: radius.md, overflow: 'hidden', backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.border }}>
+                <Image source={{ uri: r.uri }} style={{ width: 72, height: 96 }} contentFit="cover" accessibilityLabel={`Receipt ${i + 1}`} />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove receipt"
+                onPress={() => setReceipts((prev) => prev.filter((_, j) => j !== i))}
+                hitSlop={8}
+                disabled={busy}
+                style={{ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: palette.danger, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="close" size={15} color="#fff" />
+              </Pressable>
+            </Animated.View>
+          ))}
+        </View>
+      )}
+      {receipts.length < MAX_RECEIPTS ? (
+        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <NeonButton size="sm" variant="subtle" icon="camera" label={receipts.length ? 'Add another' : 'Snap receipt'} onPress={() => addReceipt('camera')} disabled={busy} />
+          <NeonButton size="sm" variant="subtle" icon="images" label="From gallery" onPress={() => addReceipt('library')} disabled={busy} />
+        </View>
+      ) : null}
       {error ? (
         <Txt variant="caption" tone="danger" style={{ marginBottom: 10 }}>
           {error}

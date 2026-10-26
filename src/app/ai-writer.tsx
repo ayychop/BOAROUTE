@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, Share, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, Share, View, type ScrollViewInstance } from 'react-native';
 import Animated, { Easing, FadeInDown, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import type { Mood, WriterContext, WriterResult } from '../../supabase/functions/_shared/writer-prompt';
 import { Field, Segmented } from '@/components/controls';
@@ -82,6 +82,14 @@ export default function AiWriter() {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const typed = useTypewriter(result?.body ?? '');
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  // The draft card sits below the form, so bring it into view when drafting starts and when it lands.
+  const showDraft = () => scrollRef.current?.scrollToEnd({ animated: true });
+  useEffect(() => {
+    if (!busy && !result) return;
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+    return () => clearTimeout(t);
+  }, [busy, result]);
 
   const fullText = result ? (result.subject ? `Subject: ${result.subject}\n\n${result.body}` : result.body) : '';
 
@@ -132,7 +140,7 @@ export default function AiWriter() {
   };
 
   return (
-    <Screen back kicker={store ? store.name : 'AI Typer'} title="Draft a Message">
+    <Screen back kicker={store ? store.name : 'AI Typer'} title="Draft a Message" scrollRef={scrollRef}>
       <SectionHeader title="1 · What are you writing?" />
       <Segmented
         big
@@ -145,11 +153,12 @@ export default function AiWriter() {
       />
 
       <SectionHeader title="2 · Mood" />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {MOODS.map((m, i) => {
           const active = mood === m.value;
           return (
-            <Animated.View key={m.value} entering={FadeInDown.delay(i * 60)} style={{ flexGrow: 1, flexBasis: 140 }}>
+            // Two per row on every screen width, so "Professional" always has room.
+            <Animated.View key={m.value} entering={FadeInDown.delay(i * 60)} style={{ width: '48%', flexGrow: 1 }}>
               <Pressable
                 accessibilityRole="radio"
                 accessibilityState={{ selected: active }}
@@ -164,18 +173,17 @@ export default function AiWriter() {
                   borderColor: active ? palette.gold : palette.border,
                   backgroundColor: active ? palette.goldGlow : palette.surface,
                   padding: 12,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
+                  minHeight: 96,
+                  gap: 6,
                 }}
               >
                 <Ionicons name={m.icon} size={20} color={active ? palette.text : palette.gold} />
-                <View style={{ flex: 1 }}>
-                  <Txt variant="strong">{m.value}</Txt>
-                  <Txt variant="caption" tone={active ? 'default' : 'faint'} numberOfLines={1}>
-                    {m.hint}
-                  </Txt>
-                </View>
+                <Txt variant="strong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                  {m.value}
+                </Txt>
+                <Txt variant="caption" tone={active ? 'default' : 'faint'} numberOfLines={2} ellipsizeMode="clip">
+                  {m.hint}
+                </Txt>
               </Pressable>
             </Animated.View>
           );
@@ -192,11 +200,25 @@ export default function AiWriter() {
           </Txt>
         ) : null}
         <NeonButton label={result ? 'Rewrite again' : 'Draft with AI'} icon="sparkles" variant="gold" onPress={draft} loading={busy} size="lg" full />
+        {result && !busy ? (
+          <Pressable onPress={showDraft} accessibilityRole="button" hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 }}>
+            <Ionicons name="checkmark-circle" size={16} color={palette.gold} />
+            <Txt variant="label" tone="gold">
+              Draft ready · see below
+            </Txt>
+            <Ionicons name="arrow-down" size={14} color={palette.gold} />
+          </Pressable>
+        ) : null}
       </GlassCard>
 
       {(busy || result) && (
         <View>
-          <SectionHeader title="Your draft" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 26, marginBottom: 12 }}>
+            <Ionicons name="sparkles" size={18} color={palette.gold} />
+            <Txt variant="title" tone="gold">
+              {busy ? 'Writing your draft…' : 'Your draft'}
+            </Txt>
+          </View>
           <GlassCard glow="gold">
             {busy ? (
               <ScanLoader />

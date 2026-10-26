@@ -7,6 +7,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field, Segmented } from '@/components/controls';
 import { ExpenseForm } from '@/components/ExpenseForm';
 import { GlassCard } from '@/components/GlassCard';
+import { MediaViewer } from '@/components/MediaViewer';
 import { DataErrorBanner, StatTile } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
@@ -24,6 +25,7 @@ import { formatDuration, summariseVisitTimes } from '@/lib/visit-timer';
 import type { ExpenseCategory, MileageType } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
+import { signMedia } from '@/services/media';
 import { useTheme } from '@/theme/ThemeProvider';
 import { fonts, radius } from '@/theme/typography';
 
@@ -45,6 +47,13 @@ export default function Finances() {
   const budgets = useMemo(() => budgetsFor(profile), [profile]);
   const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
   const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
+  const [receipt, setReceipt] = useState<{ paths: string[]; urls: Record<string, string>; at: number } | null>(null);
+  const openReceipts = async (paths: string[]) => {
+    const urls = await signMedia(paths).catch(() => ({}) as Record<string, string>);
+    if (!Object.keys(urls).length) return Alert.alert('Could not open receipt', 'Check your connection and try again.');
+    setReceipt({ paths, urls, at: 0 });
+  };
+  const receiptPath = receipt ? receipt.paths[receipt.at] : null;
 
   // Mileage form
   const [mileType, setMileType] = useState<MileageType>('work');
@@ -234,6 +243,8 @@ export default function Finances() {
                 title={`${formatPence(toPence(e.amount))} · ${e.recipient}`}
                 sub={`${ukDate(e.date)} · ${e.location} · ${expenseLabel(e)}`}
                 onDelete={() => confirmDelete('expense', () => deleteExpense(e.id))}
+                receipts={e.receipt_paths?.length ?? 0}
+                onReceipts={() => openReceipts(e.receipt_paths ?? [])}
               />
             </Animated.View>
           ))}
@@ -354,6 +365,26 @@ export default function Finances() {
           {reportCard}
         </View>
       )}
+      <MediaViewer
+        path={receiptPath}
+        url={receipt && receiptPath ? receipt.urls[receiptPath] ?? null : null}
+        onClose={() => setReceipt(null)}
+        footer={
+          receipt && receipt.paths.length > 1 ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous receipt" hitSlop={12} onPress={() => setReceipt((r) => r && { ...r, at: (r.at - 1 + r.paths.length) % r.paths.length })}>
+                <Ionicons name="chevron-back" size={28} color="#fff" />
+              </Pressable>
+              <Txt variant="label" style={{ color: '#fff' }}>
+                Receipt {receipt.at + 1} of {receipt.paths.length}
+              </Txt>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next receipt" hitSlop={12} onPress={() => setReceipt((r) => r && { ...r, at: (r.at + 1) % r.paths.length })}>
+                <Ionicons name="chevron-forward" size={28} color="#fff" />
+              </Pressable>
+            </View>
+          ) : null
+        }
+      />
     </Screen>
   );
 }
@@ -365,7 +396,7 @@ function confirmDelete(what: string, run: () => Promise<void>) {
   ]);
 }
 
-function Row({ icon, title, sub, onDelete }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string; onDelete: () => void }) {
+function Row({ icon, title, sub, onDelete, receipts = 0, onReceipts }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string; onDelete: () => void; receipts?: number; onReceipts?: () => void }) {
   const { palette } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border }}>
@@ -378,6 +409,16 @@ function Row({ icon, title, sub, onDelete }: { icon: keyof typeof Ionicons.glyph
           {sub}
         </Txt>
       </View>
+      {receipts > 0 && onReceipts ? (
+        <Pressable onPress={onReceipts} hitSlop={10} accessibilityRole="button" accessibilityLabel={`View ${receipts} receipt${receipts === 1 ? '' : 's'}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Ionicons name="receipt" size={18} color={palette.gold} />
+          {receipts > 1 ? (
+            <Txt variant="caption" tone="gold">
+              {receipts}
+            </Txt>
+          ) : null}
+        </Pressable>
+      ) : null}
       <Pressable onPress={onDelete} hitSlop={10} accessibilityRole="button" accessibilityLabel="Delete">
         <Ionicons name="trash-outline" size={18} color={palette.textFaint} />
       </Pressable>

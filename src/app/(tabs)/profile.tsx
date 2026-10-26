@@ -18,7 +18,7 @@ import { budgetsFor, formatPence } from '@/lib/budget';
 import { formatOdometer } from '@/lib/odometer';
 import type { DistanceUnit } from '@/lib/units';
 import { vehicleFor } from '@/lib/vehicles';
-import { carIconFor, plateName, prefsFor, routeColorFor } from '@/lib/preferences';
+import { carIconFor, displayPlate, prefsFor, routeColorFor } from '@/lib/preferences';
 import { datesInMonth, describeDays } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
@@ -109,7 +109,7 @@ export default function Me() {
       <GlassCard glow="gold" animateIn={false} padded={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 12, paddingRight: 14 }}>
           <View style={{ width: carWidth, flexShrink: 0, alignItems: 'center' }}>
-            <CarIllustration width={carWidth} accent={palette.gold} plate={plateName(profile?.name, profile?.email)} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
+            <CarIllustration width={carWidth} accent={palette.gold} plate={displayPlate(profile)} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
           </View>
           <View style={{ flex: 1, flexShrink: 1, minWidth: 0, gap: 3 }}>
             <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">

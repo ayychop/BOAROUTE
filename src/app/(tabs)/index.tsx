@@ -22,7 +22,7 @@ import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/b
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
 import { odometerValue } from '@/lib/odometer';
 import { computeDue, monthProgress } from '@/lib/route-engine';
-import { plateName, prefsFor } from '@/lib/preferences';
+import { displayPlate, prefsFor } from '@/lib/preferences';
 import { vehicleFor } from '@/lib/vehicles';
 import { isWorkingDate, workingDatesLeft } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
@@ -121,7 +121,7 @@ export default function Hub() {
           <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
           <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <View style={{ flexShrink: 1 }}>
-              <NumberPlate text={plateName(profile?.name, profile?.email)} height={compact ? 24 : 28} />
+              <NumberPlate text={displayPlate(profile)} height={compact ? 24 : 28} />
             </View>
             <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workingToday ? palette.success : palette.textFaint }} />

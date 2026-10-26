@@ -6,12 +6,14 @@ import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { GlassCard } from '@/components/GlassCard';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
-import { dailyQuote, LONG_READS } from '@/lib/motivation';
+import { dailyQuote, LONG_READS, quotesFor } from '@/lib/motivation';
+import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /** Me > Premium Motivation: today's quote and longer pieces to read on a break. */
 export default function Motivation() {
   const { palette } = useTheme();
+  const { isAdmin } = useAuth();
   const [open, setOpen] = useState<string | null>(LONG_READS[0].id);
 
   return (
@@ -21,7 +23,7 @@ export default function Motivation() {
           Today
         </Txt>
         <Txt variant="title" style={{ fontStyle: 'italic' }}>
-          &ldquo;{dailyQuote(new Date())}&rdquo;
+          &ldquo;{dailyQuote(new Date(), 0, quotesFor(isAdmin))}&rdquo;
         </Txt>
       </GlassCard>
 

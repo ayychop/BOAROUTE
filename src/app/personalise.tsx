@@ -3,11 +3,13 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { Field } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
+import { NumberPlate } from '@/components/NumberPlate';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
-import { CAR_ICONS, ROUTE_COLORS, carIconFor, prefsFor, routeColorFor } from '@/lib/preferences';
+import { CAR_ICONS, MAX_PLATE, ROUTE_COLORS, carIconFor, cleanPlate, plateName, prefsFor, routeColorFor } from '@/lib/preferences';
 import type { CarIconId, RouteColorId } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -46,9 +48,11 @@ export default function Personalise() {
   // Shown straight away; saved in the background and rolled back if that fails.
   const [carIcon, setCarIcon] = useState<CarIconId>(saved.car_icon);
   const [routeColor, setRouteColor] = useState<RouteColorId>(saved.route_color);
+  const [plate, setPlate] = useState(saved.custom_plate ?? '');
+  const firstName = plateName(profile?.name, profile?.email);
   const [error, setError] = useState<string | null>(null);
 
-  const save = async (patch: { car_icon?: CarIconId; route_color?: RouteColorId }, undo: () => void) => {
+  const save = async (patch: { car_icon?: CarIconId; route_color?: RouteColorId; custom_plate?: string }, undo: () => void) => {
     Haptics.selectionAsync().catch(() => {});
     setError(null);
     try {
@@ -57,6 +61,15 @@ export default function Personalise() {
       undo();
       setError(e instanceof Error ? e.message : 'Could not save. Please try again.');
     }
+  };
+
+  const savePlate = () => {
+    const next = plate.trim();
+    if (next === (saved.custom_plate ?? '')) return;
+    const prev = saved.custom_plate ?? '';
+    setPlate(next);
+    // An empty plate goes back to showing their first name.
+    save({ custom_plate: next || undefined }, () => setPlate(prev));
   };
 
   const color = routeColorFor(routeColor).color;
@@ -73,6 +86,27 @@ export default function Personalise() {
           {error}
         </Txt>
       ) : null}
+
+      <SectionHeader title="Number plate" />
+      <GlassCard animateIn={false}>
+        <View style={{ alignItems: 'flex-start', marginBottom: 14 }}>
+          <NumberPlate text={plate.trim() || firstName} height={34} />
+        </View>
+        <Field
+          label="Number Plate"
+          icon="car-outline"
+          value={plate}
+          onChangeText={(t) => setPlate(cleanPlate(t))}
+          onBlur={savePlate}
+          onSubmitEditing={savePlate}
+          placeholder="e.g. AB12 CDE"
+          maxLength={MAX_PLATE}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          returnKeyType="done"
+          hint={`Shown on the car on your Hub. Leave it empty to show ${firstName}.`}
+        />
+      </GlassCard>
 
       <SectionHeader title="Car indicator" />
       <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>

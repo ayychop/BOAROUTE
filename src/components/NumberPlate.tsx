@@ -12,7 +12,8 @@ const BAND_BLUE = '#1F4AA8';
  */
 export function NumberPlate({ text, height = 30 }: { text: string; height?: number }) {
   const label = text.toUpperCase().slice(0, 8) || 'BOA';
-  const fontSize = height * 0.62;
+  // Names are short; a full registration like "AB12 CDE" steps the type down so the plate stays compact.
+  const fontSize = height * 0.62 * Math.min(1, 6 / Math.max(label.length, 1));
   return (
     <View
       accessibilityRole="image"
@@ -38,8 +39,8 @@ export function NumberPlate({ text, height = 30 }: { text: string; height?: numb
           UK
         </Txt>
       </View>
-      <View style={{ paddingHorizontal: height * 0.35, justifyContent: 'center' }}>
-        <Txt numberOfLines={1} maxFontSizeMultiplier={1} style={{ color: PLATE_INK, fontFamily: fonts.bodyBold, fontSize, lineHeight: fontSize * 1.15, letterSpacing: fontSize * 0.08 }}>
+      <View style={{ flexShrink: 1, paddingHorizontal: height * 0.35, justifyContent: 'center' }}>
+        <Txt numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} maxFontSizeMultiplier={1} style={{ color: PLATE_INK, fontFamily: fonts.bodyBold, fontSize, lineHeight: height * 0.72, letterSpacing: fontSize * (label.length > 6 ? 0.04 : 0.08) }}>
           {label}
         </Txt>
       </View>

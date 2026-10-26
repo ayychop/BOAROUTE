@@ -1,8 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import type { ReactElement, ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
+import type { ReactElement, ReactNode, Ref } from 'react';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View, type ScrollViewInstance, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -30,6 +30,8 @@ interface Props {
    * Renders a virtualised list (FlatList) instead of the default ScrollView.
    * Receives the screen padding, the title header and the pull-to-refresh control.
    */
+  /** Lets a screen scroll itself, e.g. to bring a result into view. */
+  scrollRef?: Ref<ScrollViewInstance>;
   renderList?: (parts: { contentContainerStyle: StyleProp<ViewStyle>; header: ReactNode; refreshControl?: ReactElement }) => ReactNode;
 }
 
@@ -39,7 +41,7 @@ function FocusedAmbience() {
   return <AmbientBackground animated={focused} />;
 }
 
-export function Screen({ children, title, kicker, back, right, scroll = true, inTabs = false, onRefresh, refreshing = false, footer, standalone = false, renderList }: Props) {
+export function Screen({ children, title, kicker, back, right, scroll = true, inTabs = false, onRefresh, refreshing = false, footer, standalone = false, scrollRef, renderList }: Props) {
   const { palette } = useTheme();
   const { insets, gutter, maxContent, compact } = useLayout();
 
@@ -89,6 +91,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
           })
         ) : scroll ? (
           <ScrollView
+            ref={scrollRef}
             contentContainerStyle={padding}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"

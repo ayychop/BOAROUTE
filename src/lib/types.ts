@@ -90,6 +90,8 @@ export interface UserPreferences {
   car_make_model?: string;
   /** UK registration as typed, e.g. "AB12 CDE". */
   car_reg?: string;
+  /** What the yellow plate on the Home car shows, e.g. "AB12 CDE". Empty means their first name. */
+  custom_plate?: string;
 }
 
 export interface WorkEvent {
@@ -150,5 +152,7 @@ export interface Expense {
   event_budget?: number | string | null;
   /** Optional free-text label, e.g. "Parking". The category still decides the budget. */
   custom_label?: string | null;
+  /** Receipt photos: object paths in the private task-media bucket. */
+  receipt_paths?: string[] | null;
   created_at: string;
 }

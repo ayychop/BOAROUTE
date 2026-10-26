@@ -9,6 +9,7 @@ import { storesInScope } from '@/lib/route-engine';
 import { supabase } from '@/lib/supabaseClient';
 import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, StoreOwner, Visit, WorkEvent } from '@/lib/types';
 import { canCompleteVisit, parseActiveVisit, type ActiveVisit } from '@/lib/visit-timer';
+import { deleteMedia } from '@/services/media';
 import { syncEventReminders } from '@/services/notifications';
 import { cancelVisitAlarm, scheduleVisitAlarm } from '@/services/visit-alarm';
 import { useAuth } from './AuthProvider';
@@ -72,7 +73,7 @@ interface DataValue {
   deleteEvent: (id: string) => Promise<void>;
   addMileage: (m: { miles: number; type: MileageType; notes: string | null; date?: string }) => Promise<void>;
   deleteMileage: (id: string) => Promise<void>;
-  addExpense: (e: { amount: number; location: string; recipient: string; category: ExpenseCategory; date?: string; eventBudget?: number | null; customLabel?: string | null }) => Promise<void>;
+  addExpense: (e: { amount: number; location: string; recipient: string; category: ExpenseCategory; date?: string; eventBudget?: number | null; customLabel?: string | null; receiptPaths?: string[] }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
 }
 
@@ -392,12 +393,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ...(e.category === 'town_takeover' ? { event_budget: e.eventBudget ?? null } : {}),
         // Only sent when filled in, so expenses still save before the column exists.
         ...(e.customLabel?.trim() ? { custom_label: e.customLabel.trim().slice(0, 60) } : {}),
+        ...(e.receiptPaths?.length ? { receipt_paths: e.receiptPaths } : {}),
       })
       .select('*')
       .single();
     if (err) {
       // The database enforces the session and weekly caps; its message is written for people.
       if (err.code === '23514' && /cap/i.test(err.message)) throw new Error(err.message.replace(/GBP\s?/g, '£'));
+      if (/receipt_paths/.test(err.message)) throw new Error('Receipt photos need the latest database update. Ask your admin to re-run the SQL file.');
       if (/custom_label/.test(err.message)) throw new Error('Expense labels need the latest database update. Ask your admin to re-run the SQL file.');
       if (/event_budget|town_takeover|expenses_category_check/.test(err.message)) throw new Error('Town Takeovers need the latest database update. Ask your admin to re-run the SQL file.');
       throw err;
@@ -405,11 +408,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setExpenses((prev) => [data as Expense, ...prev]);
   }, []);
 
-  const deleteExpense = useCallback(async (id: string) => {
-    const { error: err } = await supabase.from('expenses').delete().eq('id', id);
-    if (err) throw err;
-    setExpenses((prev) => prev.filter((x) => x.id !== id));
-  }, []);
+  const deleteExpense = useCallback(
+    async (id: string) => {
+      const { error: err } = await supabase.from('expenses').delete().eq('id', id);
+      if (err) throw err;
+      const receipts = expenses.find((x) => x.id === id)?.receipt_paths ?? [];
+      setExpenses((prev) => prev.filter((x) => x.id !== id));
+      // The row is gone either way; a leftover file is harmless, so don't fail the delete over it.
+      if (receipts.length) deleteMedia(receipts).catch(() => {});
+    },
+    [expenses],
+  );
 
   const value = useMemo<DataValue>(
     () => ({
