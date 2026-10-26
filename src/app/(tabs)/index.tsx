@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { EventTypeBadge } from '@/components/badges';
 import { BRLogo } from '@/components/BRLogo';
 import { BudgetRings } from '@/components/BudgetRings';
+import { CoverageCard } from '@/components/CoverageCard';
 import { GlassCard } from '@/components/GlassCard';
 import { DataErrorBanner, EmptyState } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
@@ -18,6 +19,7 @@ import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useUnits } from '@/hooks/useUnits';
 import { useNow } from '@/hooks/useNow';
+import { patchCoverage } from '@/lib/coverage';
 import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/budget';
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
 import { odometerValue } from '@/lib/odometer';
@@ -70,7 +72,7 @@ function TileGrid({ children }: { children: ReactNode[] }) {
 export default function Hub() {
   const { palette, phase } = useTheme();
   const { profile, isAdmin } = useAuth();
-  const { myStores, tallies, targets, events, expenses, mileage, refresh } = useData();
+  const { myStores, patchStores, tallies, targets, events, expenses, mileage, refresh } = useData();
   const { compact, expanded } = useLayout();
   const units = useUnits();
   const [refreshing, setRefreshing] = useState(false);
@@ -80,6 +82,8 @@ export default function Hub() {
   const month = monthKey(new Date(nowMs));
   const progress = useMemo(() => monthProgress(myStores, tallies, targets), [myStores, tallies, targets]);
   const due = useMemo(() => computeDue(myStores, tallies, targets), [myStores, tallies, targets]);
+  // Coverage counts the whole patch they are meant to cover, not just the stores they picked to route.
+  const coverage = useMemo(() => patchCoverage(patchStores, tallies, targets), [patchStores, tallies, targets]);
   const budgets = useMemo(() => budgetsFor(profile), [profile]);
   const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
   const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
@@ -151,7 +155,10 @@ export default function Hub() {
     </GlassCard>
   );
 
-  // 2. Budgets
+  // 2. Patch coverage
+  const coverageCard = <CoverageCard coverage={coverage} index={1} onPress={() => router.navigate('/stores')} />;
+
+  // 3. Budgets
   const budgetCard = (
     <GlassCard index={1} onPress={() => router.navigate('/finances')} accessibilityLabel="Budgets">
       <Txt variant="label" tone="dim" numberOfLines={1} style={{ marginBottom: 14 }}>
@@ -161,7 +168,7 @@ export default function Hub() {
     </GlassCard>
   );
 
-  // 3. Upcoming events
+  // 4. Upcoming events
   const eventsBlock = (
     <View>
       <SectionHeader
@@ -210,7 +217,7 @@ export default function Hub() {
     </View>
   );
 
-  // 4. Quick actions
+  // 5. Quick actions
   const actions = (
     <View>
       <SectionHeader title="Quick actions" />
@@ -235,6 +242,7 @@ export default function Hub() {
         <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
           <View style={{ flex: 1.1, gap: 14 }}>
             {carCard}
+            {coverageCard}
             <MotivationCard now={nowMs} index={1} />
             {budgetCard}
           </View>
@@ -246,6 +254,7 @@ export default function Hub() {
       ) : (
         <View style={{ gap: 14 }}>
           {carCard}
+          {coverageCard}
           <MotivationCard now={nowMs} index={1} />
           {budgetCard}
           {eventsBlock}
