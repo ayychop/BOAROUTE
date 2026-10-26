@@ -15,7 +15,7 @@ import { useNow } from '@/hooks/useNow';
 import { monthKey } from '@/lib/budget';
 import { GRADES, managerShort, storeTarget } from '@/lib/frequency';
 import { getPref, setPref } from '@/lib/prefs';
-import type { Grade, Manager, Store } from '@/lib/types';
+import type { Grade, Store, StoreOwner } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -43,7 +43,7 @@ export default function Stores() {
   const now = useNow();
   const month = monthKey(new Date(now));
   const [query, setQuery] = useState('');
-  const [manager, setManager] = useState<Manager | 'all'>('all');
+  const [manager, setManager] = useState<StoreOwner | 'all'>('all');
   const [grade, setGrade] = useState<Grade | 'all'>('all');
   const [refreshing, setRefreshing] = useState(false);
   // Entrance animations only on the first screenful. After a filter change, rows
@@ -68,10 +68,14 @@ export default function Stores() {
     setTouched(true);
     setGrade(g);
   };
-  const pickManager = (m: Manager | 'all') => {
+  const pickManager = (m: StoreOwner | 'all') => {
     setTouched(true);
     setManager(m);
   };
+
+  // Only owners who actually have stores here, so a leftover name never shows an empty filter.
+  const owners = useMemo(() => managers.filter((m) => myStores.some((s) => s.assigned_manager === m)), [managers, myStores]);
+  const showOwner = owners.length > 1;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -98,10 +102,11 @@ export default function Stores() {
           // Only once the screen is in view, so the exit is actually seen.
           exiting={focused && split.exiting.has(item.id)}
           onExited={onExited}
+          showOwner={showOwner}
         />
       </View>
     ),
-    [columns, tallies, targets, now, touched, focused, split.exiting, onExited],
+    [columns, tallies, targets, now, touched, focused, split.exiting, onExited, showOwner],
   );
 
   const winsSection =
@@ -170,10 +175,10 @@ export default function Stores() {
       <DataErrorBanner />
       <Field label="Search" icon="search" value={query} onChangeText={setQuery} placeholder="Store name, town or street" returnKeyType="search" autoCorrect={false} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, paddingBottom: 4 }} style={{ marginBottom: 14 }}>
-        {managers.length > 1 && (
+        {showOwner && (
           <>
             <Chip label="All" active={manager === 'all'} onPress={() => pickManager('all')} />
-            {managers.map((m) => (
+            {owners.map((m) => (
               <Chip key={m} label={managerShort(m)} active={manager === m} onPress={() => pickManager(m)} icon="person" tone={m === 'Joseph' ? 'primary' : 'gold'} />
             ))}
             <View style={{ width: 10 }} />

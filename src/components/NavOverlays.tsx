@@ -12,8 +12,9 @@ import { Txt } from './Txt';
 
 /** Cockpit colours for everything floating over the (always dark) map. */
 export const NAV = {
-  glass: 'rgba(14,13,12,0.9)',
-  rim: 'rgba(232,207,148,0.38)',
+  /** Translucent enough to show the map moving underneath, dark enough to read at a glance. */
+  glass: 'rgba(14,13,12,0.78)',
+  rim: 'rgba(232,207,148,0.42)',
   text: '#F5F0E6',
   dim: '#B9B0A0',
   faint: '#857D70',
@@ -43,7 +44,8 @@ export function NavGlass({ children, style }: { children: ReactNode; style?: Sty
         style,
       ]}
     >
-      <LinearGradient pointerEvents="none" colors={['rgba(255,241,201,0.10)', 'rgba(255,241,201,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.4, y: 1 }} style={StyleSheet.absoluteFill} />
+      {/* Frosted sheen: a light wash from the top edge fading into the glass. */}
+      <LinearGradient pointerEvents="none" colors={['rgba(255,241,201,0.16)', 'rgba(255,241,201,0.03)', 'rgba(0,0,0,0.18)']} locations={[0, 0.45, 1]} start={{ x: 0, y: 0 }} end={{ x: 0.3, y: 1 }} style={StyleSheet.absoluteFill} />
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 22, right: 22, height: 1, backgroundColor: 'rgba(255,241,201,0.35)' }} />
       {children}
     </View>

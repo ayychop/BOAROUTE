@@ -1,6 +1,6 @@
 import { storeTarget } from './frequency';
 import { estimateDrive, haversineKm } from './geo';
-import type { GradeTargets, LatLng, Manager, Store } from './types';
+import type { GradeTargets, LatLng, Store, StoreOwner } from './types';
 
 export type RoutableStore = Pick<
   Store,
@@ -71,7 +71,7 @@ const GRADE_WEIGHT = { A: 4, B: 3, C: 2, D: 1 } as const;
 const DAY_MS = 86_400_000;
 
 /** Stores belonging to the managers this person routes (see managersFor). */
-export function storesInScope<S extends RoutableStore>(stores: S[], managers: Manager[]): S[] {
+export function storesInScope<S extends RoutableStore>(stores: S[], managers: readonly StoreOwner[]): S[] {
   return stores.filter((s) => managers.includes(s.assigned_manager));
 }
 

@@ -11,7 +11,7 @@ import {
   twoOpt,
   type RoutableStore,
 } from '../src/lib/route-engine';
-import type { Grade, Manager } from '../src/lib/types';
+import type { Grade, Manager, StoreOwner } from '../src/lib/types';
 
 const HP13 = { lat: 51.640425, lng: -0.734715 }; // HP13 6BU
 const now = new Date(2026, 9, 12, 9, 0);
@@ -31,24 +31,28 @@ const stores: RoutableStore[] = (seed as { name: string; address: string; grade:
 }));
 
 describe('scope', () => {
-  const owners: Manager[] = ['Joseph', 'Pete', 'David', 'Marcia'];
+  const owners: StoreOwner[] = ['Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael', 'David'];
   const mixed = stores.map((s, i) => ({ ...s, assigned_manager: owners[i % owners.length] }));
   it('admin (Jo) routes Joseph stores only', () => {
     const jo = storesInScope(mixed, managersFor({ role: 'admin', route_managers: null }));
     expect(jo.length).toBeGreaterThan(0);
     expect(jo.every((s) => s.assigned_manager === 'Joseph')).toBe(true);
   });
-  it('Sarah routes Sarah, Joseph, Pete and Marcia stores, never David', () => {
+  it("Sarah routes Jo, Pete and Marcia stores, never David's team", () => {
     const sarah = storesInScope(mixed, managersFor({ role: 'user', route_managers: null, manager_name: 'Sarah' }));
     expect(new Set(sarah.map((s) => s.assigned_manager))).toEqual(new Set(['Joseph', 'Pete', 'Marcia']));
   });
   it('a pending sign-up routes nothing', () => {
     expect(storesInScope(mixed, managersFor({ role: 'unassigned', route_managers: null }))).toEqual([]);
   });
-  it('David routes David stores', () => {
-    const david = storesInScope(mixed, managersFor({ role: 'user', route_managers: ['David'] }));
-    expect(david.length).toBeGreaterThan(0);
-    expect(david.every((s) => s.assigned_manager === 'David')).toBe(true);
+  it('David routes Jermaine, Kishan and Raphael stores (plus any not yet reassigned from him)', () => {
+    const david = storesInScope(mixed, managersFor({ role: 'user', route_managers: null, manager_name: 'David' }));
+    expect(new Set(david.map((s) => s.assigned_manager))).toEqual(new Set(['Jermaine', 'Kishan', 'Raphael', 'David']));
+  });
+  it('Pete routes only his own stores', () => {
+    const pete = storesInScope(mixed, managersFor({ role: 'user', route_managers: null, manager_name: 'Pete' }));
+    expect(pete.length).toBeGreaterThan(0);
+    expect(pete.every((s) => s.assigned_manager === 'Pete')).toBe(true);
   });
   it('Marcia routes Marcia stores', () => {
     const marcia = storesInScope(mixed, managersFor({ role: 'user', route_managers: ['Marcia'] }));

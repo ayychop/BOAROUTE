@@ -15,17 +15,18 @@ export function BudgetRings({ budget, large = false }: { budget: BudgetSummary; 
   const { palette } = useTheme();
   const [width, setWidth] = useState(0);
 
-  const gap = 8;
+  const gap = 10;
   const col = Math.max(0, Math.floor((width - gap * 2) / 3));
-  const size = Math.round(Math.min(large ? 128 : 100, col * 0.86));
+  // Never wider than its column (minus the stroke's glow room), a touch bigger on the unfolded Fold.
+  const maxSize = large ? (width >= 600 ? 156 : 128) : 100;
+  const size = Math.max(0, Math.round(Math.min(maxSize, col - 8)));
   const { sessions, takeover } = budget;
 
   return (
-    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', minHeight: large ? 190 : 160 }}>
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: 'row', gap, alignItems: 'flex-start', width: '100%', minHeight: large ? 190 : 160 }}>
       {width > 0 && (
         <>
           <Pool
-            width={col}
             size={size}
             ratio={budget.standard.remainingRatio}
             over={budget.standard.over}
@@ -36,7 +37,6 @@ export function BudgetRings({ budget, large = false }: { budget: BudgetSummary; 
             sub="per month"
           />
           <Pool
-            width={col}
             size={size}
             ratio={budget.special.remainingRatio}
             over={budget.special.over}
@@ -47,7 +47,6 @@ export function BudgetRings({ budget, large = false }: { budget: BudgetSummary; 
             sub={sessions.left > 0 ? `${sessions.left} × ${formatPence(sessions.allowance).replace('.00', '')} left` : 'Cap reached'}
           />
           <Pool
-            width={col}
             size={size}
             ratio={takeover.budget > 0 ? takeover.remainingRatio : 0}
             over={takeover.over}
@@ -65,7 +64,6 @@ export function BudgetRings({ budget, large = false }: { budget: BudgetSummary; 
 }
 
 function Pool({
-  width,
   size,
   ratio,
   over,
@@ -76,7 +74,6 @@ function Pool({
   sub,
   empty = false,
 }: {
-  width: number;
   size: number;
   ratio: number;
   over: boolean;
@@ -94,7 +91,8 @@ function Pool({
   const amountSize = Math.min(size * 0.18, inner / (amount.length * 0.62));
   const labelSize = Math.max(8, size * 0.075);
   return (
-    <View style={{ width, alignItems: 'center' }}>
+    // Equal thirds, each ring centred in its own column, so the three line up on any width.
+    <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
       <ProgressRing value={ratio} size={size} stroke={stroke} colors={colors} accessibilityLabel={`${title}: ${formatPence(remaining)} ${over ? 'over' : 'remaining'} of ${formatPence(total)}`}>
         <Txt
           variant="metric"

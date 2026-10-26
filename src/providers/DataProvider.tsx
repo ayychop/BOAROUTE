@@ -6,7 +6,7 @@ import { geocode } from '@/lib/geo';
 import type { VisitTally } from '@/lib/route-engine';
 import { storesInScope } from '@/lib/route-engine';
 import { supabase } from '@/lib/supabaseClient';
-import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, Visit, WorkEvent } from '@/lib/types';
+import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, StoreOwner, Visit, WorkEvent } from '@/lib/types';
 import { syncEventReminders } from '@/services/notifications';
 import { useAuth } from './AuthProvider';
 
@@ -42,7 +42,8 @@ interface DataValue {
   /** Store ids this person picked as theirs (user_stores). */
   chosenStoreIds: string[];
   saveChosenStores: (storeIds: string[]) => Promise<void>;
-  managers: Manager[];
+  /** Store owners whose stores this person works (badges and filters appear when there are several). */
+  managers: StoreOwner[];
   targets: GradeTargets;
   tallies: Record<string, VisitTally>;
   events: WorkEvent[];

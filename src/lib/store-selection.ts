@@ -1,11 +1,11 @@
-import type { Manager, Store } from './types';
+import type { Store, StoreOwner } from './types';
 
 /** Jo (the admin) starts with every Joseph store ticked; everyone else picks from scratch. */
 export function defaultSelection(stores: readonly Store[], isAdmin: boolean): string[] {
   return isAdmin ? stores.filter((s) => s.assigned_manager === 'Joseph').map((s) => s.id) : [];
 }
 
-export function filterStores(stores: readonly Store[], query: string, manager: Manager | null): Store[] {
+export function filterStores(stores: readonly Store[], query: string, manager: StoreOwner | null): Store[] {
   const q = query.trim().toLowerCase();
   return stores.filter(
     (s) => (!manager || s.assigned_manager === manager) && (!q || s.name.toLowerCase().includes(q) || s.address.toLowerCase().includes(q)),

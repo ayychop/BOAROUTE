@@ -10,7 +10,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeIn, FadeInDown, FadeOutUp, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LngLat, RouteOption, RouteOptionsResult } from '../../supabase/functions/_shared/route-analysis';
 import { HudMap } from '@/components/HudMap';
 import { HazardPin, HazardSheet, NAV, NavGlass, ReportSheet, Toast } from '@/components/NavOverlays';
@@ -121,6 +120,45 @@ function ReportButton({ onPress }: { onPress: () => void }) {
         <Ionicons name="warning" size={30} color="#17120A" />
         <Txt variant="label" maxFontSizeMultiplier={1} style={{ color: '#17120A', fontSize: 9.5, letterSpacing: 1.2, marginTop: 1 }}>
           Report
+        </Txt>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/** End navigation: dark glass with a red rim and glow, so it reads as "stop" without shouting. */
+function EndButton({ onPress }: { onPress: () => void }) {
+  const press = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));
+  return (
+    <Animated.View style={[anim, { borderRadius: radius.pill, shadowColor: NAV.danger, shadowOpacity: 0.7, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 8, flexShrink: 0 }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="End navigation"
+        hitSlop={8}
+        onPressIn={() => press.set(withSpring(0.94, springs.press))}
+        onPressOut={() => press.set(withSpring(1, springs.release))}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+          onPress();
+        }}
+        style={{
+          minHeight: 52,
+          paddingHorizontal: 20,
+          borderRadius: radius.pill,
+          overflow: 'hidden',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          backgroundColor: 'rgba(24,12,11,0.92)',
+          borderWidth: 1.5,
+          borderColor: 'rgba(228,128,111,0.85)',
+        }}
+      >
+        <LinearGradient pointerEvents="none" colors={['rgba(228,128,111,0.28)', 'rgba(228,128,111,0.04)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+        <Ionicons name="stop-circle" size={20} color={NAV.danger} />
+        <Txt variant="strong" maxFontSizeMultiplier={1.1} style={{ color: '#FBE3DE', letterSpacing: 0.6 }}>
+          End
         </Txt>
       </Pressable>
     </Animated.View>
@@ -485,7 +523,8 @@ export default function Navigate() {
       showsCompass={false}
       toolbarEnabled={false}
       showsPointsOfInterests={false}
-      showsBuildings={false}
+      // 3D buildings rise as the camera tilts to its driving pitch.
+      showsBuildings
       pitchEnabled
       initialRegion={origin ? { latitude: origin.lat, longitude: origin.lng, latitudeDelta: 0.2, longitudeDelta: 0.2 } : { latitude: 51.64, longitude: -0.73, latitudeDelta: 0.6, longitudeDelta: 0.6 }}
       // Panning stops following until Recentre; pinching sets the zoom that following keeps.
@@ -544,9 +583,10 @@ export default function Navigate() {
       {navigating && <KeepAwake />}
       {map}
 
-      {/* Top: next manoeuvre while navigating, otherwise the destination. */}
-      <SafeAreaView edges={['top', 'left', 'right']} pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
-        <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE, paddingTop: 8, width: '100%', maxWidth: 680, alignSelf: 'center', gap: 10 }}>
+      {/* Top: a floating glass card with the next manoeuvre while navigating, otherwise the destination.
+          Insets come from the hook so the card clears the status bar and camera cut-out on every device. */}
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingTop: insets.top + 10, paddingLeft: insets.left, paddingRight: insets.right }}>
+        <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE + 4, width: '100%', maxWidth: 680, alignSelf: 'center', gap: 10 }}>
         <View pointerEvents="box-none" style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
           {!navigating && <IconButton icon="chevron-back" label="Close navigation" onPress={close} size={48} onDark />}
           <NavGlass style={{ flex: 1, minWidth: 0 }}>
@@ -590,15 +630,16 @@ export default function Navigate() {
         </View>
         {navigating && ahead ? <HazardCountdown ahead={ahead} label={units.nav(ahead.distanceM)} /> : null}
         </View>
-      </SafeAreaView>
+      </View>
 
-      <Toast message={toast} onHide={hideToast} top={insets.top + (navigating ? (ahead ? 196 : 124) : 90)} />
+      <Toast message={toast} onHide={hideToast} top={insets.top + (navigating ? (ahead ? 206 : 134) : 100)} />
 
-      {/* Bottom: controls stacked above the panel, both clear of the Android navigation bar. */}
-      <SafeAreaView edges={['bottom', 'left', 'right']} pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
-        <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE, paddingBottom: EDGE, width: '100%', maxWidth: 680, alignSelf: 'center' }}>
-          {/* One column, centred on the Report button, in the right thumb's reach. */}
-          <View pointerEvents="box-none" style={{ alignSelf: 'flex-end', alignItems: 'center', gap: 12, marginBottom: 12, width: REPORT_FAB }}>
+      {/* Bottom: controls stacked above the panel. The bottom inset is added to the padding (not left to a
+          native SafeAreaView), so the ETA panel always sits above the Android navigation or gesture bar. */}
+      <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: Math.max(insets.bottom, 8) + EDGE, paddingLeft: insets.left, paddingRight: insets.right }}>
+        <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE + 4, width: '100%', maxWidth: 680, alignSelf: 'center' }}>
+          {/* One column, centred on the Report button and flush with the panel's right edge, in the right thumb's reach. */}
+          <View pointerEvents="box-none" style={{ alignSelf: 'flex-end', alignItems: 'center', justifyContent: 'flex-end', gap: 14, marginBottom: 14, width: REPORT_FAB }}>
             {navigating && !following && MAPS_READY && <IconButton icon="locate" label="Recentre on me" tone="gold" onPress={recentre} size={FAB} onDark />}
             {navigating && <IconButton icon={muted ? 'volume-mute' : 'volume-high'} label={muted ? 'Unmute voice' : 'Mute voice'} tone={muted ? 'danger' : 'default'} onPress={toggleMute} size={FAB} onDark />}
             <ReportButton onPress={() => setReportOpen(true)} />
@@ -633,7 +674,7 @@ export default function Navigate() {
                     {liveHazards.length ? ` · ${liveHazards.length} report${liveHazards.length > 1 ? 's' : ''} nearby` : ''}
                   </Txt>
                 </View>
-                <NeonButton label="End" icon="stop-circle-outline" variant="danger" onDark onPress={stop} />
+                <EndButton onPress={stop} />
               </View>
             ) : (
               <View style={{ gap: 10 }}>
@@ -692,7 +733,7 @@ export default function Navigate() {
             )}
           </NavGlass>
         </View>
-      </SafeAreaView>
+      </View>
 
       <ReportSheet open={reportOpen} onClose={() => setReportOpen(false)} onPick={onReport} busy={reportBusy} />
       <HazardSheet hazard={openHazard} onClose={() => setOpenHazard(null)} onClear={onClearHazard} busy={clearing} />

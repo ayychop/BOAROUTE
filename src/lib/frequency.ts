@@ -1,7 +1,18 @@
-import type { Grade, GradeTargets, Manager, Profile, Store } from './types';
+import type { Grade, GradeTargets, LegacyOwner, Manager, Profile, Store, StoreOwner, TeamSeat } from './types';
 
 export const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
-export const MANAGERS: Manager[] = ['Joseph', 'Pete', 'David', 'Marcia', 'Sarah'];
+/** Store owners Jo can assign a store to (Admin > Store Management). */
+export const MANAGERS: Manager[] = ['Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael'];
+/** Owners from before the team split. Their stores stay visible until Jo reassigns them. */
+export const LEGACY_OWNERS: LegacyOwner[] = ['David', 'Sarah'];
+export const STORE_OWNERS: StoreOwner[] = [...MANAGERS, ...LEGACY_OWNERS];
+
+export function isLegacyOwner(owner: string): owner is LegacyOwner {
+  return LEGACY_OWNERS.includes(owner as LegacyOwner);
+}
+
+/** What Jo can approve a sign-up as (Admin > Team Management). */
+export const TEAM_SEATS: TeamSeat[] = ['Sarah', 'David', 'Pete'];
 
 /** Default required monthly visits per grade (Jo's standard). */
 export const DEFAULT_FREQUENCIES: Readonly<GradeTargets> = Object.freeze({ A: 4, B: 3, C: 2, D: 1 });
@@ -53,21 +64,30 @@ export function usesDefaultTargets(profile: Pick<Profile, 'freq_a' | 'freq_b' | 
   return !profile || [profile.freq_a, profile.freq_b, profile.freq_c, profile.freq_d].every((v) => v === null || v === undefined);
 }
 
-/** Sarah's patch. */
-export const TEAM_PATCH: Manager[] = ['Sarah', 'Joseph', 'Pete', 'Marcia'];
+/**
+ * Each seat's stores, mirroring public.team_patch in the database. Sarah and
+ * David also keep any stores still under their own name until Jo reassigns them.
+ */
+export const TEAM_PATCHES: Readonly<Record<TeamSeat, readonly StoreOwner[]>> = Object.freeze({
+  Sarah: ['Joseph', 'Pete', 'Marcia', 'Sarah'],
+  David: ['Jermaine', 'Kishan', 'Raphael', 'David'],
+  Pete: ['Pete'],
+});
 
 /** Approved team members only; pending and denied accounts never get in. */
 export function isMember(profile: Pick<Profile, 'role'> | null | undefined): boolean {
   return profile?.role === 'admin' || profile?.role === 'user';
 }
 
-/**
- * Default patch for a manager, mirroring public.team_patch in the database:
- * Sarah works Sarah, Jo, Pete and Marcia; everyone else their own stores.
- */
-export function defaultPatchFor(manager: string | null | undefined): Manager[] {
-  if (manager === 'Sarah') return [...TEAM_PATCH];
-  return MANAGERS.includes(manager as Manager) ? [manager as Manager] : [];
+/** Default patch for a seat; any other owner name works just their own stores. */
+export function defaultPatchFor(manager: string | null | undefined): StoreOwner[] {
+  if (manager && Object.hasOwn(TEAM_PATCHES, manager)) return [...TEAM_PATCHES[manager as TeamSeat]];
+  return STORE_OWNERS.includes(manager as StoreOwner) ? [manager as StoreOwner] : [];
+}
+
+/** Store owners in a patch, without the legacy names (for labels like "Jo, Pete and Marcia"). */
+export function patchOwners(patch: readonly StoreOwner[]): Manager[] {
+  return patch.filter((m): m is Manager => MANAGERS.includes(m as Manager));
 }
 
 /**
@@ -76,17 +96,17 @@ export function defaultPatchFor(manager: string | null | undefined): Manager[] {
  * at signup. The admin's daily patch is strictly Jo's stores; Jo sees the rest
  * only in Admin > Store Management. Pending or denied accounts get nothing.
  */
-export function managersFor(profile: (Pick<Profile, 'role' | 'route_managers'> & Partial<Pick<Profile, 'manager_name'>>) | null): Manager[] {
+export function managersFor(profile: (Pick<Profile, 'role' | 'route_managers'> & Partial<Pick<Profile, 'manager_name'>>) | null): StoreOwner[] {
   if (!profile || !isMember(profile)) return [];
   if (profile.role === 'admin') return ['Joseph'];
-  const valid = (profile.route_managers ?? []).filter((m): m is Manager => MANAGERS.includes(m as Manager));
+  const valid = (profile.route_managers ?? []).filter((m): m is StoreOwner => STORE_OWNERS.includes(m as StoreOwner));
   return valid.length ? valid : defaultPatchFor(profile.manager_name);
 }
 
-export function managerLabel(manager: Manager): string {
+export function managerLabel(manager: StoreOwner): string {
   return manager === 'Joseph' ? "Jo's Store" : `${manager}'s Store`;
 }
 
-export function managerShort(manager: Manager): string {
+export function managerShort(manager: StoreOwner): string {
   return manager === 'Joseph' ? 'Jo' : manager;
 }

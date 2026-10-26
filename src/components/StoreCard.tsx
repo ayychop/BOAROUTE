@@ -34,10 +34,9 @@ interface Props {
   /** Play the completion exit (gold glow, lift, slide down, fade), then call onExited. */
   exiting?: boolean;
   onExited?: (id: string) => void;
+  /** Show whose store this is ("PETE'S STORE"), for people who work several owners' stores. */
+  showOwner?: boolean;
 }
-
-/** Two lines of the card title, so names of any length keep the grid even. */
-const NAME_LINES_HEIGHT = 44;
 
 /** Above this many visits a month the bar is continuous instead of one segment per visit. */
 const MAX_SEGMENTS = 8;
@@ -82,7 +81,7 @@ export function GoalBar({ done, target, met }: { done: number; target: number; m
   );
 }
 
-export const StoreCard = memo(function StoreCard({ store, tally, target, index, now, animateIn = true, exiting = false, onExited }: Props) {
+export const StoreCard = memo(function StoreCard({ store, tally, target, index, now, animateIn = true, exiting = false, onExited, showOwner = false }: Props) {
   const { palette } = useTheme();
   const { compact } = useLayout();
   const done = tally?.count ?? 0;
@@ -126,15 +125,22 @@ export const StoreCard = memo(function StoreCard({ store, tally, target, index, 
       <GlassCard index={index} animateIn={animateIn} fill onPress={() => router.push({ pathname: '/store/[id]', params: { id: store.id } })} accessibilityLabel={`${store.name}, grade ${store.grade}, ${done} of ${target} visits`}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
           <GradeBadge grade={store.grade} size={30} />
-          {met ? <Ionicons name="trophy" size={18} color={palette.gold} /> : <ManagerBadge manager={store.assigned_manager} />}
+          {met ? <Ionicons name="trophy" size={18} color={palette.gold} /> : null}
         </View>
-        <Txt variant="strong" numberOfLines={2} maxFontSizeMultiplier={1.15} style={{ flexShrink: 0, minHeight: NAME_LINES_HEIGHT }}>
+        {showOwner && (
+          <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+            <ManagerBadge manager={store.assigned_manager} />
+          </View>
+        )}
+        {/* Breaks between words only, so narrow columns never split a town name mid-word. */}
+        <Txt variant="strong" numberOfLines={2} maxFontSizeMultiplier={1.15} textBreakStrategy="simple" android_hyphenationFrequency="none" style={{ flexShrink: 1 }}>
           {store.name}
         </Txt>
         <Txt variant="caption" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flexShrink: 0, marginTop: 2 }}>
           {store.address}
         </Txt>
-        <View style={{ flex: 1, minHeight: 12 }} />
+        {/* Takes up the slack when a neighbour in the row is taller, so progress bars line up. */}
+        <View style={{ flexGrow: 1, minHeight: 10 }} />
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
           <Txt variant="caption" tone={met ? 'gold' : left === 1 ? 'primary' : 'dim'} numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flex: 1 }}>
             {status}

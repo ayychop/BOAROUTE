@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import seed from '../src/data/seed-stores.json';
+import { MANAGERS, STORE_OWNERS, TEAM_PATCHES, TEAM_SEATS } from '../src/lib/frequency';
 
 
 const root = path.join(__dirname, '..');
@@ -58,5 +59,21 @@ describe('copy style', () => {
       /[\u2013\u2014]/.test(fs.readFileSync(f, 'utf8')),
     );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('team model in the SQL file', () => {
+  const sqlList = (items: readonly string[]) => items.map((m) => `'${m}'`).join(', ');
+
+  it('gives each seat the same patch as the app', () => {
+    for (const seat of ['Sarah', 'David'] as const) {
+      expect(migration).toContain(`when p_manager = '${seat}' then array[${sqlList(TEAM_PATCHES[seat])}]`);
+    }
+  });
+
+  it('accepts every store owner and only approves the three seats', () => {
+    expect(migration).toContain(`check (assigned_manager in (${sqlList(STORE_OWNERS)}))`);
+    expect(migration).toContain(`p_manager not in (${sqlList(TEAM_SEATS)})`);
+    expect(STORE_OWNERS.slice(0, MANAGERS.length)).toEqual(MANAGERS);
   });
 });

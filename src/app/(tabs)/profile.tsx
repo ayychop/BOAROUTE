@@ -201,8 +201,8 @@ export default function Me() {
         <LinkRow icon="wallet" label="Budgets" hint={`Standard ${formatPence(budgets.standard)} · Sales Day / OOH ${formatPence(budgets.special)}`} href="/budget-settings" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
         <LinkRow icon="car-sport" label="Change vehicle" hint={vehicle?.plate} href="/vehicle" />
-        {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="The full master list: assign stores to Jo, Pete, David, Marcia or Sarah" href="/admin/stores" tone="gold" />}
-        {isAdmin && <LinkRow icon="people" label="Team Management" hint="Approve sign-ups and set whose stores each person works" href="/admin/team" tone="gold" />}
+        {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="The full master list: assign stores to Jo, Pete, Marcia, Jermaine, Kishan or Raphael" href="/admin/stores" tone="gold" />}
+        {isAdmin && <LinkRow icon="people" label="Team Management" hint="Approve sign-ups onto Sarah's team, David's team or as Pete" href="/admin/team" tone="gold" />}
         <LinkRow icon="images" label="Image credits" href="/credits" />
       </GlassCard>
 

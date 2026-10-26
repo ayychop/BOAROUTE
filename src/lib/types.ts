@@ -4,7 +4,13 @@
  */
 export type Role = 'admin' | 'user' | 'unassigned' | 'denied';
 export type Grade = 'A' | 'B' | 'C' | 'D';
-export type Manager = 'Joseph' | 'Pete' | 'David' | 'Marcia' | 'Sarah';
+/** Store owners: the names Jo assigns stores to. Only Jo (Joseph) uses the app among them by default. */
+export type Manager = 'Joseph' | 'Pete' | 'Marcia' | 'Jermaine' | 'Kishan' | 'Raphael';
+/** Earlier owners still on some stores until Jo reassigns them in Store Management. */
+export type LegacyOwner = 'David' | 'Sarah';
+export type StoreOwner = Manager | LegacyOwner;
+/** What an approved app user is set up as (team_members.manager_name). */
+export type TeamSeat = 'Sarah' | 'David' | 'Pete';
 export type TaskType = 'note' | 'email';
 export type EventType = 'General' | 'Sales Day' | 'OOH';
 export type MileageType = 'work' | 'personal';
@@ -53,7 +59,7 @@ export interface Store {
   frequency_custom?: boolean;
   visits_completed: number;
   last_visit_date: string | null;
-  assigned_manager: Manager;
+  assigned_manager: StoreOwner;
   vibe: string | null;
   latitude: number | null;
   longitude: number | null;

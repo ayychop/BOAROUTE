@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { managerLabel } from '@/lib/frequency';
-import type { EventType, Grade, Manager } from '@/lib/types';
+import type { EventType, Grade, StoreOwner } from '@/lib/types';
 import type { Palette } from '@/theme/palettes';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius } from '@/theme/typography';
@@ -38,11 +38,22 @@ export function GradeBadge({ grade, size = 34 }: { grade: Grade; size?: number }
 }
 
 /** One distinct metallic tone per manager. */
-export function managerColor(manager: Manager, palette: Palette): string {
-  return { Joseph: palette.gold, Pete: palette.platinum, David: palette.rose, Marcia: palette.success, Sarah: palette.primary }[manager] ?? palette.textDim;
+export function managerColor(manager: StoreOwner, palette: Palette): string {
+  const tones: Record<StoreOwner, string> = {
+    Joseph: palette.gold,
+    Pete: palette.platinum,
+    Marcia: palette.success,
+    Jermaine: palette.rose,
+    Kishan: palette.primary,
+    Raphael: palette.warning,
+    David: palette.textDim,
+    Sarah: palette.textDim,
+  };
+  return tones[manager] ?? palette.textDim;
 }
 
-export function ManagerBadge({ manager }: { manager: Manager }) {
+/** "JO'S STORE", "KISHAN'S STORE": whose store this is, on cards for people who work several owners' stores. */
+export function ManagerBadge({ manager }: { manager: StoreOwner }) {
   const { palette } = useTheme();
   const color = managerColor(manager, palette);
   return (
@@ -52,6 +63,8 @@ export function ManagerBadge({ manager }: { manager: Manager }) {
         alignItems: 'center',
         gap: 5,
         alignSelf: 'flex-start',
+        flexShrink: 1,
+        minWidth: 0,
         paddingHorizontal: 9,
         paddingVertical: 3,
         borderRadius: radius.pill,
@@ -60,8 +73,8 @@ export function ManagerBadge({ manager }: { manager: Manager }) {
       }}
     >
       <Ionicons name="person" size={11} color={color} />
-      <Txt variant="label" style={{ color, letterSpacing: 1 }} numberOfLines={1}>
-        {managerLabel(manager)}
+      <Txt variant="label" style={{ color, letterSpacing: 1, flexShrink: 1 }} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+        {managerLabel(manager).toUpperCase()}
       </Txt>
     </View>
   );

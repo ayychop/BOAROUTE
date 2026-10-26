@@ -11,7 +11,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
-import { MANAGERS, managerShort } from '@/lib/frequency';
+import { MANAGERS, isLegacyOwner, managerShort } from '@/lib/frequency';
 import type { Manager, Store } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
@@ -27,7 +27,7 @@ export default function StoreManagement() {
   const { columns } = useLayout();
   const listColumns = Math.min(columns, 2);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Manager | 'all'>('all');
+  const [filter, setFilter] = useState<Manager | 'all' | 'unowned'>('all');
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
@@ -36,9 +36,12 @@ export default function StoreManagement() {
     () => Object.fromEntries(MANAGERS.map((m) => [m, stores.filter((s) => s.assigned_manager === m).length])) as Record<Manager, number>,
     [stores],
   );
+  // Stores still under David or Sarah from before the team split, waiting for a real owner.
+  const unowned = useMemo(() => stores.filter((s) => isLegacyOwner(s.assigned_manager)).length, [stores]);
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return stores.filter((s) => (filter === 'all' || s.assigned_manager === filter) && (!q || s.name.toLowerCase().includes(q) || s.address.toLowerCase().includes(q)));
+    const inFilter = (s: Store) => filter === 'all' || (filter === 'unowned' ? isLegacyOwner(s.assigned_manager) : s.assigned_manager === filter);
+    return stores.filter((s) => inFilter(s) && (!q || s.name.toLowerCase().includes(q) || s.address.toLowerCase().includes(q)));
   }, [stores, query, filter]);
 
   if (!isAdmin) {
@@ -88,10 +91,15 @@ export default function StoreManagement() {
               <Txt variant="caption" tone="faint" numberOfLines={1}>
                 {selecting ? `${managerShort(s.assigned_manager)} · ${s.address}` : s.address}
               </Txt>
+              {!selecting && isLegacyOwner(s.assigned_manager) && (
+                <Txt variant="caption" tone="gold" numberOfLines={1}>
+                  Was {s.assigned_manager}&apos;s · choose its owner
+                </Txt>
+              )}
             </View>
           </View>
           {!selecting && (
-            // Wrapping chips, so all four managers still fit on a Flip cover screen.
+            // Wrapping chips, so all six owners still fit on a Flip cover screen.
             <View accessibilityRole="radiogroup" accessibilityLabel={`Manager for ${s.name}`} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {MANAGERS.map((m) => (
                 <Chip
@@ -128,6 +136,7 @@ export default function StoreManagement() {
       <Field label="Search" icon="search" value={query} onChangeText={setQuery} placeholder="Store or town" autoCorrect={false} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
         <Chip label={`All (${stores.length})`} active={filter === 'all'} onPress={() => setFilter('all')} />
+        {unowned > 0 && <Chip label={`Needs owner (${unowned})`} active={filter === 'unowned'} icon="alert-circle-outline" tone="gold" onPress={() => setFilter('unowned')} />}
         {MANAGERS.map((m) => (
           <Chip key={m} label={`${managerShort(m)} (${counts[m]})`} active={filter === m} onPress={() => setFilter(m)} />
         ))}

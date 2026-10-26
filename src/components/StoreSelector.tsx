@@ -3,9 +3,9 @@ import * as Haptics from 'expo-haptics';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
-import { MANAGERS, managerLabel, managerShort } from '@/lib/frequency';
+import { STORE_OWNERS, managerLabel, managerShort } from '@/lib/frequency';
 import { filterStores, toggleGroup } from '@/lib/store-selection';
-import type { Manager, Store } from '@/lib/types';
+import type { Store, StoreOwner } from '@/lib/types';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, springs } from '@/theme/typography';
 import { Chip, Field } from './controls';
@@ -57,7 +57,9 @@ const StoreRow = memo(function StoreRow({ store, on, onToggle }: { store: Store;
 export function StoreSelector({ stores, selected, onChange }: { stores: Store[]; selected: string[]; onChange: (ids: string[]) => void }) {
   const { palette } = useTheme();
   const [query, setQuery] = useState('');
-  const [manager, setManager] = useState<Manager | null>(null);
+  const [manager, setManager] = useState<StoreOwner | null>(null);
+  // Only owners with stores in this list, so nobody sees an empty filter.
+  const owners = useMemo(() => STORE_OWNERS.filter((m) => stores.some((s) => s.assigned_manager === m)), [stores]);
   const set = useMemo(() => new Set(selected), [selected]);
   const shown = useMemo(() => filterStores(stores, query, manager), [stores, query, manager]);
   const allShownOn = shown.length > 0 && shown.every((s) => set.has(s.id));
@@ -82,7 +84,7 @@ export function StoreSelector({ stores, selected, onChange }: { stores: Store[];
       <Field label="Search stores" icon="search" value={query} onChangeText={setQuery} placeholder="Name, town or street" autoCorrect={false} returnKeyType="search" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }} keyboardShouldPersistTaps="handled">
         <Chip label="All stores" active={manager === null} onPress={() => setManager(null)} />
-        {MANAGERS.map((m) => (
+        {owners.length > 1 && owners.map((m) => (
           <Chip key={m} label={`${managerShort(m)}'s`} active={manager === m} onPress={() => setManager(m)} />
         ))}
       </ScrollView>

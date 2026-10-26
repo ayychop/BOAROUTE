@@ -18,22 +18,33 @@
 -- held as a pending request (profiles.role = 'unassigned') until the admin
 -- approves or denies it in Admin > Team Management.
 --   role          admin (Jo, the only one) or user (merchandiser)
---   manager_name  whose stores are theirs
---   route_managers  optional override of the patch; NULL means the default
---                   (admin: Joseph; Sarah: Sarah, Joseph, Pete, Marcia;
---                   anyone else: their own stores)
+--   manager_name  the seat they were approved as: Sarah, David or Pete
+--   route_managers  legacy per-person override; cleared below, the seat
+--                   decides the patch (see team_patch)
+--
+-- Store owners (stores.assigned_manager) are a separate list: Joseph (Jo),
+-- Pete, Marcia, Jermaine, Kishan and Raphael. David and Sarah are kept as
+-- legacy owner values so their older stores survive until Jo reassigns them.
 -- ---------------------------------------------------------------------
 create table if not exists public.team_members (
   email          text primary key check (email = lower(btrim(email)) and email like '%_@_%'),
   role           text not null default 'user' check (role in ('admin', 'user')),
-  manager_name   text not null check (manager_name in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah')),
-  route_managers text[] check (route_managers <@ array['Joseph', 'Pete', 'David', 'Marcia', 'Sarah']),
+  manager_name   text not null,
+  route_managers text[],
   created_at     timestamptz not null default now()
 );
 alter table public.team_members enable row level security;
 revoke all on public.team_members from anon;
 -- One admin, ever.
 create unique index if not exists team_members_one_admin on public.team_members ((true)) where role = 'admin';
+
+-- Older versions of this file allowed fewer names.
+alter table public.team_members drop constraint if exists team_members_manager_name_check;
+alter table public.team_members
+  add constraint team_members_manager_name_check check (manager_name in ('Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael', 'David', 'Sarah'));
+alter table public.team_members drop constraint if exists team_members_route_managers_check;
+alter table public.team_members
+  add constraint team_members_route_managers_check check (route_managers <@ array['Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael', 'David', 'Sarah']);
 
 insert into public.team_members (email, role, manager_name)
 values ('ayychop@gmail.com', 'admin', 'Joseph')
@@ -53,7 +64,9 @@ as $$
     when p_role is null or p_manager is null then '{}'::text[]
     when p_role = 'admin' then array['Joseph']
     when coalesce(cardinality(p_override), 0) > 0 then p_override
-    when p_manager = 'Sarah' then array['Sarah', 'Joseph', 'Pete', 'Marcia']
+    -- Team leads keep any stores still under their own name until Jo reassigns them.
+    when p_manager = 'Sarah' then array['Joseph', 'Pete', 'Marcia', 'Sarah']
+    when p_manager = 'David' then array['Jermaine', 'Kishan', 'Raphael', 'David']
     else array[p_manager]
   end;
 $$;
@@ -294,6 +307,10 @@ create trigger team_members_sync
   after insert or update or delete on public.team_members
   for each row execute function public.team_members_sync();
 
+-- The seat decides the patch now: clear old per-person overrides. Touching
+-- every row also re-syncs each profile to the current team_patch.
+update public.team_members set route_managers = null where role = 'user';
+
 -- Admin > Team Management: approve a pending request as one of the managers,
 -- or deny it.
 create or replace function public.review_access_request(
@@ -322,8 +339,8 @@ begin
   end if;
 
   if p_approve then
-    if p_manager is null or p_manager not in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah') then
-      raise exception 'Choose whose stores they work';
+    if p_manager is null or p_manager not in ('Sarah', 'David', 'Pete') then
+      raise exception 'Choose their team: Sarah, David or Pete';
     end if;
     insert into public.team_members (email, role, manager_name)
     values (v_email, 'user', p_manager)
@@ -352,7 +369,7 @@ create table if not exists public.stores (
   required_frequency integer not null default 1 check (required_frequency between 0 and 31),
   visits_completed   integer not null default 0,
   last_visit_date    timestamptz,
-  assigned_manager   text not null default 'Joseph' check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah')),
+  assigned_manager   text not null default 'Joseph' check (assigned_manager in ('Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael', 'David', 'Sarah')),
   vibe               text,
   latitude           double precision,
   longitude          double precision,
@@ -365,7 +382,7 @@ create index if not exists stores_manager_idx on public.stores (assigned_manager
 -- Older versions of this file allowed fewer managers.
 alter table public.stores drop constraint if exists stores_assigned_manager_check;
 alter table public.stores
-  add constraint stores_assigned_manager_check check (assigned_manager in ('Joseph', 'Pete', 'David', 'Marcia', 'Sarah'));
+  add constraint stores_assigned_manager_check check (assigned_manager in ('Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael', 'David', 'Sarah'));
 
 -- frequency_custom: true when someone set this store's monthly frequency by
 -- hand (Store > Edit). Otherwise each person's grade target applies.

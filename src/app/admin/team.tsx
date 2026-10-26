@@ -6,17 +6,18 @@ import { EmptyState, LoadingBlock } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
-import { MANAGERS, defaultPatchFor, managerShort } from '@/lib/frequency';
+import { TEAM_SEATS, defaultPatchFor, managerShort, patchOwners } from '@/lib/frequency';
 import { supabase } from '@/lib/supabaseClient';
-import type { Manager, Profile } from '@/lib/types';
+import type { Profile, StoreOwner, TeamSeat } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 /** A row of public.team_members: the email allowlist. */
 interface TeamMember {
   email: string;
   role: 'admin' | 'user';
-  manager_name: Manager;
-  route_managers: Manager[] | null;
+  /** A TeamSeat for anyone approved here; older rows may hold another owner's name. */
+  manager_name: string;
+  route_managers: StoreOwner[] | null;
 }
 
 type Account = Pick<Profile, 'id' | 'email' | 'name' | 'role'> & { created_at?: string };
@@ -38,15 +39,31 @@ async function fetchTeam(): Promise<TeamData> {
   return { members: (members.data ?? []) as TeamMember[], accounts: (accounts.data ?? []) as Account[] };
 }
 
-const patchOf = (m: TeamMember): Manager[] => (m.role === 'admin' ? ['Joseph'] : m.route_managers?.length ? m.route_managers : defaultPatchFor(m.manager_name));
+// The patch always follows the seat now; old per-person overrides are cleared by the SQL file.
+const patchOf = (m: TeamMember): StoreOwner[] => (m.role === 'admin' ? ['Joseph'] : defaultPatchFor(m.manager_name));
 
-/** "whose stores" picker, one manager. */
-function ManagerPicker({ value, onChange }: { value: Manager | null; onChange: (m: Manager) => void }) {
+/** "Jo, Pete and Marcia" */
+function ownersSentence(patch: readonly StoreOwner[]): string {
+  const names = patchOwners(patch).map(managerShort);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'no one');
+}
+
+const SEAT_LABEL: Record<TeamSeat, string> = { Sarah: "Sarah's team", David: "David's team", Pete: 'Pete' };
+
+/** What a sign-up is approved as. Store owners (Marcia, Jermaine...) are never app accounts. */
+function SeatPicker({ value, onChange }: { value: TeamSeat | null; onChange: (m: TeamSeat) => void }) {
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-      {MANAGERS.map((m) => (
-        <Chip key={m} label={managerShort(m)} active={value === m} icon={value === m ? 'checkmark' : 'person-outline'} tone="gold" onPress={() => onChange(m)} />
-      ))}
+    <View style={{ marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {TEAM_SEATS.map((m) => (
+          <Chip key={m} label={SEAT_LABEL[m]} active={value === m} icon={value === m ? 'checkmark' : 'person-outline'} tone="gold" onPress={() => onChange(m)} />
+        ))}
+      </View>
+      {value && (
+        <Txt variant="caption" tone="dim" style={{ marginTop: 8 }}>
+          Sees {ownersSentence(defaultPatchFor(value))}&apos;s stores.
+        </Txt>
+      )}
     </View>
   );
 }
@@ -54,10 +71,10 @@ function ManagerPicker({ value, onChange }: { value: Manager | null; onChange: (
 export default function TeamManagement() {
   const { isAdmin } = useAuth();
   const [data, setData] = useState<TeamData | null>(null);
-  const [picks, setPicks] = useState<Record<string, Manager>>({});
+  const [picks, setPicks] = useState<Record<string, TeamSeat>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
-  const [newManager, setNewManager] = useState<Manager | null>(null);
+  const [newManager, setNewManager] = useState<TeamSeat | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -105,7 +122,7 @@ export default function TeamManagement() {
 
   const approve = (account: Account) => {
     const manager = picks[account.id];
-    if (!manager) return Alert.alert('Choose their stores', `Pick whose stores ${account.name ?? 'they'} will work, then approve.`);
+    if (!manager) return Alert.alert('Choose their team', `Pick which team ${account.name ?? 'they'} will join, then approve.`);
     run(`approve:${account.id}`, () => supabase.rpc('review_access_request', { p_profile_id: account.id, p_approve: true, p_manager: manager }));
   };
 
@@ -114,15 +131,6 @@ export default function TeamManagement() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Deny', style: 'destructive', onPress: () => run(`deny:${account.id}`, () => supabase.rpc('review_access_request', { p_profile_id: account.id, p_approve: false })) },
     ]);
-
-  const togglePatch = (member: TeamMember, manager: Manager) => {
-    const current = patchOf(member);
-    const next = current.includes(manager) ? current.filter((m) => m !== manager) : [...current, manager];
-    if (next.length === 0) return Alert.alert('Keep at least one', 'Everyone needs at least one set of stores.');
-    const ordered = MANAGERS.filter((m) => next.includes(m));
-    const isDefault = ordered.join() === defaultPatchFor(member.manager_name).join();
-    run(`patch:${member.email}`, () => supabase.from('team_members').update({ route_managers: isDefault ? null : ordered }).eq('email', member.email));
-  };
 
   const remove = (member: TeamMember) =>
     Alert.alert('Remove from the team?', `${member.email} loses access straight away. You can add them again later.`, [
@@ -134,7 +142,7 @@ export default function TeamManagement() {
     const email = newEmail.trim().toLowerCase();
     setAddError(null);
     if (!EMAIL.test(email)) return setAddError('Enter a valid email address.');
-    if (!newManager) return setAddError('Choose whose stores they work.');
+    if (!newManager) return setAddError('Choose which team they join.');
     if (data?.members.some((m) => m.email === email)) return setAddError('That email is already on the team.');
     setBusy('add');
     const { error } = await supabase.from('team_members').insert({ email, role: 'user', manager_name: newManager });
@@ -165,9 +173,9 @@ export default function TeamManagement() {
         {a.created_at ? ` · signed up ${new Date(a.created_at).toLocaleDateString('en-GB')}` : ''}
       </Txt>
       <Txt variant="label" tone="dim" style={{ marginBottom: 8 }}>
-        Whose stores will they work?
+        Which team do they join?
       </Txt>
-      <ManagerPicker value={picks[a.id] ?? null} onChange={(m) => setPicks((p) => ({ ...p, [a.id]: m }))} />
+      <SeatPicker value={picks[a.id] ?? null} onChange={(m) => setPicks((p) => ({ ...p, [a.id]: m }))} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <NeonButton label="Approve" icon="checkmark-circle" variant="gold" onPress={() => approve(a)} loading={busy === `approve:${a.id}`} disabled={!!busy} style={{ flex: 1 }} />
         {!wasDenied && <NeonButton label="Deny" icon="close-circle-outline" variant="ghost" onPress={() => deny(a)} loading={busy === `deny:${a.id}`} disabled={!!busy} style={{ flex: 1 }} />}
@@ -205,7 +213,7 @@ export default function TeamManagement() {
             <GlassCard key={m.email} index={i}>
               <Txt variant="strong">{name ?? m.email}</Txt>
               <Txt variant="caption" tone="faint" style={{ marginBottom: 10 }}>
-                {m.role === 'admin' ? 'Admin' : 'Merchandiser'} · {managerShort(m.manager_name)}&apos;s stores · {name ? m.email : 'not signed up yet'}
+                {m.role === 'admin' ? 'Admin' : SEAT_LABEL[m.manager_name as TeamSeat] ?? 'Merchandiser'} · {name ? m.email : 'not signed up yet'}
               </Txt>
               {m.role === 'admin' ? (
                 <Txt variant="caption" tone="dim">
@@ -213,11 +221,9 @@ export default function TeamManagement() {
                 </Txt>
               ) : (
                 <>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                    {MANAGERS.map((mgr) => (
-                      <Chip key={mgr} label={`${managerShort(mgr)}'s stores`} active={scope.includes(mgr)} icon={scope.includes(mgr) ? 'checkmark' : 'add'} onPress={() => togglePatch(m, mgr)} />
-                    ))}
-                  </View>
+                  <Txt variant="caption" tone="dim" style={{ marginBottom: 12 }}>
+                    Sees {ownersSentence(scope)}&apos;s stores.
+                  </Txt>
                   <NeonButton label="Remove from team" icon="person-remove-outline" variant="subtle" size="sm" onPress={() => remove(m)} loading={busy === `remove:${m.email}`} disabled={!!busy} />
                 </>
               )}
@@ -234,7 +240,7 @@ export default function TeamManagement() {
           Pre-approve someone so they get straight in when they sign up.
         </Txt>
         <Field label="Email" icon="mail-outline" value={newEmail} onChangeText={setNewEmail} placeholder="name@company.com" autoCapitalize="none" autoComplete="email" keyboardType="email-address" autoCorrect={false} />
-        <ManagerPicker value={newManager} onChange={setNewManager} />
+        <SeatPicker value={newManager} onChange={setNewManager} />
         {addError ? (
           <Txt variant="caption" tone="danger" style={{ marginBottom: 10 }}>
             {addError}

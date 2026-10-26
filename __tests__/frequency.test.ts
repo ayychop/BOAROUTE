@@ -1,4 +1,4 @@
-import { DEFAULT_FREQUENCIES, defaultPatchFor, isMember, managerLabel, managersFor, targetsFor, usesDefaultTargets } from '../src/lib/frequency';
+import { DEFAULT_FREQUENCIES, MANAGERS, TEAM_SEATS, defaultPatchFor, isLegacyOwner, isMember, managerLabel, managersFor, patchOwners, targetsFor, usesDefaultTargets } from '../src/lib/frequency';
 
 const freqs = (f: Partial<Record<'freq_a' | 'freq_b' | 'freq_c' | 'freq_d', number | null>> = {}) => ({
   freq_a: null,
@@ -29,8 +29,9 @@ describe('frequencies', () => {
 describe('route scope', () => {
   it('comes from the database role and manager, never the typed name', () => {
     expect(managersFor({ role: 'admin', route_managers: null })).toEqual(['Joseph']);
-    expect(managersFor({ role: 'user', route_managers: [], manager_name: 'David' })).toEqual(['David']);
-    expect(managersFor({ role: 'user', route_managers: null, manager_name: 'Sarah' })).toEqual(['Sarah', 'Joseph', 'Pete', 'Marcia']);
+    expect(managersFor({ role: 'user', route_managers: [], manager_name: 'David' })).toEqual(['Jermaine', 'Kishan', 'Raphael', 'David']);
+    expect(managersFor({ role: 'user', route_managers: null, manager_name: 'Sarah' })).toEqual(['Joseph', 'Pete', 'Marcia', 'Sarah']);
+    expect(managersFor({ role: 'user', route_managers: null, manager_name: 'Pete' })).toEqual(['Pete']);
     // A user with no manager assigned gets nothing, whatever they typed as a name.
     expect(managersFor({ role: 'user', route_managers: null, manager_name: null })).toEqual([]);
   });
@@ -46,16 +47,28 @@ describe('route scope', () => {
   });
 
   it('uses the per-profile scope and drops unknown managers', () => {
-    expect(managersFor({ role: 'user', route_managers: ['David'] })).toEqual(['David']);
+    expect(managersFor({ role: 'user', route_managers: ['Jermaine', 'Kishan', 'Raphael', 'David'] })).toEqual(['Jermaine', 'Kishan', 'Raphael', 'David']);
     expect(managersFor({ role: 'user', route_managers: ['Marcia'] })).toEqual(['Marcia']);
     expect(managersFor({ role: 'user', route_managers: ['Bob'], manager_name: 'Pete' })).toEqual(['Pete']);
     expect(defaultPatchFor('Bob')).toEqual([]);
+    expect(defaultPatchFor('constructor')).toEqual([]);
+  });
+
+  it('separates store owners from app seats', () => {
+    expect(MANAGERS).toEqual(['Joseph', 'Pete', 'Marcia', 'Jermaine', 'Kishan', 'Raphael']);
+    expect(MANAGERS).not.toContain('Sarah');
+    expect(MANAGERS).not.toContain('David');
+    expect(TEAM_SEATS).toEqual(['Sarah', 'David', 'Pete']);
+    expect(patchOwners(defaultPatchFor('Sarah'))).toEqual(['Joseph', 'Pete', 'Marcia']);
+    expect(patchOwners(defaultPatchFor('David'))).toEqual(['Jermaine', 'Kishan', 'Raphael']);
+    expect(isLegacyOwner('David')).toBe(true);
+    expect(isLegacyOwner('Kishan')).toBe(false);
   });
 
   it('labels store cards', () => {
     expect(managerLabel('Joseph')).toBe("Jo's Store");
     expect(managerLabel('Pete')).toBe("Pete's Store");
-    expect(managerLabel('David')).toBe("David's Store");
+    expect(managerLabel('Jermaine')).toBe("Jermaine's Store");
     expect(managerLabel('Marcia')).toBe("Marcia's Store");
   });
 });
