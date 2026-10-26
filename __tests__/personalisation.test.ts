@@ -1,6 +1,6 @@
 import { distinctOwners } from '../src/lib/frequency';
 import { DAILY_QUOTES, LONG_READS, MANAGER_DAILY_QUOTES, dailyQuote, dailyQuoteIndex, dayOfYear, quotesFor } from '../src/lib/motivation';
-import { CAR_ICONS, DEFAULT_CAR_ICON, DEFAULT_ROUTE_COLOR, ROUTE_COLORS, cleanPlate, displayPlate, formatReg, plateName, prefsFor } from '../src/lib/preferences';
+import { CAR_ICONS, DEFAULT_CAR_ICON, DEFAULT_ROUTE_COLOR, ROUTE_COLORS, cleanPlate, displayPlate, formatReg, plateFontSize, plateName, prefsFor } from '../src/lib/preferences';
 import { CURRENT_RELEASE, shouldShowWhatsNew } from '../src/lib/whats-new';
 import { datesFromPattern, datesInMonth, isWorkingDate, normaliseDates, toggleDate, workingDatesLeft } from '../src/lib/workdays';
 
@@ -139,5 +139,23 @@ describe("what's new", () => {
     expect(shouldShowWhatsNew('2020-01-01')).toBe(true);
     expect(shouldShowWhatsNew(CURRENT_RELEASE.id)).toBe(false);
     expect(CURRENT_RELEASE.highlights.length).toBeGreaterThan(0);
+  });
+});
+
+describe('number plate lettering', () => {
+  it('fills the plate height for short names', () => {
+    expect(plateFontSize('JO', 82, 24)).toBeCloseTo(24 * 0.7);
+    expect(plateFontSize('SARAH', 82, 24)).toBeCloseTo(24 * 0.7);
+  });
+
+  it('steps down so eight characters still fit the width, without going tiny', () => {
+    const size = plateFontSize('KMKM25ML', 82, 24);
+    expect(size).toBeLessThan(24 * 0.7);
+    expect(size * 8 * 0.74).toBeLessThanOrEqual(82 + 0.001);
+    expect(size).toBeGreaterThan(24 * 0.5);
+  });
+
+  it('treats spaces as narrow, like a real registration', () => {
+    expect(plateFontSize('AB12 CDE', 82, 24)).toBeGreaterThan(plateFontSize('AB12XCDE', 82, 24));
   });
 });

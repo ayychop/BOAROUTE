@@ -75,6 +75,16 @@ export function cleanPlate(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, MAX_PLATE);
 }
 
+/**
+ * Font size that fits a plate's lettering into `width` without squashing it:
+ * as big as the plate's height allows, stepping down only when the characters
+ * would run out of room (KMKM25ML). Spaces count as narrow, like real plates.
+ */
+export function plateFontSize(label: string, width: number, height: number): number {
+  const ems = [...label].reduce((sum, ch) => sum + (ch === ' ' ? 0.35 : 0.74), 0);
+  return Math.min(height * 0.7, width / Math.max(ems, 1));
+}
+
 /** What the car's plate shows: their custom plate, or their first name when it's empty. */
 export function displayPlate(profile: Pick<Profile, 'name' | 'email' | 'preferences'> | null | undefined): string {
   return cleanPlate(profile?.preferences?.custom_plate ?? '').trim() || plateName(profile?.name, profile?.email);

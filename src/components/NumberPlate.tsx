@@ -1,4 +1,5 @@
 import { View } from 'react-native';
+import { plateFontSize } from '@/lib/preferences';
 import { fonts } from '@/theme/typography';
 import { Txt } from './Txt';
 
@@ -12,13 +13,18 @@ const BAND_BLUE = '#1F4AA8';
  */
 export function NumberPlate({ text, height = 30 }: { text: string; height?: number }) {
   const label = text.toUpperCase().slice(0, 8) || 'BOA';
-  // Names are short; a full registration like "AB12 CDE" steps the type down so the plate stays compact.
-  const fontSize = height * 0.62 * Math.min(1, 6 / Math.max(label.length, 1));
+  // Real UK plate proportions, so a short name and KMKM25ML sit on the same size plate.
+  const width = height * 4.4;
+  const band = height * 0.48;
+  const padding = height * 0.25;
+  const fontSize = plateFontSize(label, width - band - padding * 2, height);
   return (
     <View
       accessibilityRole="image"
       accessibilityLabel={`Number plate reading ${label}`}
       style={{
+        width,
+        maxWidth: '100%',
         height,
         flexDirection: 'row',
         alignItems: 'stretch',
@@ -34,13 +40,19 @@ export function NumberPlate({ text, height = 30 }: { text: string; height?: numb
         elevation: 4,
       }}
     >
-      <View style={{ width: height * 0.5, backgroundColor: BAND_BLUE, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: height * 0.08 }}>
-        <Txt style={{ color: '#FFFFFF', fontFamily: fonts.bodyBold, fontSize: height * 0.22, lineHeight: height * 0.26 }} maxFontSizeMultiplier={1}>
+      <View style={{ width: band, backgroundColor: BAND_BLUE, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: height * 0.08 }}>
+        <Txt style={{ color: '#FFFFFF', fontFamily: fonts.bodyBold, fontSize: height * 0.24, lineHeight: height * 0.28 }} maxFontSizeMultiplier={1}>
           UK
         </Txt>
       </View>
-      <View style={{ flexShrink: 1, paddingHorizontal: height * 0.35, justifyContent: 'center' }}>
-        <Txt numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} maxFontSizeMultiplier={1} style={{ color: PLATE_INK, fontFamily: fonts.bodyBold, fontSize, lineHeight: height * 0.72, letterSpacing: fontSize * (label.length > 6 ? 0.04 : 0.08) }}>
+      <View style={{ flex: 1, paddingHorizontal: padding, alignItems: 'center', justifyContent: 'center' }}>
+        <Txt
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          maxFontSizeMultiplier={1}
+          style={{ color: PLATE_INK, fontFamily: fonts.bodyBold, fontSize, lineHeight: fontSize * 1.15, letterSpacing: fontSize * 0.04, textAlign: 'center', includeFontPadding: false, textAlignVertical: 'center' }}
+        >
           {label}
         </Txt>
       </View>

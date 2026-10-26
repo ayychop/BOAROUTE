@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import Svg, { Circle, Defs, Ellipse, G, Line, LinearGradient, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import { plateFontSize } from '@/lib/preferences';
 import { fonts } from '@/theme/typography';
 
 const VIEW_W = 320;
@@ -25,20 +26,32 @@ function Rim({ cx, cy }: { cx: number; cy: number }) {
   );
 }
 
-/** Showroom-style UK plate on the lower body between the wheels, carrying the driver's name. */
+/**
+ * Showroom-style UK plate on the lower body between the wheels, carrying the
+ * driver's name or custom plate. Sized like a real plate on an SUV of this
+ * scale (roughly 4.3:1), with the blue UK band and lettering sized to fit.
+ */
 function Plate({ text }: { text: string }) {
   const label = text.toUpperCase().slice(0, 8);
-  const x = 122;
-  const w = 82;
-  const fontSize = label.length > 6 ? 8.5 : 11.5;
+  const x = 114;
+  const y = 83;
+  const w = 94;
+  const h = 22;
+  const band = 12;
+  const fontSize = plateFontSize(label, w - band - 10, h);
+  // Cap height of the bold face is ~0.72em, so this puts the letters dead centre.
+  const baseline = y + h / 2 + fontSize * 0.36;
   return (
     <G>
-      <Rect x={x} y={87} width={w} height={18} rx={2.5} fill="#F6C445" stroke="#121212" strokeWidth={1} />
-      <Rect x={x + 0.5} y={87.5} width={9} height={17} rx={2} fill="#1F4AA8" />
-      <SvgText x={x + 5} y={102} fontSize={4.2} fontFamily={fonts.bodyBold} fill="#FFFFFF" textAnchor="middle">
+      {/* Black holder rim, yellow face, then a faint gloss across the top half */}
+      <Rect x={x - 1} y={y - 1} width={w + 2} height={h + 2} rx={3.5} fill="#121212" />
+      <Rect x={x} y={y} width={w} height={h} rx={2.8} fill="#F6C445" />
+      <Rect x={x} y={y} width={w} height={h / 2} rx={2.8} fill="#FFFFFF" fillOpacity={0.14} />
+      <Path d={`M${x + 2.8} ${y} H${x + band} V${y + h} H${x + 2.8} A2.8 2.8 0 0 1 ${x} ${y + h - 2.8} V${y + 2.8} A2.8 2.8 0 0 1 ${x + 2.8} ${y} Z`} fill="#1F4AA8" />
+      <SvgText x={x + band / 2} y={y + h - 4} fontSize={5.6} fontFamily={fonts.bodyBold} fill="#FFFFFF" textAnchor="middle">
         UK
       </SvgText>
-      <SvgText x={x + 9 + (w - 9) / 2} y={100} fontSize={fontSize} fontFamily={fonts.bodyBold} fill="#121212" textAnchor="middle" letterSpacing={label.length > 6 ? 0.3 : 0.8}>
+      <SvgText x={x + band + (w - band) / 2} y={baseline} fontSize={fontSize} fontFamily={fonts.bodyBold} fill="#121212" textAnchor="middle" letterSpacing={fontSize * 0.04}>
         {label}
       </SvgText>
     </G>
