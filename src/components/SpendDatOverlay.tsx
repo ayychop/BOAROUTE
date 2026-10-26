@@ -24,7 +24,8 @@ import { Txt } from './Txt';
 
 const SPEND_DAT = require('../../assets/spend_dat.mp3');
 
-/** The track is a full song; the celebration plays its opening seconds, then fades out. */
+/** The track is a full song; the celebration plays from the 0:32 hook, then fades out. */
+export const CLIP_START_S = 32;
 export const CLIP_MS = 6000;
 const AUDIO_FADE_MS = 700;
 const OVERLAY_FADE_MS = 450;
@@ -212,8 +213,12 @@ export function SpendDatOverlay({ visible, onDone }: { visible: boolean; onDone:
       const p = player.current;
       if (p) {
         p.volume = 1;
-        p.seekTo(0).catch(() => {});
-        p.play();
+        // Exact seek (zero iOS tolerance) so the hook lands on the beat, then play.
+        p.seekTo(CLIP_START_S, 0, 0)
+          .catch(() => {})
+          .then(() => {
+            if (!closing.current) p.play();
+          });
       }
     } catch {
       // No sound; the overlay still runs on its own clock.
