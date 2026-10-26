@@ -273,11 +273,14 @@ export default function RouteScreen() {
       </View>
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
-          <View style={{ gap: 12, alignSelf: 'flex-start' }}>
+          <View style={{ alignSelf: 'flex-start' }}>
             <HudMap width={mapW} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
+          </View>
+          {/* Stops today sits under the start button so the column balances the map beside it. */}
+          <View style={{ flex: 1, minWidth: 0, gap: 12, alignSelf: 'flex-start', justifyContent: 'flex-start' }}>
+            {optionsBlock}
             {settings}
           </View>
-          <View style={{ flex: 1, minWidth: 0, alignSelf: 'flex-start', justifyContent: 'flex-start' }}>{optionsBlock}</View>
         </View>
       ) : (
         <View style={{ gap: 12 }}>
