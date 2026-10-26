@@ -58,6 +58,7 @@
     "eslint-config-expo": "~58.0.4",
     "jest": "~30.5.2",
     "jest-expo": "~58.0.12",
+    "supabase": "^1.110.3",
     "typescript": "~6.0.3"
   },
   "jest": {
