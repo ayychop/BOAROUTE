@@ -131,12 +131,8 @@ export default function Hub() {
             </View>
           </View>
           <View style={{ position: 'absolute', left: 18, right: 18, bottom: 6 }}>
-            <Txt variant="label" tone="dim" numberOfLines={1} style={{ fontSize: 9.5 }}>
-              {carPrefs.car_reg ? `${carPrefs.car_reg} · ` : ''}
-              {carPrefs.car_make_model ? 'Your car' : `${vehicle.year} BMW X1 · ${vehicle.specs[0].value}`}
-            </Txt>
             <Txt variant="title" numberOfLines={1}>
-              {carPrefs.car_make_model ?? 'M Sport Hybrid'}
+              {carPrefs.car_make_model ?? 'BMW X1 M Sport Hybrid'}
             </Txt>
           </View>
         </View>
