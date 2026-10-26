@@ -15,8 +15,9 @@ import { StartPointPicker } from '@/components/StartPointPicker';
 import { Txt } from '@/components/Txt';
 import { useHomePoint } from '@/hooks/useHomePoint';
 import { useLayout } from '@/hooks/useLayout';
+import { useUnits } from '@/hooks/useUnits';
 import { localDateString } from '@/lib/budget';
-import { formatMinutes, formatMiles, kmToMiles } from '@/lib/format';
+import { formatMinutes } from '@/lib/format';
 import { encodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { getPref, setPref } from '@/lib/prefs';
 import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, hasCoords, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
@@ -35,6 +36,7 @@ export default function RouteScreen() {
   const { profile } = useAuth();
   const { myStores, tallies, targets, logVisit, loading } = useData();
   const { contentWidth, expanded, compact } = useLayout();
+  const units = useUnits();
   const { point: home, error: homeError } = useHomePoint(profile?.starting_location);
   const [maxStops, setMaxStops] = useState(readStops);
   const [returnHome, setReturnHome] = useState(getPref('route.returnHome') !== 'false');
@@ -289,7 +291,7 @@ export default function RouteScreen() {
       <View style={{ gap: 10 }}>
         {plan.stops.map((stop, i) => {
           const leg = legFor(i);
-          const legText = leg ? `${formatMinutes(leg.durationS / 60)} · ${formatMiles(leg.distanceM / 1000)}` : `${formatMinutes(stop.legMinutes)} · ${kmToMiles(stop.legKm).toFixed(1)} mi`;
+          const legText = leg ? `${formatMinutes(leg.durationS / 60)} · ${units.distance(leg.distanceM / 1000)}` : `${formatMinutes(stop.legMinutes)} · ${units.distance(stop.legKm)}`;
           const last = tallies[stop.store.id]?.last;
           const doneToday = !!last && localDateString(new Date(last)) === localDateString(new Date());
           return (

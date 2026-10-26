@@ -88,6 +88,10 @@ alter table public.profiles
 alter table public.profiles alter column role set default 'unassigned';
 alter table public.profiles add column if not exists route_managers text[];
 alter table public.profiles add column if not exists manager_name text;
+-- Distance unit for every display (Me > Distance units). Miles by default for UK users.
+alter table public.profiles add column if not exists distance_unit text not null default 'mi';
+alter table public.profiles drop constraint if exists profiles_distance_unit_check;
+alter table public.profiles add constraint profiles_distance_unit_check check (distance_unit in ('mi', 'km'));
 
 -- Role check used by every policy below. SECURITY DEFINER so it can read
 -- profiles without recursing through the profiles RLS policies. The email

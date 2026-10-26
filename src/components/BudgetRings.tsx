@@ -15,13 +15,13 @@ export function BudgetRings({ budget, large = false }: { budget: BudgetSummary; 
   const { palette } = useTheme();
   const [width, setWidth] = useState(0);
 
-  const gap = 10;
-  const col = Math.max(0, (width - gap * 2) / 3);
-  const size = Math.round(Math.min(large ? 150 : 118, col * 0.94));
+  const gap = 8;
+  const col = Math.max(0, Math.floor((width - gap * 2) / 3));
+  const size = Math.round(Math.min(large ? 128 : 100, col * 0.86));
   const { sessions, takeover } = budget;
 
   return (
-    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: 'row', alignItems: 'flex-start', gap, minHeight: 80 }}>
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', minHeight: large ? 190 : 160 }}>
       {width > 0 && (
         <>
           <Pool
@@ -91,28 +91,29 @@ function Pool({
   // Sized from the string so long amounts fit inside the ring without Android's clipped auto-fit.
   const amount = empty ? 'None' : formatPence(Math.abs(remaining));
   const inner = size - stroke * 2 - 12;
-  const amountSize = Math.min(size * 0.17, inner / (amount.length * 0.62));
+  const amountSize = Math.min(size * 0.18, inner / (amount.length * 0.62));
+  const labelSize = Math.max(8, size * 0.075);
   return (
-    <View style={{ width, alignItems: 'center', gap: 8 }}>
+    <View style={{ width, alignItems: 'center' }}>
       <ProgressRing value={ratio} size={size} stroke={stroke} colors={colors} accessibilityLabel={`${title}: ${formatPence(remaining)} ${over ? 'over' : 'remaining'} of ${formatPence(total)}`}>
         <Txt
           variant="metric"
           tone={over ? 'danger' : 'default'}
           numberOfLines={1}
           maxFontSizeMultiplier={1}
-          style={{ fontSize: amountSize, lineHeight: amountSize * 1.25 }}
+          style={{ flexShrink: 0, fontSize: amountSize, lineHeight: Math.round(amountSize * 1.3), includeFontPadding: false, textAlign: 'center' }}
         >
           {amount}
         </Txt>
-        <Txt variant="label" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1} style={{ fontSize: Math.max(7.5, size * 0.065), lineHeight: Math.max(10, size * 0.09) }}>
-          {empty ? 'Set per day' : over ? 'Over' : 'Left'}
+        <Txt variant="label" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1} style={{ flexShrink: 0, fontSize: labelSize, lineHeight: Math.round(labelSize * 1.4), letterSpacing: 1.2, includeFontPadding: false }}>
+          {empty ? 'Per day' : over ? 'Over' : 'Left'}
         </Txt>
       </ProgressRing>
-      <Txt variant="caption" tone="dim" align="center" numberOfLines={2} style={{ width }}>
-        {empty ? title : `${title} · ${formatPence(total).replace('.00', '')}`}
+      <Txt variant="caption" tone="dim" align="center" numberOfLines={2} maxFontSizeMultiplier={1.1} style={{ flexShrink: 0, alignSelf: 'stretch', marginTop: 10, paddingHorizontal: 2, fontSize: 12, lineHeight: 16 }}>
+        {empty ? title : `${title} ${formatPence(total).replace('.00', '')}`}
       </Txt>
       {sub ? (
-        <Txt variant="caption" tone={over ? 'danger' : 'faint'} align="center" numberOfLines={2} style={{ width, marginTop: -4 }}>
+        <Txt variant="caption" tone={over ? 'danger' : 'faint'} align="center" numberOfLines={2} maxFontSizeMultiplier={1.1} style={{ flexShrink: 0, alignSelf: 'stretch', marginTop: 2, paddingHorizontal: 2, fontSize: 11.5, lineHeight: 15 }}>
           {sub}
         </Txt>
       ) : null}

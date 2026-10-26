@@ -1,13 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactElement, ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
 import { AmbientBackground } from './AmbientBackground';
+import { IconButton } from './PremiumButton';
 import { Txt } from './Txt';
 
 interface Props {
@@ -47,24 +47,7 @@ export function Screen({ children, title, kicker, back, right, scroll = true, in
     title || back || right ? (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: compact ? 10 : 16 }}>
         {back && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-            hitSlop={10}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: palette.surface,
-              borderWidth: 1,
-              borderColor: palette.border,
-            }}
-          >
-            <Ionicons name="chevron-back" size={20} color={palette.gold} />
-          </Pressable>
+          <IconButton icon="chevron-back" label="Go back" tone="gold" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} size={40} />
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           {kicker ? (

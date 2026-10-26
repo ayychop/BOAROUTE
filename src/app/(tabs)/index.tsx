@@ -14,6 +14,7 @@ import { Odometer } from '@/components/Odometer';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
+import { useUnits } from '@/hooks/useUnits';
 import { useNow } from '@/hooks/useNow';
 import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/budget';
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
@@ -30,15 +31,16 @@ import { radius } from '@/theme/typography';
 function ActionTile({ icon, label, sub, onPress, index, tone = 'primary' }: { icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void; index: number; tone?: 'primary' | 'gold' }) {
   const { palette } = useTheme();
   return (
-    <GlassCard index={index} onPress={onPress} accessibilityLabel={label} style={{ minHeight: 124 }} glow={tone === 'gold' ? 'gold' : false} fill>
+    <GlassCard index={index} onPress={onPress} accessibilityLabel={label} style={{ minHeight: 128, padding: 16 }} glow={tone === 'gold' ? 'gold' : false} fill>
       <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong, marginBottom: 12 }}>
         <Ionicons name={icon} size={18} color={palette.gold} />
       </View>
-      <Txt variant="strong" numberOfLines={2}>
+      {/* Whole words only: tiles are wide enough for the longest word at the capped font scale. */}
+      <Txt variant="strong" numberOfLines={2} maxFontSizeMultiplier={1.15} textBreakStrategy="simple" android_hyphenationFrequency="none" style={{ flexShrink: 1, fontSize: 15, lineHeight: 20 }}>
         {label}
       </Txt>
       {sub ? (
-        <Txt variant="caption" tone="faint" numberOfLines={3} style={{ marginTop: 2 }}>
+        <Txt variant="caption" tone="faint" numberOfLines={2} maxFontSizeMultiplier={1.15} style={{ flexShrink: 1, marginTop: 4, fontSize: 12.5, lineHeight: 17 }}>
           {sub}
         </Txt>
       ) : null}
@@ -54,7 +56,7 @@ function TileGrid({ children }: { children: ReactNode[] }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
       {children.filter(Boolean).map((child, i) => (
-        <View key={i} style={{ flexGrow: 1, flexBasis: 128, minWidth: 0 }}>
+        <View key={i} style={{ flexGrow: 1, flexBasis: 150, minWidth: 0 }}>
           {child}
         </View>
       ))}
@@ -67,6 +69,7 @@ export default function Hub() {
   const { profile, isAdmin } = useAuth();
   const { myStores, tallies, targets, events, expenses, mileage, refresh } = useData();
   const { compact, expanded } = useLayout();
+  const units = useUnits();
   const [refreshing, setRefreshing] = useState(false);
 
   const nowMs = useNow();
@@ -140,8 +143,8 @@ export default function Hub() {
           <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
         </View>
         <View style={{ flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 12 }}>
-          <Metric label="Work" value={`${miles.work.toFixed(0)} mi`} />
-          <Metric label="Personal" value={`${miles.personal.toFixed(0)} mi`} divider />
+          <Metric label="Work" value={units.miles(miles.work, 0)} />
+          <Metric label="Personal" value={units.miles(miles.personal, 0)} divider />
           <Metric label="Days left" value={String(daysLeft)} divider />
         </View>
       </View>

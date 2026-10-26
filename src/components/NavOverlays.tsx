@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { useLayout } from '@/hooks/useLayout';
 import { HAZARD_TYPES, hazardMeta, reportedAgo, type HazardReport, type HazardType } from '@/lib/hazards';
@@ -8,6 +9,46 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { radius } from '@/theme/typography';
 import { NeonButton } from './NeonButton';
 import { Txt } from './Txt';
+
+/** Cockpit colours for everything floating over the (always dark) map. */
+export const NAV = {
+  glass: 'rgba(14,13,12,0.9)',
+  rim: 'rgba(232,207,148,0.38)',
+  text: '#F5F0E6',
+  dim: '#B9B0A0',
+  faint: '#857D70',
+  gold: '#E8CF94',
+  success: '#8FC29C',
+  warning: '#E3B565',
+  danger: '#E4806F',
+} as const;
+
+/** Floating glass card with a fine gold rim, a top sheen and a deep shadow. */
+export function NavGlass({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View
+      style={[
+        {
+          borderRadius: radius.lg,
+          backgroundColor: NAV.glass,
+          borderWidth: 1,
+          borderColor: NAV.rim,
+          overflow: 'hidden',
+          shadowColor: '#000000',
+          shadowOpacity: 0.55,
+          shadowRadius: 22,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 12,
+        },
+        style,
+      ]}
+    >
+      <LinearGradient pointerEvents="none" colors={['rgba(255,241,201,0.10)', 'rgba(255,241,201,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.4, y: 1 }} style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 22, right: 22, height: 1, backgroundColor: 'rgba(255,241,201,0.35)' }} />
+      {children}
+    </View>
+  );
+}
 
 /** Slide-up sheet over the map. Opaque, so it reads clearly over any map tile. */
 export function BottomSheet({ open, onClose, children, label }: { open: boolean; onClose: () => void; children: ReactNode; label: string }) {
@@ -60,7 +101,7 @@ export function ReportSheet({ open, onClose, onPick, busy }: { open: boolean; on
         Report
       </Txt>
       <Txt variant="caption" tone="faint" style={{ marginBottom: 16 }}>
-        Pinned where you are now and shared with the team for two hours.
+        One tap. Pinned where you are now and shared with the team for two hours.
       </Txt>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {HAZARD_TYPES.map((h) => (
@@ -73,7 +114,7 @@ export function ReportSheet({ open, onClose, onPick, busy }: { open: boolean; on
             style={({ pressed }) => ({
               flexGrow: 1,
               flexBasis: '45%',
-              minHeight: 112,
+              minHeight: 136,
               borderRadius: radius.lg,
               backgroundColor: palette.surface,
               borderWidth: 2,
@@ -86,10 +127,10 @@ export function ReportSheet({ open, onClose, onPick, busy }: { open: boolean; on
               transform: [{ scale: pressed ? 0.97 : 1 }],
             })}
           >
-            <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: h.color, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name={h.icon} size={26} color="#0B0B0C" />
+            <View style={{ width: 66, height: 66, borderRadius: 33, backgroundColor: h.color, alignItems: 'center', justifyContent: 'center', shadowColor: h.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 6 }}>
+              <Ionicons name={h.icon} size={34} color="#0B0B0C" />
             </View>
-            <Txt variant="strong" align="center" numberOfLines={2}>
+            <Txt variant="heading" align="center" numberOfLines={2} maxFontSizeMultiplier={1.15}>
               {busy === h.type ? 'Sending...' : h.label}
             </Txt>
           </Pressable>

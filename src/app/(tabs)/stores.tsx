@@ -25,11 +25,20 @@ import { celebratedKey, parseCelebrated, quoteFor, splitStores, winsHeadline } f
 const ANIMATED_ROWS = 8;
 const GAP = 12;
 
+/** Two cards per row on phones, more on the Fold and tablets, one on the narrowest cover screens. */
+function gridColumns(width: number): number {
+  if (width < 330) return 1;
+  if (width >= 1040) return 4;
+  if (width >= 700) return 3;
+  return 2;
+}
+
 export default function Stores() {
   const { isAdmin } = useAuth();
   const { myStores, managers, tallies, targets, loading, refresh } = useData();
   const { palette } = useTheme();
-  const { columns } = useLayout();
+  const { width } = useLayout();
+  const columns = gridColumns(width);
   const focused = useIsFocused();
   const now = useNow();
   const month = monthKey(new Date(now));
@@ -122,7 +131,7 @@ export default function Stores() {
               const target = storeTarget(s, targets);
               const done = tallies[s.id]?.count ?? 0;
               return (
-                <Animated.View key={s.id} entering={FadeInDown.delay(Math.min(i, 8) * 60).springify().damping(16)} style={{ flexBasis: columns > 1 ? `${100 / columns - 2}%` : '100%', flexGrow: 1 }}>
+                <Animated.View key={s.id} entering={FadeInDown.delay(Math.min(i, 8) * 60).springify().damping(16)} style={{ flexBasis: columns > 1 ? `${100 / columns - 3}%` : '100%', flexGrow: 1 }}>
                   <GlassCard glow="gold" animateIn={false} onPress={() => router.push({ pathname: '/store/[id]', params: { id: s.id } })} accessibilityLabel={`${s.name}, complete, ${done} of ${target} visits`}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: palette.gold, alignItems: 'center', justifyContent: 'center' }}>

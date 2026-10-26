@@ -27,6 +27,8 @@ export interface Profile {
   route_managers: string[] | null;
   /** Whose stores are theirs (team_members.manager_name). NULL until approved. */
   manager_name?: string | null;
+  /** Distance unit for every display: 'mi' (UK default) or 'km'. */
+  distance_unit?: 'mi' | 'km' | null;
   /** Odometer in miles; numeric(9,1), so PostgREST may return a string. Trips add to it. */
   current_mileage: number | string | null;
   /** Working weekdays, 0 = Sunday ... 6 = Saturday. */

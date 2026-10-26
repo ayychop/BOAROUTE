@@ -14,6 +14,7 @@ import { BudgetRings } from '@/components/BudgetRings';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
+import { useUnits } from '@/hooks/useUnits';
 import { CATEGORY_LABEL, budgetsFor, formatPence, inMonth, monthKey, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
 import { copyText } from '@/lib/external';
 import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
@@ -34,6 +35,7 @@ export default function Finances() {
   const { palette } = useTheme();
   const { profile, updateProfile } = useAuth();
   const { mileage, expenses, addMileage, deleteExpense, deleteMileage, refresh } = useData();
+  const u = useUnits();
   const { compact, expanded } = useLayout();
   // Matches GlassCard's inner padding.
   const cardPad = compact ? 16 : 20;
@@ -54,7 +56,9 @@ export default function Finances() {
   const [odoEdit, setOdoEdit] = useState<string | null>(null);
   const [odoBusy, setOdoBusy] = useState(false);
   const [odoError, setOdoError] = useState<string | null>(null);
-  const odo = odometerValue(profile?.current_mileage);
+  // Stored in miles; shown and typed in the person's unit.
+  const odoMiles = odometerValue(profile?.current_mileage);
+  const odo = odoMiles === null ? null : u.milesValue(odoMiles);
   const vehicle = vehicleFor(profile?.vehicle_model);
 
   // Report
@@ -65,8 +69,9 @@ export default function Finances() {
 
   const saveMiles = async () => {
     setMileError(null);
-    const v = parseMiles(milesInput);
-    if (!Number.isFinite(v)) return setMileError('Enter miles like 42 or 42.5 (up to 2000).');
+    const typed = parseMiles(milesInput);
+    if (!Number.isFinite(typed)) return setMileError(`Enter ${u.word} like 42 or 42.5 (up to 2000).`);
+    const v = Math.round(u.toMiles(typed) * 10) / 10;
     setMileBusy(true);
     try {
       await addMileage({ miles: v, type: mileType, notes: mileNote.trim() || null });
@@ -82,8 +87,9 @@ export default function Finances() {
 
   const saveOdometer = async () => {
     if (odoEdit === null) return;
-    const v = parseOdometer(odoEdit);
-    if (!Number.isFinite(v)) return setOdoError('Enter the reading as shown on your dashboard, for example 14500.');
+    const typed = parseOdometer(odoEdit);
+    if (!Number.isFinite(typed)) return setOdoError('Enter the reading as shown on your dashboard, for example 14500.');
+    const v = Math.round(u.toMiles(typed) * 10) / 10;
     setOdoBusy(true);
     setOdoError(null);
     try {
@@ -127,7 +133,7 @@ export default function Finances() {
         <Odometer value={odo} size={compact ? 'md' : 'lg'} />
       </View>
       <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 12 }}>
-        {odo === null ? 'Set your reading once and every trip you log adds to it.' : `Updates automatically when you log a trip · ${formatOdometer(odo)} miles`}
+        {odo === null ? 'Set your reading once and every trip you log adds to it.' : `Updates automatically when you log a trip · ${formatOdometer(odo)} ${u.word}`}
       </Txt>
       {odoEdit !== null && (
         <Animated.View entering={FadeInDown.springify().damping(18)} style={{ marginTop: 16 }}>
@@ -177,7 +183,7 @@ export default function Finances() {
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <Txt variant="title">Log a trip</Txt>
         <Txt variant="caption" tone="dim">
-          {miles.work.toFixed(1)} work · {miles.personal.toFixed(1)} personal
+          {u.miles(miles.work)} work · {u.miles(miles.personal)} personal
         </Txt>
       </View>
       <Segmented
@@ -190,12 +196,12 @@ export default function Finances() {
         ]}
         style={{ marginBottom: 14 }}
       />
-      <Field label="Miles" icon="speedometer-outline" value={milesInput} onChangeText={setMilesInput} placeholder="e.g. 42.5" keyboardType="decimal-pad" returnKeyType="done" onSubmitEditing={saveMiles} error={mileError} />
+      <Field label={u.unit === 'km' ? 'Kilometres' : 'Miles'} icon="speedometer-outline" value={milesInput} onChangeText={setMilesInput} placeholder="e.g. 42.5" keyboardType="decimal-pad" returnKeyType="done" onSubmitEditing={saveMiles} error={mileError} />
       <Field label="Note (optional)" value={mileNote} onChangeText={setMileNote} placeholder="e.g. Reading loop" maxLength={500} />
-      <NeonButton label={`Log ${mileType} miles`} icon="add-circle" onPress={saveMiles} loading={mileBusy} full />
+      <NeonButton label={`Log ${mileType} ${u.word}`} icon="add-circle" onPress={saveMiles} loading={mileBusy} full />
       {odo !== null && (
         <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 10 }}>
-          Adds to your odometer ({formatOdometer(odo)} mi)
+          Adds to your odometer ({formatOdometer(odo)} {u.label})
         </Txt>
       )}
     </GlassCard>
@@ -233,7 +239,7 @@ export default function Finances() {
             <Animated.View key={m.id} entering={FadeInDown.delay(Math.min(i, 8) * 40)}>
               <Row
                 icon={m.type === 'work' ? 'briefcase' : 'home'}
-                title={`${Number(m.miles).toFixed(1)} mi · ${m.type === 'work' ? 'Work' : 'Personal'}`}
+                title={`${u.miles(Number(m.miles))} · ${m.type === 'work' ? 'Work' : 'Personal'}`}
                 sub={`${ukDate(m.date)}${m.notes ? ` · ${m.notes}` : ''}`}
                 onDelete={() => confirmDelete('mileage log', () => deleteMileage(m.id))}
               />

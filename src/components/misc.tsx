@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { useData } from '@/providers/DataProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 import { GlassCard } from './GlassCard';
+import { PremiumButton as NeonButton } from './PremiumButton';
 import { Txt } from './Txt';
 
 export function StatTile({
@@ -125,15 +126,7 @@ export function DataErrorBanner() {
             Check your signal. {error}
           </Txt>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Retry loading" onPress={retry} disabled={retrying} hitSlop={10} style={{ flexShrink: 0 }}>
-          {retrying ? (
-            <ActivityIndicator color={palette.primary} />
-          ) : (
-            <Txt variant="label" tone="primary">
-              Retry
-            </Txt>
-          )}
-        </Pressable>
+        <NeonButton label="Retry" icon="refresh" variant="outline" size="sm" onPress={retry} loading={retrying} style={{ flexShrink: 0 }} />
       </View>
     </GlassCard>
   );

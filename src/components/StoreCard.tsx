@@ -12,11 +12,13 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useLayout } from '@/hooks/useLayout';
 import { daysSinceLabel } from '@/lib/format';
 import { visitsRemaining } from '@/lib/frequency';
 import type { VisitTally } from '@/lib/route-engine';
 import type { Store } from '@/lib/types';
 import { useTheme } from '@/theme/ThemeProvider';
+import { radius } from '@/theme/typography';
 import { GradeBadge, ManagerBadge } from './badges';
 import { GlassCard } from './GlassCard';
 import { Txt } from './Txt';
@@ -33,6 +35,9 @@ interface Props {
   exiting?: boolean;
   onExited?: (id: string) => void;
 }
+
+/** Two lines of the card title, so names of any length keep the grid even. */
+const NAME_LINES_HEIGHT = 44;
 
 /** Above this many visits a month the bar is continuous instead of one segment per visit. */
 const MAX_SEGMENTS = 8;
@@ -79,6 +84,7 @@ export function GoalBar({ done, target, met }: { done: number; target: number; m
 
 export const StoreCard = memo(function StoreCard({ store, tally, target, index, now, animateIn = true, exiting = false, onExited }: Props) {
   const { palette } = useTheme();
+  const { compact } = useLayout();
   const done = tally?.count ?? 0;
   const days = tally?.last ? Math.floor((now - new Date(tally.last).getTime()) / 86_400_000) : null;
   const met = target > 0 && done >= target;
@@ -111,32 +117,38 @@ export const StoreCard = memo(function StoreCard({ store, tally, target, index, 
     shadowOpacity: glow.value * 0.9,
   }));
 
+  const status = met ? 'Target hit' : left === 1 ? 'Last one to go' : `${left} more to go`;
+
+  // Sized by its content, never by the cell: the list rows stretch cards to the
+  // tallest in the row, so every text block keeps its full natural height.
   return (
-    <Animated.View style={[{ height: '100%' }, exitStyle]}>
-      <GlassCard index={index} animateIn={animateIn} onPress={() => router.push({ pathname: '/store/[id]', params: { id: store.id } })} accessibilityLabel={`${store.name}, grade ${store.grade}, ${done} of ${target} visits`} style={{ height: '100%' }}>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <GradeBadge grade={store.grade} />
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <Txt variant="strong" numberOfLines={2}>
-              {store.name}
-            </Txt>
-            <ManagerBadge manager={store.assigned_manager} />
-            <Txt variant="caption" tone="faint" numberOfLines={2}>
-              {store.address}
-            </Txt>
-          </View>
-          {met && <Ionicons name="trophy" size={20} color={palette.gold} />}
+    <Animated.View style={[{ flex: 1 }, exitStyle]}>
+      <GlassCard index={index} animateIn={animateIn} fill onPress={() => router.push({ pathname: '/store/[id]', params: { id: store.id } })} accessibilityLabel={`${store.name}, grade ${store.grade}, ${done} of ${target} visits`}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+          <GradeBadge grade={store.grade} size={30} />
+          {met ? <Ionicons name="trophy" size={18} color={palette.gold} /> : <ManagerBadge manager={store.assigned_manager} />}
         </View>
-        <View style={{ marginTop: 12, gap: 8 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-            <Txt variant="caption" tone={met ? 'gold' : left === 1 ? 'primary' : 'dim'} numberOfLines={1}>
-              {met ? `Target hit · ${done}/${target}` : left === 1 ? `Last one to go · ${done}/${target}` : `${left} more to go · ${done}/${target}`}
-            </Txt>
-            <Txt variant="caption" tone="faint" numberOfLines={1}>
-              {daysSinceLabel(days)}
-            </Txt>
-          </View>
-          <GoalBar done={done} target={target} met={met} />
+        <Txt variant="strong" numberOfLines={2} maxFontSizeMultiplier={1.15} style={{ flexShrink: 0, minHeight: NAME_LINES_HEIGHT }}>
+          {store.name}
+        </Txt>
+        <Txt variant="caption" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flexShrink: 0, marginTop: 2 }}>
+          {store.address}
+        </Txt>
+        <View style={{ flex: 1, minHeight: 12 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
+          <Txt variant="caption" tone={met ? 'gold' : left === 1 ? 'primary' : 'dim'} numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flex: 1 }}>
+            {status}
+          </Txt>
+          <Txt variant="caption" tone={met ? 'gold' : 'faint'} numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flexShrink: 0, fontVariant: ['tabular-nums'] }}>
+            {done}/{target}
+          </Txt>
+        </View>
+        <GoalBar done={done} target={target} met={met} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 }}>
+          <Ionicons name="time-outline" size={12} color={palette.textFaint} />
+          <Txt variant="caption" tone="faint" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flex: 1, fontSize: 12 }}>
+            {daysSinceLabel(days)}
+          </Txt>
         </View>
       </GlassCard>
       {exiting && (
@@ -149,7 +161,7 @@ export const StoreCard = memo(function StoreCard({ store, tally, target, index, 
               left: 0,
               right: 0,
               bottom: 0,
-              borderRadius: 24,
+              borderRadius: compact ? radius.lg - 2 : radius.xl - 4,
               borderWidth: 2,
               borderColor: palette.gold,
               backgroundColor: palette.gold + '1A',

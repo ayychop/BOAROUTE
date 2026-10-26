@@ -2,33 +2,37 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOutUp, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LngLat, RouteOption, RouteOptionsResult } from '../../supabase/functions/_shared/route-analysis';
 import { HudMap } from '@/components/HudMap';
-import { LoadingBlock } from '@/components/misc';
-import { HazardPin, HazardSheet, ReportSheet, Toast } from '@/components/NavOverlays';
+import { HazardPin, HazardSheet, NAV, NavGlass, ReportSheet, Toast } from '@/components/NavOverlays';
 import { IconButton, NeonButton } from '@/components/NeonButton';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
-import { formatMinutes, formatMiles, formatTime } from '@/lib/format';
+import { useUnits } from '@/hooks/useUnits';
+import { spokenDistance } from '@/lib/units';
+import { formatMinutes, formatTime } from '@/lib/format';
 import { haversineKm } from '@/lib/geo';
-import { isLiveHazard, type HazardReport, type HazardType } from '@/lib/hazards';
+import { hazardMeta, isLiveHazard, type HazardReport, type HazardType } from '@/lib/hazards';
 import { decodeNavRequest, type NavDestination } from '@/lib/nav-request';
-import { formatNavDistance, PREWARN_M, prepareRoute, progressAt, remainingWaypoints, type NavProgress } from '@/lib/nav-progress';
+import { HAZARD_ALERT_M, nextHazardAhead, type HazardAhead } from '@/lib/hazard-alerts';
+import { PREWARN_M, prepareRoute, progressAt, remainingWaypoints, type NavProgress } from '@/lib/nav-progress';
 import { getPref, setPref } from '@/lib/prefs';
 import type { LatLng } from '@/lib/types';
 import { fetchRouteOptions } from '@/services/functions';
 import { clearHazard, fetchLiveHazards, reportHazard } from '@/services/hazards';
 import { COCKPIT_MAP_STYLE } from '@/theme/map-style';
 import { useTheme } from '@/theme/ThemeProvider';
-import { radius } from '@/theme/typography';
+import { radius, springs } from '@/theme/typography';
 
 /** The Google map needs a key baked into the build; without one Android would crash, so fall back to the HUD map. */
 const MAPS_READY = Platform.OS !== 'android' || Constants.expoConfig?.extra?.mapsConfigured === true;
@@ -37,9 +41,116 @@ const REROUTE_COOLDOWN_MS = 20_000;
 
 const toCoord = ([lng, lat]: LngLat) => ({ latitude: lat, longitude: lng });
 
+/** Space between the floating cards and the screen edge (inside the safe area). */
+const EDGE = 12;
+/** One size for the secondary map controls; Report is bigger for a one-thumb tap. */
+const FAB = 56;
+const REPORT_FAB = 76;
+/** Default driving zoom; the driver's own pinch level is kept after that. */
+const FOLLOW_ZOOM = 17;
+const MIN_ZOOM = 12;
+const MAX_ZOOM = 20;
+
+/**
+ * Custom marker that snapshots for its first moments only: Android can draw a
+ * blank pin if tracking stops before the view has laid out.
+ */
+function HazardMarker({ hazard, onPress }: { hazard: HazardReport; onPress: () => void }) {
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setTracks(false), 800);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <Marker coordinate={{ latitude: hazard.latitude, longitude: hazard.longitude }} onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 0.5 }} accessibilityLabel={`${hazardMeta(hazard.hazard_type).label} reported`}>
+      <HazardPin type={hazard.hazard_type} />
+    </Marker>
+  );
+}
+
+/** Arrow for the next manoeuvre, read from the instruction text. */
+function maneuverIcon(instruction: string | undefined): keyof typeof Ionicons.glyphMap {
+  const t = (instruction ?? '').toLowerCase();
+  if (t.includes('roundabout')) return 'sync';
+  if (t.includes('u-turn')) return 'return-down-back';
+  if (t.includes('left')) return 'return-up-back';
+  if (t.includes('right')) return 'return-up-forward';
+  if (t.includes('arrive') || t.includes('destination')) return 'flag';
+  return 'arrow-up';
+}
+
+/** Solid gold disc holding the manoeuvre arrow. */
+function ManeuverDisc({ icon }: { icon: keyof typeof Ionicons.glyphMap }) {
+  return (
+    <View style={{ width: 46, height: 46, borderRadius: 23, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <LinearGradient colors={['#FFF1C9', '#E8CF94', '#B8954F']} locations={[0, 0.55, 1]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={StyleSheet.absoluteFill} />
+      <Ionicons name={icon} size={24} color="#17120A" />
+    </View>
+  );
+}
+
+function clampZoom(z: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+}
+
 function KeepAwake() {
   useKeepAwake();
   return null;
+}
+
+/** Big gold one-tap Report: icon and label, sized for a thumb while driving. */
+function ReportButton({ onPress }: { onPress: () => void }) {
+  const press = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));
+  return (
+    <Animated.View style={[anim, { width: REPORT_FAB, height: REPORT_FAB, borderRadius: REPORT_FAB / 2, shadowColor: '#E8CF94', shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 10 }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Report a hazard"
+        accessibilityHint="Opens police, camera, accident and hazard buttons"
+        hitSlop={10}
+        onPressIn={() => press.set(withSpring(0.92, springs.press))}
+        onPressOut={() => press.set(withSpring(1, springs.release))}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          onPress();
+        }}
+        style={{ flex: 1, borderRadius: REPORT_FAB / 2, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(23,18,10,0.85)' }}
+      >
+        <LinearGradient colors={['#FFF1C9', '#E8CF94', '#B8954F']} locations={[0, 0.55, 1]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={StyleSheet.absoluteFill} />
+        <Ionicons name="warning" size={30} color="#17120A" />
+        <Txt variant="label" maxFontSizeMultiplier={1} style={{ color: '#17120A', fontSize: 9.5, letterSpacing: 1.2, marginTop: 1 }}>
+          Report
+        </Txt>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/** Floating countdown to the next report on the road ahead: "Speed Camera · 450 yd". */
+function HazardCountdown({ ahead, label }: { ahead: HazardAhead; label: string }) {
+  const meta = hazardMeta(ahead.hazard.hazard_type);
+  const left = Math.max(0, Math.min(1, ahead.distanceM / HAZARD_ALERT_M));
+  return (
+    <Animated.View entering={FadeInDown.springify().damping(18)} exiting={FadeOutUp.duration(220)} accessibilityLiveRegion="polite" accessibilityLabel={`${meta.label} in ${label}`}>
+      <NavGlass style={{ borderColor: meta.color }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 14 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: meta.color, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={meta.icon} size={20} color="#0B0B0C" />
+          </View>
+          <Txt variant="strong" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flex: 1, color: NAV.text }}>
+            {meta.label} ahead
+          </Txt>
+          <Txt variant="display" numberOfLines={1} maxFontSizeMultiplier={1.1} style={{ color: meta.color, fontSize: 24, lineHeight: 29, flexShrink: 0 }}>
+            {label}
+          </Txt>
+        </View>
+        <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.06)' }}>
+          <View style={{ height: 3, width: `${left * 100}%`, backgroundColor: meta.color }} />
+        </View>
+      </NavGlass>
+    </Animated.View>
+  );
 }
 
 export default function Navigate() {
@@ -72,6 +183,11 @@ export default function Navigate() {
   const [openHazard, setOpenHazard] = useState<HazardReport | null>(null);
   const [clearing, setClearing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [ahead, setAhead] = useState<HazardAhead | null>(null);
+  const warned = useRef(new Set<string>());
+  const units = useUnits();
+  // The driver's zoom survives following, recentring and the next trip.
+  const zoom = useRef(clampZoom(Number(getPref('nav.zoom')) || FOLLOW_ZOOM));
   const hideToast = useCallback(() => setToast(null), []);
 
   const lastVertex = useRef(0);
@@ -203,9 +319,18 @@ export default function Navigate() {
     if (following && MAPS_READY) {
       const heading = position.coords.heading;
       mapRef.current?.animateCamera(
-        { center: { latitude: here.lat, longitude: here.lng }, pitch: 55, zoom: 17, ...(heading != null && heading >= 0 ? { heading } : null) },
+        { center: { latitude: here.lat, longitude: here.lng }, pitch: 55, zoom: zoom.current, ...(heading != null && heading >= 0 ? { heading } : null) },
         { duration: 900 },
       );
+    }
+
+    // Reports on the road ahead: a countdown banner, plus one spoken warning per report.
+    const next = nextHazardAhead(prepared, p.vertex, here, hazards.filter((h) => isLiveHazard(h)));
+    setAhead(next);
+    if (next && !warned.current.has(next.hazard.id)) {
+      warned.current.add(next.hazard.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      say(`${hazardMeta(next.hazard.hazard_type).label} reported in ${spokenDistance(units.nav(next.distanceM))}`);
     }
 
     // Stops along the way.
@@ -224,7 +349,7 @@ export default function Navigate() {
     if (p.nextStep) {
       if (spoken.current.step !== p.nextStepIndex) {
         spoken.current = { step: p.nextStepIndex, prewarned: p.distanceToNextM <= PREWARN_M };
-        say(p.distanceToNextM > PREWARN_M ? `In ${formatNavDistance(p.distanceToNextM).replace('mi', 'miles').replace('yd', 'yards')}, ${p.nextStep.instruction}` : p.nextStep.instruction);
+        say(p.distanceToNextM > PREWARN_M ? `In ${spokenDistance(units.nav(p.distanceToNextM))}, ${p.nextStep.instruction}` : p.nextStep.instruction);
       } else if (!spoken.current.prewarned && p.distanceToNextM <= PREWARN_M) {
         spoken.current.prewarned = true;
         say(p.nextStep.instruction);
@@ -259,15 +384,29 @@ export default function Navigate() {
       return;
     }
     announced.current.clear();
+    warned.current.clear();
     setFollowing(true);
     setNavigating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (option?.steps[0]) say(option.steps[0].instruction);
   };
 
+  /** Back to following at the driver's own zoom, straight away rather than on the next fix. */
+  const recentre = () => {
+    setFollowing(true);
+    if (position && MAPS_READY) {
+      const heading = position.coords.heading;
+      mapRef.current?.animateCamera(
+        { center: { latitude: position.coords.latitude, longitude: position.coords.longitude }, pitch: 55, zoom: zoom.current, ...(heading != null && heading >= 0 ? { heading } : null) },
+        { duration: 600 },
+      );
+    }
+  };
+
   const stop = () => {
     setNavigating(false);
     setProgress(null);
+    setAhead(null);
     Speech.stop();
   };
 
@@ -349,7 +488,21 @@ export default function Navigate() {
       showsBuildings={false}
       pitchEnabled
       initialRegion={origin ? { latitude: origin.lat, longitude: origin.lng, latitudeDelta: 0.2, longitudeDelta: 0.2 } : { latitude: 51.64, longitude: -0.73, latitudeDelta: 0.6, longitudeDelta: 0.6 }}
+      // Panning stops following until Recentre; pinching sets the zoom that following keeps.
       onPanDrag={() => navigating && setFollowing(false)}
+      onRegionChangeComplete={() => {
+        if (!navigating) return;
+        mapRef.current
+          ?.getCamera()
+          .then((c) => {
+            if (typeof c.zoom !== 'number' || !Number.isFinite(c.zoom)) return;
+            const z = clampZoom(c.zoom);
+            if (Math.abs(z - zoom.current) < 0.05) return;
+            zoom.current = z;
+            setPref('nav.zoom', z.toFixed(2));
+          })
+          .catch(() => {});
+      }}
     >
       {other && <Polyline coordinates={other.geometry.map(toCoord)} strokeColor="rgba(201,205,212,0.45)" strokeWidth={4} tappable onPress={() => setChoice(other.kind)} />}
       {option && (
@@ -366,9 +519,7 @@ export default function Navigate() {
         </Marker>
       ))}
       {liveHazards.map((h) => (
-        <Marker key={h.id} coordinate={{ latitude: h.latitude, longitude: h.longitude }} onPress={() => setOpenHazard(h)} tracksViewChanges={false} accessibilityLabel={`${h.hazard_type} reported`}>
-          <HazardPin type={h.hazard_type} />
-        </Marker>
+        <HazardMarker key={h.id} hazard={h} onPress={() => setOpenHazard(h)} />
       ))}
     </MapView>
   ) : origin && option ? (
@@ -393,146 +544,155 @@ export default function Navigate() {
       {navigating && <KeepAwake />}
       {map}
 
-      {/* Top: next manoeuvre while navigating, otherwise the destination */}
-      <View style={{ position: 'absolute', top: insets.top + 10, left: insets.left + 12, right: insets.right + 12, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-        {!navigating && <IconButton icon="chevron-back" label="Close navigation" onPress={close} size={44} />}
-        <View style={{ flex: 1, minWidth: 0, borderRadius: radius.lg, padding: 14, backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.borderStrong }}>
-          {navigating && progress ? (
-            progress.arrived ? (
-              <Txt variant="title" numberOfLines={2}>
-                You have arrived{destination ? ` at ${destination.label}` : ''}
-              </Txt>
-            ) : (
-              <Animated.View key={progress.nextStepIndex} entering={FadeIn.duration(250)}>
-                <Txt variant="display" tone="gold" numberOfLines={1} style={{ fontSize: compact ? 26 : 32, lineHeight: compact ? 32 : 38 }}>
-                  {formatNavDistance(progress.distanceToNextM)}
-                </Txt>
-                <Txt variant="heading" numberOfLines={3}>
-                  {rerouting ? 'Rerouting...' : progress.nextStep?.instruction ?? `Continue to ${destination?.label ?? 'your destination'}`}
-                </Txt>
-                {progress.offRoute && !rerouting ? (
-                  <Txt variant="caption" tone="warning">
-                    {Math.round(progress.offRouteM)} m off route
+      {/* Top: next manoeuvre while navigating, otherwise the destination. */}
+      <SafeAreaView edges={['top', 'left', 'right']} pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
+        <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE, paddingTop: 8, width: '100%', maxWidth: 680, alignSelf: 'center', gap: 10 }}>
+        <View pointerEvents="box-none" style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+          {!navigating && <IconButton icon="chevron-back" label="Close navigation" onPress={close} size={48} onDark />}
+          <NavGlass style={{ flex: 1, minWidth: 0 }}>
+            {navigating && progress ? (
+              progress.arrived ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
+                  <ManeuverDisc icon="flag" />
+                  <Txt variant="heading" numberOfLines={2} style={{ flex: 1, color: NAV.text }}>
+                    You have arrived{destination ? ` at ${destination.label}` : ''}
                   </Txt>
-                ) : null}
-              </Animated.View>
-            )
-          ) : (
-            <>
-              <Txt variant="label" tone="primary" numberOfLines={1}>
-                {navigating ? 'Finding you' : waypoints.length > 1 ? `${waypoints.length} stops` : 'Destination'}
-              </Txt>
-              <Txt variant="heading" numberOfLines={2}>
-                {req.title}
-              </Txt>
-            </>
-          )}
+                </View>
+              ) : (
+                <Animated.View key={progress.nextStepIndex} entering={FadeIn.duration(250)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 }}>
+                  <ManeuverDisc icon={maneuverIcon(progress.nextStep?.instruction)} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Txt variant="display" numberOfLines={1} maxFontSizeMultiplier={1.1} style={{ color: NAV.gold, fontSize: compact ? 22 : 26, lineHeight: compact ? 27 : 31 }}>
+                      {units.nav(progress.distanceToNextM)}
+                    </Txt>
+                    <Txt variant="strong" numberOfLines={2} maxFontSizeMultiplier={1.15} style={{ color: NAV.text, fontSize: 15, lineHeight: 20 }}>
+                      {rerouting ? 'Rerouting...' : progress.nextStep?.instruction ?? `Continue to ${destination?.label ?? 'your destination'}`}
+                    </Txt>
+                    {progress.offRoute && !rerouting ? (
+                      <Txt variant="caption" numberOfLines={1} style={{ color: NAV.warning, marginTop: 2 }}>
+                        {Math.round(progress.offRouteM)} m off route
+                      </Txt>
+                    ) : null}
+                  </View>
+                </Animated.View>
+              )
+            ) : (
+              <View style={{ paddingVertical: 12, paddingHorizontal: 16 }}>
+                <Txt variant="label" numberOfLines={1} style={{ color: NAV.gold }}>
+                  {navigating ? 'Finding you' : waypoints.length > 1 ? `${waypoints.length} stops` : 'Destination'}
+                </Txt>
+                <Txt variant="strong" numberOfLines={2} maxFontSizeMultiplier={1.15} style={{ color: NAV.text, marginTop: 2 }}>
+                  {req.title}
+                </Txt>
+              </View>
+            )}
+          </NavGlass>
         </View>
-      </View>
+        {navigating && ahead ? <HazardCountdown ahead={ahead} label={units.nav(ahead.distanceM)} /> : null}
+        </View>
+      </SafeAreaView>
 
-      <Toast message={toast} onHide={hideToast} top={insets.top + (navigating ? 150 : 100)} />
+      <Toast message={toast} onHide={hideToast} top={insets.top + (navigating ? (ahead ? 196 : 124) : 90)} />
 
-      {/* Floating controls above the bottom panel */}
-      <View style={{ position: 'absolute', right: insets.right + 14, bottom: insets.bottom + (navigating ? 150 : 300), gap: 12, alignItems: 'flex-end' }}>
-        {navigating && !following && MAPS_READY && <IconButton icon="locate" label="Recentre on me" tone="gold" onPress={() => setFollowing(true)} size={52} />}
-        {navigating && <IconButton icon={muted ? 'volume-mute' : 'volume-high'} label={muted ? 'Unmute voice' : 'Mute voice'} onPress={toggleMute} size={52} />}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Report a hazard"
-          onPress={() => setReportOpen(true)}
-          style={({ pressed }) => ({ width: 68, height: 68, borderRadius: 34, backgroundColor: '#E3B565', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#0B0B0C', transform: [{ scale: pressed ? 0.94 : 1 }] })}
-        >
-          <Ionicons name="warning" size={26} color="#0B0B0C" />
-          <Txt variant="label" style={{ color: '#0B0B0C', fontSize: 9, letterSpacing: 1 }}>
-            Report
-          </Txt>
-        </Pressable>
-      </View>
+      {/* Bottom: controls stacked above the panel, both clear of the Android navigation bar. */}
+      <SafeAreaView edges={['bottom', 'left', 'right']} pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+        <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE, paddingBottom: EDGE, width: '100%', maxWidth: 680, alignSelf: 'center' }}>
+          {/* One column, centred on the Report button, in the right thumb's reach. */}
+          <View pointerEvents="box-none" style={{ alignSelf: 'flex-end', alignItems: 'center', gap: 12, marginBottom: 12, width: REPORT_FAB }}>
+            {navigating && !following && MAPS_READY && <IconButton icon="locate" label="Recentre on me" tone="gold" onPress={recentre} size={FAB} onDark />}
+            {navigating && <IconButton icon={muted ? 'volume-mute' : 'volume-high'} label={muted ? 'Unmute voice' : 'Mute voice'} tone={muted ? 'danger' : 'default'} onPress={toggleMute} size={FAB} onDark />}
+            <ReportButton onPress={() => setReportOpen(true)} />
+          </View>
 
-      {/* Bottom panel */}
-      <View
-        style={{
-          position: 'absolute',
-          left: insets.left + 12,
-          right: insets.right + 12,
-          bottom: insets.bottom + 12,
-          borderRadius: radius.xl,
-          padding: 16,
-          backgroundColor: palette.surfaceStrong,
-          borderWidth: 1,
-          borderColor: palette.borderStrong,
-          maxWidth: 640,
-          alignSelf: 'center',
-          width: Math.min(640, width - insets.left - insets.right - 24),
-        }}
-      >
-        {shownError ? (
-          <View style={{ gap: 12 }}>
-            <Txt variant="body" tone="danger">
-              {shownError}
-            </Txt>
-            <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-              <NeonButton label="Open settings" variant="subtle" onPress={() => Linking.openSettings().catch(() => {})} />
-              <NeonButton label="Close" variant="ghost" onPress={close} />
-            </View>
-          </View>
-        ) : !options || !option ? (
-          <LoadingBlock label={origin ? 'Checking live traffic' : 'Finding your location'} />
-        ) : navigating ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Txt variant="title" tone="gold" numberOfLines={1}>
-                {formatTime(arrival)} arrival
-              </Txt>
-              <Txt variant="caption" tone="dim" numberOfLines={1}>
-                {formatMinutes(remainingS / 60)} · {formatMiles(remainingM / 1000)}
-                {liveHazards.length ? ` · ${liveHazards.length} report${liveHazards.length > 1 ? 's' : ''} nearby` : ''}
-              </Txt>
-            </View>
-            <NeonButton label="End" icon="close" variant="danger" onPress={stop} />
-          </View>
-        ) : (
-          <View style={{ gap: 12 }}>
-            {[options.motorway.available ? options.motorway : null, options.identical ? null : options.standard]
-              .filter((o): o is RouteOption => !!o)
-              .map((o) => {
-                const active = o === option;
-                return (
-                  <Pressable
-                    key={o.kind}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: active }}
-                    onPress={() => setChoice(o.kind)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, borderWidth: active ? 2 : 1, borderColor: active ? palette.gold : palette.border, backgroundColor: palette.surface }}
-                  >
-                    <Ionicons name={o.kind === 'motorway' ? 'speedometer' : 'git-branch'} size={20} color={active ? palette.gold : palette.textDim} />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Txt variant="strong" numberOfLines={1}>
-                        {o.kind === 'motorway' ? 'Fastest Route (Motorway Preferred)' : 'Standard Route'}
-                      </Txt>
-                      <Txt variant="caption" tone="faint" numberOfLines={1}>
-                        {o.roads.length ? `Via ${o.roads.slice(0, 3).join(', ')}` : o.kind === 'motorway' ? 'Main roads first' : 'Shortest drive time'}
-                      </Txt>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
-                      <Txt variant="strong" tone={active ? 'gold' : 'default'}>
-                        {formatMinutes(o.durationS / 60)}
-                      </Txt>
-                      <Txt variant="caption" tone="faint">
-                        {formatMiles(o.distanceM / 1000)}
-                      </Txt>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            <Txt variant="caption" tone={live ? 'success' : 'warning'} numberOfLines={2}>
-              {live ? 'Live traffic included' : `${liveError ?? 'Live traffic unavailable'} Showing an estimate.`}
-              {!MAPS_READY ? ' Add a Google Maps key to enable the live map.' : ''}
-            </Txt>
-            <NeonButton label="Start Navigation" icon="navigate" variant="gold" size="lg" onPress={start} full />
-          </View>
-        )}
-      </View>
+          <NavGlass style={{ padding: 16, borderRadius: radius.xl - 4 }}>
+            {shownError ? (
+              <View style={{ gap: 12 }}>
+                <Txt variant="body" style={{ color: NAV.danger }}>
+                  {shownError}
+                </Txt>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <NeonButton label="Open settings" variant="outline" onDark onPress={() => Linking.openSettings().catch(() => {})} style={{ flex: 1 }} />
+                  <NeonButton label="Close" variant="subtle" onDark onPress={close} style={{ flex: 1 }} />
+                </View>
+              </View>
+            ) : !options || !option ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 10 }}>
+                <ActivityIndicator color={NAV.gold} />
+                <Txt variant="strong" style={{ color: NAV.dim }}>
+                  {origin ? 'Checking live traffic' : 'Finding your location'}
+                </Txt>
+              </View>
+            ) : navigating ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Txt variant="title" numberOfLines={1} maxFontSizeMultiplier={1.1} style={{ color: NAV.gold }}>
+                    {formatTime(arrival)} arrival
+                  </Txt>
+                  <Txt variant="caption" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ color: NAV.dim, marginTop: 2 }}>
+                    {formatMinutes(remainingS / 60)} · {units.distance(remainingM / 1000)}
+                    {liveHazards.length ? ` · ${liveHazards.length} report${liveHazards.length > 1 ? 's' : ''} nearby` : ''}
+                  </Txt>
+                </View>
+                <NeonButton label="End" icon="stop-circle-outline" variant="danger" onDark onPress={stop} />
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {[options.motorway.available ? options.motorway : null, options.identical ? null : options.standard]
+                  .filter((o): o is RouteOption => !!o)
+                  .map((o) => {
+                    const active = o === option;
+                    return (
+                      <Pressable
+                        key={o.kind}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: active }}
+                        onPress={() => setChoice(o.kind)}
+                        style={({ pressed }) => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 12,
+                          paddingVertical: 12,
+                          paddingHorizontal: 14,
+                          borderRadius: radius.md,
+                          borderWidth: 1,
+                          borderColor: active ? NAV.gold : 'rgba(232,207,148,0.16)',
+                          backgroundColor: active ? 'rgba(232,207,148,0.08)' : 'rgba(255,255,255,0.03)',
+                          transform: [{ scale: pressed ? 0.985 : 1 }],
+                        })}
+                      >
+                        <Ionicons name={o.kind === 'motorway' ? 'speedometer' : 'git-branch'} size={20} color={active ? NAV.gold : NAV.faint} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Txt variant="strong" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ color: NAV.text }}>
+                            {o.kind === 'motorway' ? 'Fastest (motorway)' : 'Standard route'}
+                          </Txt>
+                          <Txt variant="caption" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ color: NAV.faint }}>
+                            {o.roads.length ? `Via ${o.roads.slice(0, 3).join(', ')}` : o.kind === 'motorway' ? 'Main roads first' : 'Shortest drive time'}
+                          </Txt>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+                          <Txt variant="strong" maxFontSizeMultiplier={1.15} style={{ color: active ? NAV.gold : NAV.text }}>
+                            {formatMinutes(o.durationS / 60)}
+                          </Txt>
+                          <Txt variant="caption" maxFontSizeMultiplier={1.15} style={{ color: NAV.faint }}>
+                            {units.distance(o.distanceM / 1000)}
+                          </Txt>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: live ? NAV.success : NAV.warning }} />
+                  <Txt variant="caption" numberOfLines={2} maxFontSizeMultiplier={1.15} style={{ flex: 1, color: live ? NAV.success : NAV.warning }}>
+                    {live ? 'Live traffic included' : `${liveError ?? 'Live traffic unavailable'} Showing an estimate.`}
+                    {!MAPS_READY ? ' Add a Google Maps key to enable the live map.' : ''}
+                  </Txt>
+                </View>
+                <NeonButton label="Start Navigation" icon="navigate" variant="gold" size="lg" onDark onPress={start} full />
+              </View>
+            )}
+          </NavGlass>
+        </View>
+      </SafeAreaView>
 
       <ReportSheet open={reportOpen} onClose={() => setReportOpen(false)} onPick={onReport} busy={reportBusy} />
       <HazardSheet hazard={openHazard} onClose={() => setOpenHazard(null)} onClear={onClearHazard} busy={clearing} />

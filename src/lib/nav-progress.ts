@@ -98,14 +98,8 @@ export function progressAt(route: PreparedRoute, p: LatLng, lastVertex = 0): Nav
   };
 }
 
-/** UK road distances: yards up close, miles further out. */
-export function formatNavDistance(m: number): string {
-  const yards = m * 1.09361;
-  if (yards < 50) return 'now';
-  if (yards < 400) return `${Math.round(yards / 10) * 10} yd`;
-  const miles = m / 1609.344;
-  return miles < 10 ? `${miles.toFixed(1)} mi` : `${Math.round(miles)} mi`;
-}
+/** Kept here for older imports; the unit-aware version lives in units.ts. */
+export { formatNavDistance } from './units';
 
 /** Waypoints still ahead of the driver, used to reroute from where they are. */
 export function remainingWaypoints(route: PreparedRoute, waypoints: LatLng[], vertex: number): LatLng[] {

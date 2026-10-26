@@ -3,7 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import type { RouteOption } from '../../supabase/functions/_shared/route-analysis';
-import { formatMiles, formatMinutes } from '@/lib/format';
+import { useUnits } from '@/hooks/useUnits';
+import { formatMinutes } from '@/lib/format';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius } from '@/theme/typography';
 import { Txt } from './Txt';
@@ -19,6 +20,7 @@ interface Props {
 
 export function RouteOptionCard({ option, selected, onSelect, live, note, index }: Props) {
   const { palette } = useTheme();
+  const units = useUnits();
   const motorway = option.kind === 'motorway';
   const accent = motorway ? palette.gold : palette.primary;
   const delayMin = Math.round((option.durationS - option.typicalDurationS) / 60);
@@ -30,7 +32,7 @@ export function RouteOptionCard({ option, selected, onSelect, live, note, index 
       <Pressable
         accessibilityRole="radio"
         accessibilityState={{ selected }}
-        accessibilityLabel={`${title}: ${formatMinutes(option.durationS / 60)}, ${formatMiles(option.distanceM / 1000)}`}
+        accessibilityLabel={`${title}: ${formatMinutes(option.durationS / 60)}, ${units.distance(option.distanceM / 1000)}`}
         onPress={() => {
           Haptics.selectionAsync().catch(() => {});
           onSelect();
@@ -69,7 +71,7 @@ export function RouteOptionCard({ option, selected, onSelect, live, note, index 
             {formatMinutes(option.durationS / 60)}
           </Txt>
           <Txt variant="strong" tone="dim" style={{ marginBottom: 4 }}>
-            {formatMiles(option.distanceM / 1000)}
+            {units.distance(option.distanceM / 1000)}
           </Txt>
         </View>
 

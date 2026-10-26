@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, withSpring, withTiming } from 'react-native
 import { useLayout } from '@/hooks/useLayout';
 import { useTheme } from '@/theme/ThemeProvider';
 import { fonts, radius } from '@/theme/typography';
+import { IconButton } from './PremiumButton';
 import { Txt } from './Txt';
 
 const tap = () => Haptics.selectionAsync().catch(() => {});
@@ -195,30 +196,18 @@ export function Segmented<T extends string>({
 }
 
 export function Stepper({ value, onChange, min = 0, max = 12, label }: { value: number; onChange: (v: number) => void; min?: number; max?: number; label: string }) {
-  const { palette } = useTheme();
   const btn = (icon: 'remove' | 'add', next: number, disabled: boolean) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${icon === 'add' ? 'Increase' : 'Decrease'} ${label}`}
+    <IconButton
+      icon={icon}
+      tone="gold"
+      size={44}
+      label={`${icon === 'add' ? 'Increase' : 'Decrease'} ${label}`}
       disabled={disabled}
       onPress={() => {
         tap();
         onChange(next);
       }}
-      hitSlop={6}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: disabled ? palette.border : palette.borderStrong,
-        opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
-      })}
-    >
-      <Ionicons name={icon} size={20} color={palette.primary} />
-    </Pressable>
+    />
   );
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }} accessibilityLabel={`${label}: ${value}`}>

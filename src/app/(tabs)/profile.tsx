@@ -5,16 +5,18 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { BRLogo } from '@/components/BRLogo';
 import { CarIllustration } from '@/components/CarIllustration';
-import { Field } from '@/components/controls';
+import { Field, Segmented } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
+import { useUnits } from '@/hooks/useUnits';
 import { managerShort } from '@/lib/frequency';
 import { geocode, normalisePostcode } from '@/lib/geo';
 import { budgetsFor, formatPence } from '@/lib/budget';
 import { formatOdometer } from '@/lib/odometer';
+import type { DistanceUnit } from '@/lib/units';
 import { vehicleFor } from '@/lib/vehicles';
 import { describeDays } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
@@ -57,6 +59,19 @@ function LinkRow({ icon, label, hint, href, tone }: { icon: keyof typeof Ionicon
 export default function Me() {
   const { palette, mode, setMode } = useTheme();
   const { compact, contentWidth } = useLayout();
+  const units = useUnits();
+  const [unitBusy, setUnitBusy] = useState(false);
+  const setUnit = async (next: DistanceUnit) => {
+    if (next === units.unit || unitBusy) return;
+    setUnitBusy(true);
+    try {
+      await updateProfile({ distance_unit: next });
+    } catch (e) {
+      Alert.alert('Could not change units', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setUnitBusy(false);
+    }
+  };
   const carWidth = Math.round(Math.min(150, Math.max(92, contentWidth * 0.34)));
   const { profile, isAdmin, updateProfile, signOut } = useAuth();
   const { managers, myStores, chosenStoreIds } = useData();
@@ -98,13 +113,28 @@ export default function Me() {
               {vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected'}
             </Txt>
             <Txt variant="caption" tone="primary" numberOfLines={2}>
-              {formatOdometer(profile?.current_mileage)} mi · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
+              {formatOdometer(profile?.current_mileage == null ? null : units.milesValue(Number(profile.current_mileage)))} {units.label} · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
             </Txt>
           </View>
           <View style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
             <BRLogo size={compact ? 26 : 32} glow={false} />
           </View>
         </View>
+      </GlassCard>
+
+      <SectionHeader title="Distance units" />
+      <GlassCard animateIn={false}>
+        <Segmented
+          value={units.unit}
+          onChange={setUnit}
+          options={[
+            { value: 'mi', label: 'Miles' },
+            { value: 'km', label: 'Kilometres' },
+          ]}
+        />
+        <Txt variant="caption" tone="faint" style={{ marginTop: 10 }}>
+          Used for routes, turn-by-turn directions, arrival times and your mileage tracker.
+        </Txt>
       </GlassCard>
 
       <SectionHeader title="Ambiance" />

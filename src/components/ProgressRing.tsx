@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { Easing, useAnimatedProps, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
@@ -34,7 +34,8 @@ export function ProgressRing({ value, size, stroke = 12, colors, children, acces
   }));
 
   const [c1, c2] = colors ?? [palette.primary, palette.gold];
-  const gradientId = `ring-${size}-${stroke}`;
+  // Unique per ring: rings of the same size would otherwise share one gradient.
+  const gradientId = `ring-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   return (
     <View accessibilityRole="progressbar" accessibilityLabel={accessibilityLabel} accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }} style={{ width: size, height: size }}>
