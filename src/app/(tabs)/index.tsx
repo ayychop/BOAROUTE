@@ -10,6 +10,8 @@ import { BudgetRings } from '@/components/BudgetRings';
 import { GlassCard } from '@/components/GlassCard';
 import { DataErrorBanner, EmptyState } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
+import { MotivationCard } from '@/components/MotivationCard';
+import { NumberPlate } from '@/components/NumberPlate';
 import { Odometer } from '@/components/Odometer';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
@@ -20,8 +22,9 @@ import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/b
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
 import { odometerValue } from '@/lib/odometer';
 import { computeDue, monthProgress } from '@/lib/route-engine';
+import { plateName, prefsFor } from '@/lib/preferences';
 import { vehicleFor } from '@/lib/vehicles';
-import { isWorkingDay, workingDaysLeft } from '@/lib/workdays';
+import { isWorkingDate, workingDatesLeft } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { COCKPIT_INK, greetingFor } from '@/theme/palettes';
@@ -82,9 +85,11 @@ export default function Hub() {
   const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
   const upcoming = useMemo(() => events.filter((e) => new Date(e.event_date).getTime() >= nowMs - 3_600_000).slice(0, 3), [events, nowMs]);
   const vehicle = vehicleFor(profile?.vehicle_model);
-  const workDays = profile?.working_days ?? [];
-  const workingToday = isWorkingDay(now, workDays);
-  const daysLeft = workingDaysLeft(now, workDays);
+  const carPrefs = prefsFor(profile);
+  // The shift calendar's exact dates; the weekly pattern only until it is saved.
+  const shiftDates = profile?.shift_dates ?? null;
+  const workingToday = isWorkingDate(now, shiftDates, profile?.working_days);
+  const daysLeft = workingDatesLeft(now, shiftDates, profile?.working_days);
   const owed = due.reduce((a, d) => a + d.remaining, 0);
 
   const onRefresh = async () => {
@@ -115,10 +120,8 @@ export default function Hub() {
           <Image source={vehicle.image} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
           <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
           <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <View style={{ flexShrink: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: palette.borderStrong }}>
-              <Txt variant="label" numberOfLines={1} style={{ color: COCKPIT_INK.gold, fontSize: 9.5 }}>
-                {vehicle.plate}
-              </Txt>
+            <View style={{ flexShrink: 1 }}>
+              <NumberPlate text={plateName(profile?.name, profile?.email)} height={compact ? 24 : 28} />
             </View>
             <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workingToday ? palette.success : palette.textFaint }} />
@@ -129,10 +132,11 @@ export default function Hub() {
           </View>
           <View style={{ position: 'absolute', left: 18, right: 18, bottom: 6 }}>
             <Txt variant="label" tone="dim" numberOfLines={1} style={{ fontSize: 9.5 }}>
-              {vehicle.year} BMW X1 · {vehicle.specs[0].value}
+              {carPrefs.car_reg ? `${carPrefs.car_reg} · ` : ''}
+              {carPrefs.car_make_model ? 'Your car' : `${vehicle.year} BMW X1 · ${vehicle.specs[0].value}`}
             </Txt>
             <Txt variant="title" numberOfLines={1}>
-              M Sport Hybrid
+              {carPrefs.car_make_model ?? 'M Sport Hybrid'}
             </Txt>
           </View>
         </View>
@@ -235,6 +239,7 @@ export default function Hub() {
         <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
           <View style={{ flex: 1.1, gap: 14 }}>
             {carCard}
+            <MotivationCard now={nowMs} index={1} />
             {budgetCard}
           </View>
           <View style={{ flex: 1 }}>
@@ -245,6 +250,7 @@ export default function Hub() {
       ) : (
         <View style={{ gap: 14 }}>
           {carCard}
+          <MotivationCard now={nowMs} index={1} />
           {budgetCard}
           {eventsBlock}
           {actions}

@@ -18,7 +18,8 @@ import { budgetsFor, formatPence } from '@/lib/budget';
 import { formatOdometer } from '@/lib/odometer';
 import type { DistanceUnit } from '@/lib/units';
 import { vehicleFor } from '@/lib/vehicles';
-import { describeDays } from '@/lib/workdays';
+import { carIconFor, plateName, prefsFor, routeColorFor } from '@/lib/preferences';
+import { datesInMonth, describeDays } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { PALETTES, phaseForDate } from '@/theme/palettes';
@@ -76,6 +77,11 @@ export default function Me() {
   const { profile, isAdmin, updateProfile, signOut } = useAuth();
   const { managers, myStores, chosenStoreIds } = useData();
   const vehicle = vehicleFor(profile?.vehicle_model);
+  const look = prefsFor(profile);
+  const today = new Date();
+  const shiftHint = profile?.shift_dates
+    ? `${datesInMonth(profile.shift_dates, today.getFullYear(), today.getMonth())} working days this month`
+    : `${describeDays(profile?.working_days ?? [])} · tap to set exact dates`;
   const budgets = budgetsFor(profile);
   const [start, setStart] = useState(profile?.starting_location ?? '');
   const [saving, setSaving] = useState(false);
@@ -103,14 +109,15 @@ export default function Me() {
       <GlassCard glow="gold" animateIn={false} padded={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 12, paddingRight: 14 }}>
           <View style={{ width: carWidth, flexShrink: 0, alignItems: 'center' }}>
-            <CarIllustration width={carWidth} accent={palette.gold} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
+            <CarIllustration width={carWidth} accent={palette.gold} plate={plateName(profile?.name, profile?.email)} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
           </View>
           <View style={{ flex: 1, flexShrink: 1, minWidth: 0, gap: 3 }}>
             <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">
               {profile?.email}
             </Txt>
             <Txt variant="strong" numberOfLines={2}>
-              {vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected'}
+              {look.car_make_model ?? (vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected')}
+              {look.car_reg ? ` · ${look.car_reg}` : ''}
             </Txt>
             <Txt variant="caption" tone="primary" numberOfLines={2}>
               {formatOdometer(profile?.current_mileage == null ? null : units.milesValue(Number(profile.current_mileage)))} {units.label} · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
@@ -197,12 +204,14 @@ export default function Me() {
       <SectionHeader title="Settings" />
       <GlassCard>
         <LinkRow icon="storefront" label="My stores" hint={`${myStores.length} stores on your patch`} href="/my-stores" />
-        <LinkRow icon="calendar" label="Working days" hint={describeDays(profile?.working_days ?? [])} href="/working-days" />
+        <LinkRow icon="calendar" label="Shift calendar" hint={shiftHint} href="/working-days" />
         <LinkRow icon="wallet" label="Budgets" hint={`Standard ${formatPence(budgets.standard)} · Sales Day / OOH ${formatPence(budgets.special)}`} href="/budget-settings" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
-        <LinkRow icon="car-sport" label="Change vehicle" hint={vehicle?.plate} href="/vehicle" />
+        <LinkRow icon="car-sport" label="Your vehicle" hint={look.car_make_model ?? vehicle?.plate ?? 'Make, model and registration'} href="/vehicle" />
+        <LinkRow icon="color-palette" label="Map & car style" hint={`${carIconFor(look.car_icon).label} indicator · ${routeColorFor(look.route_color).label} route trail`} href="/personalise" tone="gold" />
+        <LinkRow icon="flame" label="Premium Motivation" hint="Longer reads for your break" href="/motivation" tone="gold" />
         {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="The full master list: assign stores to Jo, Pete, Marcia, Jermaine, Kishan or Raphael" href="/admin/stores" tone="gold" />}
-        {isAdmin && <LinkRow icon="people" label="Team Management" hint="Approve sign-ups onto Sarah's team, David's team or as Pete" href="/admin/team" tone="gold" />}
+        {isAdmin && <LinkRow icon="people" label="Team Management" hint="Approve sign-ups and choose whose stores each person works" href="/admin/team" tone="gold" />}
         <LinkRow icon="images" label="Image credits" href="/credits" />
       </GlassCard>
 

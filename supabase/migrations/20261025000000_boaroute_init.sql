@@ -8,6 +8,7 @@
 -- Contents: profiles, stores (Jo / Sarah / David seeds), visits, events,
 -- tasks + task-media storage, mileage_logs, expenses, onboarding fields
 -- (current mileage, working days, chosen stores), personal budgets,
+-- timed visits, shift calendar, preferences,
 -- RLS on everything.
 -- =====================================================================
 
@@ -19,8 +20,8 @@
 -- approves or denies it in Admin > Team Management.
 --   role          admin (Jo, the only one) or user (merchandiser)
 --   manager_name  the seat they were approved as: Sarah, David or Pete
---   route_managers  legacy per-person override; cleared below, the seat
---                   decides the patch (see team_patch)
+--   route_managers  whose stores they work, picked by the admin in Team
+--                   Management; NULL means the seat's default (see team_patch)
 --
 -- Store owners (stores.assigned_manager) are a separate list: Joseph (Jo),
 -- Pete, Marcia, Jermaine, Kishan and Raphael. David and Sarah are kept as
@@ -307,9 +308,10 @@ create trigger team_members_sync
   after insert or update or delete on public.team_members
   for each row execute function public.team_members_sync();
 
--- The seat decides the patch now: clear old per-person overrides. Touching
--- every row also re-syncs each profile to the current team_patch.
-update public.team_members set route_managers = null where role = 'user';
+-- The seat sets the default patch; the admin can pick exactly whose stores
+-- someone works in Team Management (route_managers). Touching every row
+-- re-syncs each profile to the current team_patch without clearing those picks.
+update public.team_members set route_managers = route_managers where role = 'user';
 
 -- Admin > Team Management: approve a pending request as one of the managers,
 -- or deny it.
@@ -1244,6 +1246,58 @@ $$;
 
 revoke execute on function public.clear_hazard(uuid) from public, anon;
 grant execute on function public.clear_hazard(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 14. Timed visits, shift calendar and personal preferences
+-- ---------------------------------------------------------------------
+-- A visit is started on the store page and completed at least 25 minutes
+-- later. Older visits have no times and still count.
+alter table public.visits add column if not exists visit_start_time timestamptz;
+alter table public.visits add column if not exists visit_end_time timestamptz;
+alter table public.visits drop constraint if exists visits_min_duration_check;
+alter table public.visits add constraint visits_min_duration_check check (
+  visit_start_time is null or visit_end_time is null
+  or visit_end_time >= visit_start_time + interval '25 minutes'
+);
+
+-- New visits must carry both times, finish no later than now, and count on
+-- the day they finished.
+create or replace function public.visits_timing_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.visit_start_time is null or new.visit_end_time is null then
+    raise exception 'Start the visit on the store page, then complete it after 25 minutes'
+      using errcode = '23514';
+  end if;
+  if new.visit_end_time > now() + interval '2 minutes' then
+    raise exception 'A visit cannot finish in the future' using errcode = '23514';
+  end if;
+  if new.visit_end_time < new.visit_start_time + interval '25 minutes' then
+    raise exception 'Visits must be at least 25 minutes long' using errcode = '23514';
+  end if;
+  new.visited_at := new.visit_end_time;
+  return new;
+end;
+$$;
+
+drop trigger if exists visits_timing_guard on public.visits;
+create trigger visits_timing_guard
+  before insert on public.visits
+  for each row execute function public.visits_timing_guard();
+
+-- Shift calendar: the exact dates someone works (YYYY-MM-DD). NULL means
+-- they have not set it yet, so their weekly working_days still apply.
+alter table public.profiles add column if not exists shift_dates date[];
+
+-- App settings that need no column of their own: car indicator, route
+-- colour, car make/model and registration.
+alter table public.profiles add column if not exists preferences jsonb not null default '{}'::jsonb;
+alter table public.profiles drop constraint if exists profiles_preferences_check;
+alter table public.profiles add constraint profiles_preferences_check
+  check (jsonb_typeof(preferences) = 'object' and pg_column_size(preferences) < 8192);
 
 -- Make the new table and function visible to the API straight away.
 notify pgrst, 'reload schema';

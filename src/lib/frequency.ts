@@ -110,3 +110,19 @@ export function managerLabel(manager: StoreOwner): string {
 export function managerShort(manager: StoreOwner): string {
   return manager === 'Joseph' ? 'Jo' : manager;
 }
+
+/**
+ * Distinct store owners from the stores table, in the usual order (Jo first),
+ * so whoever owns stores today can be picked, whether or not they are a seat.
+ */
+export function distinctOwners(rows: { assigned_manager: string | null }[]): { owner: StoreOwner; stores: number }[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const o = r.assigned_manager?.trim();
+    if (o) counts.set(o, (counts.get(o) ?? 0) + 1);
+  }
+  const rank = (o: string) => (STORE_OWNERS.includes(o as StoreOwner) ? STORE_OWNERS.indexOf(o as StoreOwner) : STORE_OWNERS.length);
+  return [...counts.entries()]
+    .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]))
+    .map(([owner, stores]) => ({ owner: owner as StoreOwner, stores }));
+}

@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { LoadingBlock } from '@/components/misc';
+import { StoreListSkeleton } from '@/components/Skeleton';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { StoreSelector } from '@/components/StoreSelector';
@@ -50,7 +50,7 @@ export default function MyStores() {
       <Txt variant="body" tone="dim" style={{ marginBottom: 16 }}>
         Routes, targets and the Stores tab are built from the stores you tick here.
       </Txt>
-      {loading ? <LoadingBlock label="Loading stores" /> : <StoreSelector stores={stores} selected={selected} onChange={setPicked} />}
+      {loading ? <StoreListSkeleton /> : <StoreSelector stores={stores} selected={selected} onChange={setPicked} />}
     </Screen>
   );
 }

@@ -142,20 +142,30 @@ export function validateWriterRequest(input: unknown): WriterRequest {
 // Secrets: ANTHROPIC_API_KEY (supabase secrets set ANTHROPIC_API_KEY=...)
 
 
-const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
+// Every error carries a `code` so the app can log exactly why a draft failed.
+// The client is created per request, so a missing key is reported clearly
+// instead of failing inside the SDK.
+let client: Anthropic | null = null;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (req.method !== 'POST') return json({ error: 'Method not allowed', code: 'method_not_allowed' }, 405);
 
   const userId = await requireUser(req);
-  if (!userId) return json({ error: 'Please sign in again' }, 401);
+  if (!userId) return json({ error: 'Please sign in again', code: 'unauthorized' }, 401);
+
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) {
+    console.error('ai-writer: ANTHROPIC_API_KEY secret is not set (supabase secrets set ANTHROPIC_API_KEY=...)');
+    return json({ error: 'The AI writer is not configured: the ANTHROPIC_API_KEY secret is not set on the server.', code: 'missing_api_key' }, 503);
+  }
+  client ??= new Anthropic({ apiKey });
 
   let request;
   try {
     request = validateWriterRequest(await req.json());
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'Invalid request' }, 400);
+    return json({ error: e instanceof Error ? e.message : 'Invalid request', code: 'bad_request' }, 400);
   }
 
   try {
@@ -170,7 +180,7 @@ Deno.serve(async (req) => {
     });
 
     if (response.stop_reason === 'refusal') {
-      return json({ error: 'The AI could not write this one. Try rewording your notes.' }, 422);
+      return json({ error: 'The AI could not write this one. Try rewording your notes.', code: 'refusal' }, 422);
     }
 
     const raw = response.content
@@ -178,22 +188,22 @@ Deno.serve(async (req) => {
       .map((b) => (b.type === 'text' ? b.text : ''))
       .join('\n')
       .trim();
-    if (!raw) return json({ error: 'The AI returned an empty draft. Please try again.' }, 502);
+    if (!raw) return json({ error: 'The AI returned an empty draft. Please try again.', code: 'empty_draft' }, 502);
 
     return json(parseWriterOutput(raw, request.context));
   } catch (error) {
     if (error instanceof Anthropic.RateLimitError) {
-      return json({ error: 'The AI is busy right now. Try again in a minute.' }, 429);
+      return json({ error: 'The AI is busy right now. Try again in a minute.', code: 'rate_limited' }, 429);
     }
-    if (error instanceof Anthropic.AuthenticationError) {
-      console.error('ai-writer: ANTHROPIC_API_KEY is missing or invalid');
-      return json({ error: 'The AI writer is not configured yet.' }, 503);
+    if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
+      console.error('ai-writer: ANTHROPIC_API_KEY was rejected', error.status);
+      return json({ error: 'The AI writer is not configured: the ANTHROPIC_API_KEY on the server was rejected.', code: 'invalid_api_key' }, 503);
     }
     if (error instanceof Anthropic.APIError) {
       console.error('ai-writer: Anthropic API error', error.status, error.message);
-      return json({ error: 'The AI writer hit a problem. Please try again.' }, 502);
+      return json({ error: 'The AI writer hit a problem. Please try again.', code: 'upstream_error', detail: `Anthropic ${error.status ?? ''} ${error.message}`.trim() }, 502);
     }
     console.error('ai-writer: unexpected error', error);
-    return json({ error: 'Something went wrong drafting your message.' }, 500);
+    return json({ error: 'Something went wrong drafting your message.', code: 'internal', detail: error instanceof Error ? error.message : String(error) }, 500);
   }
 });

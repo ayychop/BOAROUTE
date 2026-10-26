@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import Svg, { Circle, Defs, Ellipse, G, Line, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Ellipse, G, Line, LinearGradient, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import { fonts } from '@/theme/typography';
 
 const VIEW_W = 320;
 const VIEW_H = 136;
@@ -24,15 +25,35 @@ function Rim({ cx, cy }: { cx: number; cy: number }) {
   );
 }
 
+/** Showroom-style UK plate on the lower body between the wheels, carrying the driver's name. */
+function Plate({ text }: { text: string }) {
+  const label = text.toUpperCase().slice(0, 8);
+  const x = 122;
+  const w = 82;
+  const fontSize = label.length > 6 ? 9.5 : 11.5;
+  return (
+    <G>
+      <Rect x={x} y={87} width={w} height={18} rx={2.5} fill="#F6C445" stroke="#121212" strokeWidth={1} />
+      <Rect x={x + 0.5} y={87.5} width={9} height={17} rx={2} fill="#1F4AA8" />
+      <SvgText x={x + 5} y={102} fontSize={4.2} fontFamily={fonts.bodyBold} fill="#FFFFFF" textAnchor="middle">
+        UK
+      </SvgText>
+      <SvgText x={x + 9 + (w - 9) / 2} y={100} fontSize={fontSize} fontFamily={fonts.bodyBold} fill="#121212" textAnchor="middle" letterSpacing={0.8}>
+        {label}
+      </SvgText>
+    </G>
+  );
+}
+
 /**
  * Black BMW X1 M Sport Hybrid as a clean vector illustration: gloss black
  * paint, tinted glass, twin-spoke rims and a fine gold coachline. Vector, so it
  * stays crisp on every screen from the Flip cover to the unfolded Fold.
  */
-export const CarIllustration = memo(function CarIllustration({ width, accent, shadow = 'rgba(0,0,0,0.35)' }: { width: number; accent: string; shadow?: string }) {
+export const CarIllustration = memo(function CarIllustration({ width, accent, shadow = 'rgba(0,0,0,0.35)', plate, label = 'Black BMW X1 M Sport Hybrid' }: { width: number; accent: string; shadow?: string; plate?: string | null; label?: string }) {
   const height = (width * VIEW_H) / VIEW_W;
   return (
-    <Svg width={width} height={height} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} accessibilityRole="image" accessibilityLabel="Black BMW X1 M Sport Hybrid">
+    <Svg width={width} height={height} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} accessibilityRole="image" accessibilityLabel={plate ? `${label}, plate ${plate}` : label}>
       <Defs>
         <LinearGradient id="paint" x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor="#4A4B51" />
@@ -108,6 +129,8 @@ export const CarIllustration = memo(function CarIllustration({ width, accent, sh
       {/* Wheels */}
       <Rim cx={82} cy={106} />
       <Rim cx={242} cy={106} />
+
+      {plate ? <Plate text={plate} /> : null}
     </Svg>
   );
 });

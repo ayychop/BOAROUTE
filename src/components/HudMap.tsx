@@ -16,6 +16,8 @@ interface Props {
   motorway: LngLat[] | null;
   standard: LngLat[];
   selected: 'motorway' | 'standard';
+  /** Colour for the active route (the navigator uses the driver's chosen trail colour). */
+  routeColor?: string;
 }
 
 /** Equirectangular projection fitted to the route, corrected for UK latitude. */
@@ -45,7 +47,7 @@ function useProjection(points: LngLat[], width: number, height: number, pad: num
   }, [points, width, height, pad]);
 }
 
-export function HudMap({ width, height, start, end, stops, motorway, standard, selected }: Props) {
+export function HudMap({ width, height, start, end, stops, motorway, standard, selected, routeColor }: Props) {
   const { palette } = useTheme();
   const all = useMemo<LngLat[]>(
     () => [[start.lng, start.lat], ...(end ? [[end.lng, end.lat] as LngLat] : []), ...stops.map((s) => [s.lng, s.lat] as LngLat), ...(motorway ?? []), ...standard],
@@ -77,7 +79,7 @@ export function HudMap({ width, height, start, end, stops, motorway, standard, s
         {/* Active option with glow */}
         {(() => {
           const line = motorwayActive ? motorway! : standard;
-          const color = motorwayActive ? palette.gold : standardColor;
+          const color = routeColor ?? (motorwayActive ? palette.gold : standardColor);
           return (
             <G>
               <Polyline points={toPoints(line)} fill="none" stroke={color} strokeOpacity={0.18} strokeWidth={12} strokeLinejoin="round" strokeLinecap="round" />

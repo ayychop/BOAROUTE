@@ -7,7 +7,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field, Segmented } from '@/components/controls';
 import { ExpenseForm } from '@/components/ExpenseForm';
 import { GlassCard } from '@/components/GlassCard';
-import { DataErrorBanner } from '@/components/misc';
+import { DataErrorBanner, StatTile } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
 import { BudgetRings } from '@/components/BudgetRings';
@@ -20,6 +20,7 @@ import { copyText } from '@/lib/external';
 import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
 import { buildMonthlyReport, expenseLabel, monthTitle, ukDate } from '@/lib/report';
+import { formatDuration, summariseVisitTimes } from '@/lib/visit-timer';
 import type { ExpenseCategory, MileageType } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
@@ -34,7 +35,7 @@ function recentMonths(n: number): string[] {
 export default function Finances() {
   const { palette } = useTheme();
   const { profile, updateProfile } = useAuth();
-  const { mileage, expenses, addMileage, deleteExpense, deleteMileage, refresh } = useData();
+  const { mileage, expenses, visits, stores, addMileage, deleteExpense, deleteMileage, refresh } = useData();
   const u = useUnits();
   const { compact, expanded } = useLayout();
   // Matches GlassCard's inner padding.
@@ -103,8 +104,9 @@ export default function Finances() {
     }
   };
 
+  const visitTimes = useMemo(() => summariseVisitTimes(visits, reportMonth, stores), [visits, reportMonth, stores]);
   const generate = () => {
-    setReport(buildMonthlyReport({ month: reportMonth, name: profile?.name, mileage, expenses, budgets }));
+    setReport(buildMonthlyReport({ month: reportMonth, name: profile?.name, mileage, expenses, budgets, visitTimes }));
     setCopied(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
@@ -274,6 +276,15 @@ export default function Finances() {
             />
           ))}
         </ScrollView>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+          <StatTile label="Avg per visit" icon="timer" tone="gold" value={visitTimes.overallAvgMinutes === null ? 'None' : formatDuration(visitTimes.overallAvgMinutes)} sub={`Across all visits in ${monthTitle(reportMonth)}`} />
+          <StatTile
+            label="Stores timed"
+            icon="storefront"
+            value={String(visitTimes.perStore.length)}
+            sub={visitTimes.timedVisits ? `${visitTimes.timedVisits} timed visits · per-store averages in the report` : 'Start and complete visits to track time'}
+          />
+        </View>
         <NeonButton label="Generate Report" icon="document-text" onPress={generate} size="lg" full />
         {report && (
           <Animated.View entering={FadeInDown.springify().damping(18)} style={{ marginTop: 14 }}>

@@ -14,12 +14,11 @@ export async function configureNotifications(): Promise<void> {
   if (configured) return;
   configured = true;
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async (n) => {
+      // With the app open the full-screen clock-out alarm takes over (VisitAlarm).
+      const inApp = (n.request.content.data as { kind?: string } | null)?.kind === 'visit-alarm';
+      return { shouldShowBanner: !inApp, shouldShowList: true, shouldPlaySound: !inApp, shouldSetBadge: false };
+    },
   });
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL, {

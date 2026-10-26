@@ -7,19 +7,19 @@ import { BRLogo } from '@/components/BRLogo';
 import { Field } from '@/components/controls';
 import { ExpenseForm } from '@/components/ExpenseForm';
 import { GlassCard } from '@/components/GlassCard';
-import { LoadingBlock } from '@/components/misc';
+import { StoreListSkeleton } from '@/components/Skeleton';
 import { NeonButton } from '@/components/NeonButton';
 import { Odometer } from '@/components/Odometer';
 import { Screen } from '@/components/Screen';
 import { StoreSelector } from '@/components/StoreSelector';
 import { Txt } from '@/components/Txt';
 import { VehiclePicker } from '@/components/VehiclePicker';
-import { WorkingDaysPicker } from '@/components/WorkingDaysPicker';
+import { ShiftCalendar } from '@/components/ShiftCalendar';
 import { geocode, normalisePostcode } from '@/lib/geo';
 import { parseOdometer } from '@/lib/odometer';
 import { defaultSelection } from '@/lib/store-selection';
 import { VEHICLES, vehicleFor, type Vehicle } from '@/lib/vehicles';
-import { DEFAULT_WORKING_DAYS, normaliseDays } from '@/lib/workdays';
+import { DEFAULT_WORKING_DAYS, datesFromPattern, normaliseDates } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -29,7 +29,7 @@ const STEPS = [
   { title: 'Your stores', kicker: 'Step 1 of 4', icon: 'storefront' },
   { title: 'Your vehicle', kicker: 'Step 2 of 4', icon: 'car-sport' },
   { title: 'Expenses', kicker: 'Step 3 of 4', icon: 'wallet' },
-  { title: 'Working days', kicker: 'Step 4 of 4', icon: 'calendar' },
+  { title: 'Shift calendar', kicker: 'Step 4 of 4', icon: 'calendar' },
 ] as const;
 
 function StepSegment({ state }: { state: 'done' | 'current' | 'todo' }) {
@@ -62,8 +62,10 @@ export default function Onboarding() {
   // Step 3: expenses logged during onboarding
   const [logged, setLogged] = useState<string[]>([]);
 
-  // Step 4: working pattern
-  const [days, setDays] = useState<number[]>(normaliseDays(profile?.working_days?.length ? profile.working_days : DEFAULT_WORKING_DAYS));
+  // Step 4: shift calendar, starting from Mon to Fri for this month and the next two
+  const [dates, setDates] = useState<string[]>(() =>
+    profile?.shift_dates ? normaliseDates(profile.shift_dates) : datesFromPattern(profile?.working_days?.length ? profile.working_days : DEFAULT_WORKING_DAYS, new Date(), 3),
+  );
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export default function Onboarding() {
   const finish = async () => {
     const v = VEHICLES.find((x) => x.id === vehicle);
     if (!v || !Number.isFinite(odometer)) return go(1);
-    if (days.length === 0) return setError('Pick at least one working day.');
+    if (dates.length === 0) return setError('Tap at least one working date.');
     setBusy(true);
     setError(null);
     try {
@@ -113,7 +115,7 @@ export default function Onboarding() {
         vehicle_model: v.model,
         current_mileage: odometer,
         starting_location: normalisePostcode(start),
-        working_days: days,
+        shift_dates: dates,
         onboarded_at: new Date().toISOString(),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -166,7 +168,7 @@ export default function Onboarding() {
             <Txt variant="body" tone="dim" style={{ marginBottom: 16 }}>
               {isAdmin ? "Every one of Jo's stores is already ticked. Untick any you don't cover, or add others." : 'Tick the stores that belong to you. Your routes and monthly targets are built from this list.'}
             </Txt>
-            {loading ? <LoadingBlock label="Loading stores" /> : <StoreSelector stores={stores} selected={selected} onChange={setPicked} />}
+            {loading ? <StoreListSkeleton /> : <StoreSelector stores={stores} selected={selected} onChange={setPicked} />}
           </View>
         )}
 
@@ -227,9 +229,9 @@ export default function Onboarding() {
         {step === 3 && (
           <View>
             <Txt variant="body" tone="dim" style={{ marginBottom: 16 }}>
-              Tap the days you work. Your Hub shows days off, and you can change this any time from Me.
+              Tap the dates you work. Your Hub shows days off, and you can change this any time from Me.
             </Txt>
-            <WorkingDaysPicker value={days} onChange={setDays} />
+            <ShiftCalendar value={dates} onChange={setDates} />
           </View>
         )}
       </Animated.View>

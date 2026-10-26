@@ -4,7 +4,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, ScrollView, View, type ListRenderItem } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field } from '@/components/controls';
-import { DataErrorBanner, EmptyState, LoadingBlock } from '@/components/misc';
+import { DataErrorBanner, EmptyState } from '@/components/misc';
+import { StoreListSkeleton } from '@/components/Skeleton';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { GlassCard } from '@/components/GlassCard';
@@ -228,7 +229,7 @@ export default function Stores() {
           }
           ListEmptyComponent={
             loading ? (
-              <LoadingBlock label="Loading stores" />
+              <StoreListSkeleton />
             ) : (
               filtered.length > 0 ? (
                 <EmptyState icon="trophy-outline" title="All done here" body="Every store in this view has hit its target this month. Enjoy your wins below." />

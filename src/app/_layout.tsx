@@ -12,6 +12,8 @@ import { BRLogo } from '@/components/BRLogo';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
+import { VisitAlarm } from '@/components/VisitAlarm';
+import { WhatsNew } from '@/components/WhatsNew';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { DataProvider } from '@/providers/DataProvider';
@@ -96,8 +98,14 @@ function RootNavigator() {
           <Stack.Screen name="budget-settings" options={{ animation: PUSH }} />
           <Stack.Screen name="go-anywhere" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="navigate" options={{ animation: 'fade', gestureEnabled: false }} />
+          <Stack.Screen name="motivation" options={{ animation: PUSH }} />
+          <Stack.Screen name="personalise" options={{ animation: PUSH }} />
         </Stack.Protected>
       </Stack>
+      {/* The one-hour clock-out alarm rings over any screen. */}
+      {signedIn && onboarded && <VisitAlarm />}
+      {/* Once per release, after installing or updating. */}
+      {signedIn && onboarded && <WhatsNew />}
     </Animated.View>
   );
 }

@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import { isMember } from '@/lib/frequency';
-import type { Profile } from '@/lib/types';
+import type { Profile, UserPreferences } from '@/lib/types';
 
 interface AuthValue {
   ready: boolean;
@@ -20,6 +20,15 @@ interface AuthValue {
   signOut: () => Promise<void>;
   updateProfile: (patch: Partial<Omit<Profile, 'id' | 'email' | 'role' | 'route_managers' | 'manager_name'>>) => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Merges into profiles.preferences (car indicator, route colour, car details). */
+  updatePreferences: (patch: UserPreferences) => Promise<void>;
+}
+
+/** Plain words for a save that failed because the database is behind the app. */
+function schemaError(err: { message: string }): Error {
+  if (/shift_dates/.test(err.message)) return new Error('The shift calendar needs the latest database update. Ask your admin to re-run the SQL file.');
+  if (/preferences/.test(err.message)) return new Error('Personal settings need the latest database update. Ask your admin to re-run the SQL file.');
+  return err instanceof Error ? err : new Error(err.message);
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -108,10 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (patch) => {
       if (!session) throw new Error('Not signed in');
       const { data, error } = await supabase.from('profiles').update(patch).eq('id', session.user.id).select(PROFILE_COLUMNS).single();
-      if (error) throw error;
+      if (error) throw schemaError(error);
       setProfile(data as Profile);
     },
     [session],
+  );
+
+  const updatePreferences = useCallback(
+    (patch: UserPreferences) => updateProfile({ preferences: { ...(profile?.preferences ?? {}), ...patch } }),
+    [profile?.preferences, updateProfile],
   );
 
   const refreshProfile = useCallback(async () => {
@@ -132,8 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       updateProfile,
       refreshProfile,
+      updatePreferences,
     }),
-    [ready, session, profile, profileError, signIn, signUp, signOut, updateProfile, refreshProfile],
+    [ready, session, profile, profileError, signIn, signUp, signOut, updateProfile, refreshProfile, updatePreferences],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

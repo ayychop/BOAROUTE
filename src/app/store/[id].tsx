@@ -23,6 +23,7 @@ import { remainingMessage, storeTarget } from '@/lib/frequency';
 import { geocode } from '@/lib/geo';
 import { encodeNavRequest } from '@/lib/nav-request';
 import { hasCoords, toLatLng } from '@/lib/route-engine';
+import { MIN_VISIT_MINUTES, VISIT_ALARM_MINUTES, formatCountdown, formatDuration, lockRemainingMs } from '@/lib/visit-timer';
 import { supabase } from '@/lib/supabaseClient';
 import type { Task } from '@/lib/types';
 import { useData } from '@/providers/DataProvider';
@@ -33,9 +34,12 @@ export default function StoreDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { palette } = useTheme();
   const { expanded } = useLayout();
-  const { stores, tallies, targets, logVisit, undoLastVisit, updateStoreAddress, updateStoreSettings } = useData();
+  const { stores, tallies, targets, activeVisit, startVisit, completeVisit, cancelVisit, undoLastVisit, updateStoreAddress, updateStoreSettings } = useData();
   const store = stores.find((s) => s.id === id);
-  const now = useNow();
+  const visitHere = !!activeVisit && activeVisit.storeId === id;
+  const visitElsewhere = activeVisit && !visitHere ? stores.find((s) => s.id === activeVisit.storeId) ?? null : null;
+  // Ticks every second while a visit runs here, for the live countdown.
+  const now = useNow(visitHere ? 1000 : 60_000);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -130,12 +134,39 @@ export default function StoreDetail() {
   const visitedToday = !!tally?.last && localDateString(new Date(tally.last)) === localDateString(new Date(now));
   const owed = Math.max(0, target - done);
 
-  const saveVisit = async () => {
+  const lockMs = visitHere ? lockRemainingMs(activeVisit.startedAt, now) : 0;
+  const locked = visitHere && lockMs > 0;
+  const elapsedMin = visitHere ? Math.max(0, (now - new Date(activeVisit.startedAt).getTime()) / 60_000) : 0;
+
+  const beginVisit = async () => {
     setVisitBusy(true);
     try {
-      await logVisit(store.id);
+      await startVisit(store.id);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } catch (e) {
+      Alert.alert('Visit not started', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setVisitBusy(false);
+    }
+  };
+
+  // A second visit on the same day is usually a mistake, so confirm it.
+  const onStartVisit = () => {
+    if (visitBusy) return;
+    if (!visitedToday) return beginVisit();
+    Alert.alert('Already visited today', `Start another visit to ${store.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Start visit', onPress: beginVisit },
+    ]);
+  };
+
+  const onCompleteVisit = async () => {
+    if (visitBusy || locked) return;
+    setVisitBusy(true);
+    try {
+      const { minutes } = await completeVisit();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      setCheer({ text: remainingMessage(done + 1, target), done: done + 1 >= target });
+      setCheer({ text: `${formatDuration(minutes)} on site. ${remainingMessage(done + 1, target)}`, done: done + 1 >= target });
     } catch (e) {
       Alert.alert('Visit not saved', e instanceof Error ? e.message : 'Please try again.');
     } finally {
@@ -143,15 +174,11 @@ export default function StoreDetail() {
     }
   };
 
-  // A second visit on the same day is usually a double tap, so confirm it.
-  const onLogVisit = () => {
-    if (visitBusy) return;
-    if (!visitedToday) return saveVisit();
-    Alert.alert('Already visited today', `Log another visit to ${store.name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log another', onPress: saveVisit },
+  const onCancelVisit = () =>
+    Alert.alert('Cancel this visit?', 'The timer stops and nothing is logged.', [
+      { text: 'Keep going', style: 'cancel' },
+      { text: 'Cancel visit', style: 'destructive', onPress: () => cancelVisit().catch(() => {}) },
     ]);
-  };
 
   const onUndo = () =>
     Alert.alert('Undo last visit?', 'This removes your most recent visit to this store.', [
@@ -238,10 +265,65 @@ export default function StoreDetail() {
           </Txt>
         </Animated.View>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <NeonButton label={visitedToday ? 'Visited today' : 'Mark as Visited'} icon={visitedToday ? 'checkmark-done' : 'checkmark-circle'} variant="gold" size="lg" onPress={onLogVisit} loading={visitBusy} style={{ flexGrow: 1, flexBasis: 200 }} full />
-        {done > 0 && <NeonButton label="Undo" icon="arrow-undo" variant="ghost" onPress={onUndo} />}
-      </View>
+      {visitHere ? (
+        <View style={{ marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }} accessibilityLiveRegion="polite">
+            <Ionicons name="timer" size={16} color={palette.gold} />
+            <Txt variant="caption" tone="gold" style={{ flex: 1 }}>
+              On site since {new Date(activeVisit.startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {formatDuration(elapsedMin)}
+            </Txt>
+          </View>
+          <NeonButton
+            label={locked ? `Complete Visit · ${formatCountdown(lockMs)}` : 'Complete Visit'}
+            icon={locked ? 'lock-closed' : 'checkmark-circle'}
+            variant={locked ? 'subtle' : 'gold'}
+            size="lg"
+            onPress={onCompleteVisit}
+            disabled={locked}
+            loading={visitBusy}
+            accessibilityHint={locked ? `Unlocks in ${formatCountdown(lockMs)}` : undefined}
+            full
+          />
+          {locked ? (
+            <Txt variant="caption" tone="dim" align="center" style={{ marginTop: 8 }}>
+              Note: Visits must be at least {MIN_VISIT_MINUTES} minutes long.
+            </Txt>
+          ) : (
+            <Txt variant="caption" tone="faint" align="center" style={{ marginTop: 8 }}>
+              Aim for {MIN_VISIT_MINUTES} minutes to an hour. The clock-out alarm sounds at {VISIT_ALARM_MINUTES} minutes.
+            </Txt>
+          )}
+          <View style={{ alignItems: 'center', marginTop: 6 }}>
+            <NeonButton label="Cancel visit" icon="close" variant="ghost" size="sm" onPress={onCancelVisit} disabled={visitBusy} />
+          </View>
+        </View>
+      ) : (
+        <View style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <NeonButton
+              label={visitElsewhere ? 'Visit in progress elsewhere' : visitedToday ? 'Start another visit' : 'Start Visit'}
+              icon="play-circle"
+              variant="gold"
+              size="lg"
+              onPress={onStartVisit}
+              loading={visitBusy}
+              disabled={!!visitElsewhere}
+              style={{ flexGrow: 1, flexBasis: 200 }}
+              full
+            />
+            {done > 0 && <NeonButton label="Undo" icon="arrow-undo" variant="ghost" onPress={onUndo} />}
+          </View>
+          {visitElsewhere ? (
+            <Txt variant="caption" tone="dim" style={{ marginTop: 8 }} onPress={() => router.replace({ pathname: '/store/[id]', params: { id: visitElsewhere.id } })}>
+              You are on a visit at {visitElsewhere.name}. Complete or cancel it there first.
+            </Txt>
+          ) : (
+            <Txt variant="caption" tone="faint" style={{ marginTop: 8 }}>
+              Tap Start Visit when you walk in. You can complete it after {MIN_VISIT_MINUTES} minutes.
+            </Txt>
+          )}
+        </View>
+      )}
     </GlassCard>
   );
 

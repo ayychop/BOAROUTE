@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import type { RouteOptionsResult } from '../../../supabase/functions/_shared/route-analysis';
 import { GradeBadge, ManagerBadge } from '@/components/badges';
 import { Chip, ToggleRow } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
 import { HudMap } from '@/components/HudMap';
 import { DataErrorBanner, EmptyState, LoadingBlock } from '@/components/misc';
+import { StoreListSkeleton } from '@/components/Skeleton';
 import { IconButton, NeonButton } from '@/components/NeonButton';
 import { RouteOptionCard } from '@/components/RouteOptionCard';
 import { Screen, SectionHeader } from '@/components/Screen';
@@ -21,6 +22,7 @@ import { formatMinutes } from '@/lib/format';
 import { encodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { getPref, setPref } from '@/lib/prefs';
 import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, hasCoords, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
+import { isWorkingDate } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { fetchRouteOptions } from '@/services/functions';
@@ -34,7 +36,9 @@ function readStops(): number {
 export default function RouteScreen() {
   const { palette } = useTheme();
   const { profile } = useAuth();
-  const { myStores, tallies, targets, logVisit, loading } = useData();
+  const { myStores, tallies, targets, activeVisit, loading } = useData();
+  // The shift calendar decides; the weekly pattern only applies until it is saved.
+  const workingToday = isWorkingDate(new Date(), profile?.shift_dates ?? null, profile?.working_days);
   const { contentWidth, compact } = useLayout();
   const units = useUnits();
   const { point: home, error: homeError } = useHomePoint(profile?.starting_location);
@@ -54,7 +58,6 @@ export default function RouteScreen() {
   // Live options are stored with the stop list they were computed for.
   const [routeState, setRouteState] = useState<{ key: string; result: RouteOptionsResult; liveError: string | null } | null>(null);
   const [selected, setSelected] = useState<'motorway' | 'standard'>('motorway');
-  const [busyStop, setBusyStop] = useState<string | null>(null);
 
   const plan = useMemo(
     () =>
@@ -112,16 +115,23 @@ export default function RouteScreen() {
       params: { req: encodeNavRequest({ from: 'here', to: [{ lat: store.latitude as number, lng: store.longitude as number, label: store.name }], prefer: 'motorway', title: store.name }) },
     });
 
-  const markVisited = async (storeId: string) => {
-    setBusyStop(storeId);
-    try {
-      await logVisit(storeId);
-    } catch (e) {
-      Alert.alert('Visit not saved', e instanceof Error ? e.message : 'Please try again.');
-    } finally {
-      setBusyStop(null);
-    }
-  };
+  // Visits are timed (25 minutes minimum), so they start on the store page.
+  const openVisit = (storeId: string) => router.push({ pathname: '/store/[id]', params: { id: storeId } });
+
+  const dayOffNotice = workingToday ? null : (
+    <GlassCard animateIn={false} onPress={() => router.push('/working-days')} accessibilityLabel="Day off today. Open your shift calendar">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Ionicons name="moon-outline" size={20} color={palette.gold} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="strong">Day off on your shift calendar</Txt>
+          <Txt variant="caption" tone="dim">
+            You can still plan a route. Tap to change today in your calendar.
+          </Txt>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+      </View>
+    </GlassCard>
+  );
 
   // A fixed-height preview map; the full map lives on the navigation screen.
   const mapH = compact ? 200 : 250;
@@ -177,7 +187,7 @@ export default function RouteScreen() {
     </GlassCard>
   );
 
-  if (loading) return <Screen inTabs title="Today's route" kicker="Route engine"><LoadingBlock label="Loading stores" /></Screen>;
+  if (loading) return <Screen inTabs title="Today's route" kicker="Route engine"><StoreListSkeleton rows={4} label="Loading your route" /></Screen>;
 
   if (startError) {
     return (
@@ -203,6 +213,8 @@ export default function RouteScreen() {
   if (plan.stops.length === 0) {
     return (
       <Screen inTabs title="Today's route" kicker="Route engine">
+        {dayOffNotice}
+        {dayOffNotice && <View style={{ height: 12 }} />}
         {goAnywhere}
         <View style={{ height: 12 }} />
         {startPicker}
@@ -212,7 +224,7 @@ export default function RouteScreen() {
         <EmptyState
           icon="trophy-outline"
           title={plan.dueCount > 0 ? 'Nothing else owed nearby' : 'All targets met'}
-          body={plan.dueCount > 0 ? 'The only store still owed visits is the one you are starting from. Mark it visited from its store page.' : 'Every store in your patch has hit its monthly visit target. Enjoy the open road.'}
+          body={plan.dueCount > 0 ? 'The only store still owed visits is the one you are starting from. Start a visit from its store page.' : 'Every store in your patch has hit its monthly visit target. Enjoy the open road.'}
         />
       </Screen>
     );
@@ -269,6 +281,7 @@ export default function RouteScreen() {
       <DataErrorBanner />
       {/* One stacked column at every width: Go Anywhere, start point, map preview, route, start, stops today. */}
       <View style={{ gap: 12 }}>
+        {dayOffNotice}
         {goAnywhere}
         {startPicker}
         <HudMap width={contentWidth} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
@@ -283,6 +296,7 @@ export default function RouteScreen() {
           const legText = leg ? `${formatMinutes(leg.durationS / 60)} · ${units.distance(leg.distanceM / 1000)}` : `${formatMinutes(stop.legMinutes)} · ${units.distance(stop.legKm)}`;
           const last = tallies[stop.store.id]?.last;
           const doneToday = !!last && localDateString(new Date(last)) === localDateString(new Date());
+          const inProgress = activeVisit?.storeId === stop.store.id;
           return (
             <GlassCard key={stop.store.id} index={i + 2} onPress={() => router.push({ pathname: '/store/[id]', params: { id: stop.store.id } })} accessibilityLabel={`Stop ${i + 1}, ${stop.store.name}`}>
               <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
@@ -311,7 +325,7 @@ export default function RouteScreen() {
                 </View>
                 <View style={{ gap: 8 }}>
                   <IconButton icon="navigate" label={`Navigate to ${stop.store.name}`} tone="primary" onPress={() => navigateTo(stop.store)} />
-                  <IconButton icon={doneToday ? 'checkmark-done' : 'checkmark'} label={`Mark ${stop.store.name} visited`} tone={doneToday ? 'gold' : 'default'} onPress={() => (busyStop ? undefined : markVisited(stop.store.id))} />
+                  <IconButton icon={inProgress ? 'timer' : doneToday ? 'checkmark-done' : 'timer-outline'} label={inProgress ? `Visit in progress at ${stop.store.name}` : `Start a visit at ${stop.store.name}`} tone={inProgress || doneToday ? 'gold' : 'default'} onPress={() => openVisit(stop.store.id)} />
                 </View>
               </View>
             </GlassCard>

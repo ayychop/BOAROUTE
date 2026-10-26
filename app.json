@@ -23,7 +23,8 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "VIBRATE"
       ]
     },
     "web": {
@@ -47,12 +48,21 @@
       ],
       "expo-video",
       [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
           "color": "#CDA960",
           "defaultChannel": "reminders",
-          "enableRemoteNotifications": false
+          "enableRemoteNotifications": false,
+          "sounds": [
+            "./assets/sounds/clock_out.wav"
+          ]
         }
       ],
       [

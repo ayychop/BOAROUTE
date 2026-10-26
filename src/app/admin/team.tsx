@@ -6,7 +6,7 @@ import { EmptyState, LoadingBlock } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
-import { TEAM_SEATS, defaultPatchFor, managerShort, patchOwners } from '@/lib/frequency';
+import { TEAM_SEATS, defaultPatchFor, distinctOwners, managerShort, patchOwners } from '@/lib/frequency';
 import { supabase } from '@/lib/supabaseClient';
 import type { Profile, StoreOwner, TeamSeat } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
@@ -25,26 +25,34 @@ type Account = Pick<Profile, 'id' | 'email' | 'name' | 'role'> & { created_at?: 
 interface TeamData {
   members: TeamMember[];
   accounts: Account[];
+  /** Every distinct stores.assigned_manager, with how many stores each has. */
+  owners: { owner: StoreOwner; stores: number }[];
 }
 
 const EMAIL = /^\S+@\S+\.\S+$/;
 
 async function fetchTeam(): Promise<TeamData> {
-  const [members, accounts] = await Promise.all([
+  const [members, accounts, stores] = await Promise.all([
     supabase.from('team_members').select('email,role,manager_name,route_managers').order('role').order('email'),
     supabase.from('profiles').select('id,email,name,role,created_at').order('created_at', { ascending: false }),
+    // The admin reads every store (RLS), so this covers every owner in use.
+    supabase.from('stores').select('assigned_manager').limit(10000),
   ]);
   if (members.error) throw members.error;
   if (accounts.error) throw accounts.error;
-  return { members: (members.data ?? []) as TeamMember[], accounts: (accounts.data ?? []) as Account[] };
+  if (stores.error) throw stores.error;
+  return { members: (members.data ?? []) as TeamMember[], accounts: (accounts.data ?? []) as Account[], owners: distinctOwners(stores.data ?? []) };
 }
 
-// The patch always follows the seat now; old per-person overrides are cleared by the SQL file.
-const patchOf = (m: TeamMember): StoreOwner[] => (m.role === 'admin' ? ['Joseph'] : defaultPatchFor(m.manager_name));
+// The admin's pick (route_managers) when set, otherwise the seat's default patch.
+const patchOf = (m: TeamMember): StoreOwner[] => (m.role === 'admin' ? ['Joseph'] : m.route_managers?.length ? m.route_managers : defaultPatchFor(m.manager_name));
+
+const sameOwners = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
 /** "Jo, Pete and Marcia" */
 function ownersSentence(patch: readonly StoreOwner[]): string {
-  const names = patchOwners(patch).map(managerShort);
+  const named = patchOwners(patch);
+  const names = (named.length ? named : patch).map(managerShort);
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'no one');
 }
 
@@ -68,10 +76,40 @@ function SeatPicker({ value, onChange }: { value: TeamSeat | null; onChange: (m:
   );
 }
 
+/** Whose stores someone works: one chip per owner that has stores today. */
+function OwnerPicker({ owners, value, onChange }: { owners: TeamData['owners']; value: StoreOwner[]; onChange: (next: StoreOwner[]) => void }) {
+  if (owners.length === 0) {
+    return (
+      <Txt variant="caption" tone="warning" style={{ marginBottom: 12 }}>
+        No stores found. Add stores in Store Management first.
+      </Txt>
+    );
+  }
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      {owners.map(({ owner, stores }) => {
+        const on = value.includes(owner);
+        return (
+          <Chip
+            key={owner}
+            label={`${managerShort(owner)}'s stores · ${stores}`}
+            active={on}
+            icon={on ? 'checkmark' : 'storefront-outline'}
+            tone={owner === 'Joseph' ? 'primary' : 'gold'}
+            onPress={() => onChange(on ? value.filter((o) => o !== owner) : [...value, owner])}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 export default function TeamManagement() {
   const { isAdmin } = useAuth();
   const [data, setData] = useState<TeamData | null>(null);
   const [picks, setPicks] = useState<Record<string, TeamSeat>>({});
+  // Whose stores each pending request or team member works, keyed by profile id or email.
+  const [ownerPicks, setOwnerPicks] = useState<Record<string, StoreOwner[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newManager, setNewManager] = useState<TeamSeat | null>(null);
@@ -82,7 +120,7 @@ export default function TeamManagement() {
       setData(await fetchTeam());
     } catch (e) {
       Alert.alert('Could not load the team', e instanceof Error ? e.message : 'Please try again.');
-      setData((prev) => prev ?? { members: [], accounts: [] });
+      setData((prev) => prev ?? { members: [], accounts: [], owners: [] });
     }
   }, []);
 
@@ -94,7 +132,7 @@ export default function TeamManagement() {
       .catch((e: unknown) => {
         if (!alive) return;
         Alert.alert('Could not load the team', e instanceof Error ? e.message : 'Please try again.');
-        setData({ members: [], accounts: [] });
+        setData({ members: [], accounts: [], owners: [] });
       });
     return () => {
       alive = false;
@@ -123,7 +161,25 @@ export default function TeamManagement() {
   const approve = (account: Account) => {
     const manager = picks[account.id];
     if (!manager) return Alert.alert('Choose their team', `Pick which team ${account.name ?? 'they'} will join, then approve.`);
-    run(`approve:${account.id}`, () => supabase.rpc('review_access_request', { p_profile_id: account.id, p_approve: true, p_manager: manager }));
+    const owners = ownerPicks[account.id] ?? defaultPatchFor(manager);
+    if (owners.length === 0) return Alert.alert('Choose their stores', `Pick whose stores ${account.name ?? 'they'} will work, then approve.`);
+    run(`approve:${account.id}`, async () => {
+      const approved = await supabase.rpc('review_access_request', { p_profile_id: account.id, p_approve: true, p_manager: manager });
+      if (approved.error) return approved;
+      // Only store a custom pick; the seat's default needs no override.
+      if (sameOwners(owners, defaultPatchFor(manager))) return { error: null };
+      return supabase.from('team_members').update({ route_managers: owners }).eq('email', account.email.trim().toLowerCase());
+    });
+  };
+
+  const saveOwners = (member: TeamMember, owners: StoreOwner[]) => {
+    if (owners.length === 0) return Alert.alert('Choose their stores', 'Pick at least one set of stores.');
+    const override = sameOwners(owners, defaultPatchFor(member.manager_name)) ? null : owners;
+    run(`owners:${member.email}`, async () => {
+      const res = await supabase.from('team_members').update({ route_managers: override }).eq('email', member.email);
+      if (!res.error) setOwnerPicks((p) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== member.email)));
+      return res;
+    });
   };
 
   const deny = (account: Account) =>
@@ -175,7 +231,22 @@ export default function TeamManagement() {
       <Txt variant="label" tone="dim" style={{ marginBottom: 8 }}>
         Which team do they join?
       </Txt>
-      <SeatPicker value={picks[a.id] ?? null} onChange={(m) => setPicks((p) => ({ ...p, [a.id]: m }))} />
+      <SeatPicker
+        value={picks[a.id] ?? null}
+        onChange={(m) => {
+          setPicks((p) => ({ ...p, [a.id]: m }));
+          // Start the store pick from the seat's default; the admin can change it below.
+          setOwnerPicks((p) => ({ ...p, [a.id]: defaultPatchFor(m) }));
+        }}
+      />
+      {picks[a.id] && (
+        <>
+          <Txt variant="label" tone="dim" style={{ marginBottom: 8 }}>
+            Whose stores do they work?
+          </Txt>
+          <OwnerPicker owners={data.owners} value={ownerPicks[a.id] ?? defaultPatchFor(picks[a.id])} onChange={(next) => setOwnerPicks((p) => ({ ...p, [a.id]: next }))} />
+        </>
+      )}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <NeonButton label="Approve" icon="checkmark-circle" variant="gold" onPress={() => approve(a)} loading={busy === `approve:${a.id}`} disabled={!!busy} style={{ flex: 1 }} />
         {!wasDenied && <NeonButton label="Deny" icon="close-circle-outline" variant="ghost" onPress={() => deny(a)} loading={busy === `deny:${a.id}`} disabled={!!busy} style={{ flex: 1 }} />}
@@ -221,10 +292,16 @@ export default function TeamManagement() {
                 </Txt>
               ) : (
                 <>
-                  <Txt variant="caption" tone="dim" style={{ marginBottom: 12 }}>
+                  <Txt variant="caption" tone="dim" style={{ marginBottom: 10 }}>
                     Sees {ownersSentence(scope)}&apos;s stores.
                   </Txt>
-                  <NeonButton label="Remove from team" icon="person-remove-outline" variant="subtle" size="sm" onPress={() => remove(m)} loading={busy === `remove:${m.email}`} disabled={!!busy} />
+                  <OwnerPicker owners={data.owners} value={ownerPicks[m.email] ?? scope} onChange={(next) => setOwnerPicks((p) => ({ ...p, [m.email]: next }))} />
+                  <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                    {ownerPicks[m.email] && !sameOwners(ownerPicks[m.email], scope) && (
+                      <NeonButton label="Save stores" icon="checkmark" variant="gold" size="sm" onPress={() => saveOwners(m, ownerPicks[m.email])} loading={busy === `owners:${m.email}`} disabled={!!busy} />
+                    )}
+                    <NeonButton label="Remove from team" icon="person-remove-outline" variant="subtle" size="sm" onPress={() => remove(m)} loading={busy === `remove:${m.email}`} disabled={!!busy} />
+                  </View>
                 </>
               )}
             </GlassCard>

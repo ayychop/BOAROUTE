@@ -54,3 +54,59 @@ export function workingDaysLeft(from: Date, days: readonly number[]): number {
   for (let d = from.getDate(); d <= last; d++) if (set.has(new Date(from.getFullYear(), from.getMonth(), d).getDay())) n++;
   return n;
 }
+
+// ---------------------------------------------------------------------
+// Shift calendar: exact working dates. Until someone saves their calendar
+// (shift_dates is NULL) their weekly working days decide instead.
+// ---------------------------------------------------------------------
+
+/** Local YYYY-MM-DD for a date (not UTC, so late-evening times stay on the right day). */
+export function isoDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** Valid, unique YYYY-MM-DD strings in date order. */
+export function normaliseDates(dates: readonly string[] | null | undefined): string[] {
+  const set = new Set((dates ?? []).map((d) => String(d).slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)));
+  return [...set].sort();
+}
+
+export function toggleDate(dates: readonly string[], iso: string): string[] {
+  return normaliseDates(dates.includes(iso) ? dates.filter((d) => d !== iso) : [...dates, iso]);
+}
+
+/**
+ * Is this a working day? Checks the exact dates from the shift calendar when
+ * the person has saved one, otherwise their weekly pattern.
+ */
+export function isWorkingDate(date: Date, shiftDates: readonly string[] | null | undefined, weekdays?: readonly number[] | null): boolean {
+  if (shiftDates) return shiftDates.some((d) => d.slice(0, 10) === isoDay(date));
+  return isWorkingDay(date, weekdays);
+}
+
+/** Working dates left in the month from (and including) the given date. */
+export function workingDatesLeft(from: Date, shiftDates: readonly string[] | null | undefined, weekdays?: readonly number[] | null): number {
+  if (!shiftDates) return workingDaysLeft(from, weekdays?.length ? weekdays : DEFAULT_WORKING_DAYS);
+  const set = new Set(normaliseDates(shiftDates));
+  const last = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
+  let n = 0;
+  for (let d = from.getDate(); d <= last; d++) if (set.has(isoDay(new Date(from.getFullYear(), from.getMonth(), d)))) n++;
+  return n;
+}
+
+/** Every date in the next `months` months (from the 1st of this month) that falls on one of the weekdays. */
+export function datesFromPattern(weekdays: readonly number[], from: Date, months = 3): string[] {
+  const set = new Set(normaliseDays(weekdays));
+  const out: string[] = [];
+  const end = new Date(from.getFullYear(), from.getMonth() + months, 1);
+  for (let d = new Date(from.getFullYear(), from.getMonth(), 1); d < end; d.setDate(d.getDate() + 1)) {
+    if (set.has(d.getDay())) out.push(isoDay(d));
+  }
+  return out;
+}
+
+/** "18 working days in October", for the calendar summary. */
+export function datesInMonth(dates: readonly string[], year: number, month: number): number {
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+  return dates.filter((d) => d.startsWith(prefix)).length;
+}

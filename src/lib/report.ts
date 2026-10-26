@@ -1,5 +1,6 @@
 import { CATEGORY_LABEL, formatPence, inMonth, summariseBudget, summariseMileage, toPence, type Budgets, weeklySpecialSpend } from './budget';
 import type { Expense, MileageLog } from './types';
+import { formatDuration, type VisitTimeSummary } from './visit-timer';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -33,8 +34,10 @@ export function buildMonthlyReport(params: {
   expenses: (Pick<Expense, 'date' | 'amount' | 'location' | 'recipient' | 'category'> & Partial<Pick<Expense, 'custom_label'>>)[];
   /** The person's own budgets; defaults (GBP 60 / GBP 150) when omitted. */
   budgets?: Budgets;
+  /** Time on site from timed visits (summariseVisitTimes); the section is left out when omitted. */
+  visitTimes?: VisitTimeSummary;
 }): string {
-  const { month, name, mileage, expenses, budgets } = params;
+  const { month, name, mileage, expenses, budgets, visitTimes } = params;
   const miles = summariseMileage(mileage, month);
   const budget = summariseBudget(expenses, month, budgets);
   const rows = expenses
@@ -51,6 +54,19 @@ export function buildMonthlyReport(params: {
   lines.push(`Personal miles: ${fmtMiles(miles.personal)}`);
   lines.push(`Total miles: ${fmtMiles(miles.total)}`);
   lines.push('');
+  if (visitTimes) {
+    lines.push(`VISIT TIME (${visitTimes.timedVisits} timed visit${visitTimes.timedVisits === 1 ? '' : 's'})`);
+    if (visitTimes.overallAvgMinutes === null) {
+      lines.push('No timed visits this month.');
+    } else {
+      lines.push(`Overall average across all visits: ${formatDuration(visitTimes.overallAvgMinutes)}`);
+      lines.push('Average time per store:');
+      for (const st of visitTimes.perStore) {
+        lines.push(`  ${st.name}: ${formatDuration(st.avgMinutes)} (${st.visits} visit${st.visits === 1 ? '' : 's'})`);
+      }
+    }
+    lines.push('');
+  }
   lines.push(`EXPENSES (${rows.length})`);
   if (rows.length === 0) {
     lines.push('No expenses logged this month.');

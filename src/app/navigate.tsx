@@ -25,9 +25,11 @@ import { hazardMeta, isLiveHazard, type HazardReport, type HazardType } from '@/
 import { decodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { HAZARD_ALERT_M, nextHazardAhead, type HazardAhead } from '@/lib/hazard-alerts';
 import { PREWARN_M, prepareRoute, progressAt, remainingWaypoints, type NavProgress } from '@/lib/nav-progress';
+import { carIconFor, prefsFor, routeColorFor, type CarIconOption } from '@/lib/preferences';
 import { getPref, setPref } from '@/lib/prefs';
 import type { LatLng } from '@/lib/types';
 import { fetchRouteOptions } from '@/services/functions';
+import { useAuth } from '@/providers/AuthProvider';
 import { clearHazard, fetchLiveHazards, reportHazard } from '@/services/hazards';
 import { COCKPIT_MAP_STYLE } from '@/theme/map-style';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -63,6 +65,27 @@ function HazardMarker({ hazard, onPress }: { hazard: HazardReport; onPress: () =
   return (
     <Marker coordinate={{ latitude: hazard.latitude, longitude: hazard.longitude }} onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 0.5 }} accessibilityLabel={`${hazardMeta(hazard.hazard_type).label} reported`}>
       <HazardPin type={hazard.hazard_type} />
+    </Marker>
+  );
+}
+
+/** The driver's chosen car indicator (Me > Map & car style), in place of the blue dot. */
+function CarMarker({ coordinate, heading, car, color }: { coordinate: { latitude: number; longitude: number }; heading: number | null; car: CarIconOption; color: string }) {
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setTracks(false), 800);
+    return () => clearTimeout(t);
+  }, [car.id, color]);
+  // Arrows turn with the road on a flat marker; badges stay upright.
+  const rotates = car.rotates && heading != null && heading >= 0;
+  return (
+    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} flat={rotates} rotation={rotates ? heading : 0} tracksViewChanges={tracks} zIndex={10} accessibilityLabel="Your location">
+      <View style={{ width: 46, height: 46, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ position: 'absolute', width: 46, height: 46, borderRadius: 23, backgroundColor: `${color}33` }} />
+        <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#0B0B0C', borderWidth: 2.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={car.icon} size={18} color={color} />
+        </View>
+      </View>
     </Marker>
   );
 }
@@ -198,6 +221,10 @@ export default function Navigate() {
   const { insets, width, height, compact } = useLayout();
   const mapRef = useRef<MapView>(null);
   const nowMs = useNow(15_000);
+  const { profile } = useAuth();
+  const look = prefsFor(profile);
+  const routeColor = routeColorFor(look.route_color).color;
+  const car = carIconFor(look.car_icon);
 
   const [origin, setOrigin] = useState<LatLng | null>(req && req.from !== 'here' ? req.from : null);
   const [error, setError] = useState<string | null>(null);
@@ -518,7 +545,8 @@ export default function Navigate() {
       provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
       customMapStyle={COCKPIT_MAP_STYLE}
       userInterfaceStyle="dark"
-      showsUserLocation={locPerm === 'granted'}
+      // The car indicator replaces the blue dot once there is a fix.
+      showsUserLocation={locPerm === 'granted' && !position}
       showsMyLocationButton={false}
       showsCompass={false}
       toolbarEnabled={false}
@@ -546,8 +574,9 @@ export default function Navigate() {
       {other && <Polyline coordinates={other.geometry.map(toCoord)} strokeColor="rgba(201,205,212,0.45)" strokeWidth={4} tappable onPress={() => setChoice(other.kind)} />}
       {option && (
         <>
-          <Polyline coordinates={option.geometry.map(toCoord)} strokeColor="rgba(142,110,51,0.55)" strokeWidth={12} />
-          <Polyline coordinates={option.geometry.map(toCoord)} strokeColor="#E8CF94" strokeWidth={5} />
+          {/* Route trail in the driver's chosen colour, with a soft glow underneath. */}
+          <Polyline coordinates={option.geometry.map(toCoord)} strokeColor={`${routeColor}59`} strokeWidth={14} />
+          <Polyline coordinates={option.geometry.map(toCoord)} strokeColor={routeColor} strokeWidth={navigating ? 6 : 5} />
         </>
       )}
       {waypoints.map((w, i) => (
@@ -560,6 +589,7 @@ export default function Navigate() {
       {liveHazards.map((h) => (
         <HazardMarker key={h.id} hazard={h} onPress={() => setOpenHazard(h)} />
       ))}
+      {position && <CarMarker coordinate={{ latitude: position.coords.latitude, longitude: position.coords.longitude }} heading={position.coords.heading} car={car} color={routeColor} />}
     </MapView>
   ) : origin && option ? (
     <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: palette.bg[2] }]}>
@@ -572,6 +602,7 @@ export default function Navigate() {
         motorway={option.kind === 'motorway' ? option.geometry : null}
         standard={options?.standard.geometry ?? option.geometry}
         selected={option.kind}
+        routeColor={routeColor}
       />
     </View>
   ) : (

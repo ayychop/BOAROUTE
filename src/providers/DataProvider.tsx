@@ -1,13 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { localDateString } from '@/lib/budget';
-import { managersFor, targetsFor } from '@/lib/frequency';
+import { isMember, managersFor, targetsFor } from '@/lib/frequency';
 import { geocode } from '@/lib/geo';
+import { getPref, setPref } from '@/lib/prefs';
 import type { VisitTally } from '@/lib/route-engine';
 import { storesInScope } from '@/lib/route-engine';
 import { supabase } from '@/lib/supabaseClient';
 import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, StoreOwner, Visit, WorkEvent } from '@/lib/types';
+import { canCompleteVisit, parseActiveVisit, type ActiveVisit } from '@/lib/visit-timer';
 import { syncEventReminders } from '@/services/notifications';
+import { cancelVisitAlarm, scheduleVisitAlarm } from '@/services/visit-alarm';
 import { useAuth } from './AuthProvider';
 
 // '*' so the app keeps working whether or not the newest columns (frequency_custom) exist yet.
@@ -28,7 +31,6 @@ function cleanStore(raw: Store): Store {
     longitude: num(raw.longitude),
   };
 }
-const DAY_MS = 86_400_000;
 const EMPTY: never[] = [];
 
 interface DataValue {
@@ -46,11 +48,21 @@ interface DataValue {
   managers: StoreOwner[];
   targets: GradeTargets;
   tallies: Record<string, VisitTally>;
+  /** This person's visits from the last six months, newest first. */
+  visits: Visit[];
+  /** The visit in progress on this device, if any. */
+  activeVisit: ActiveVisit | null;
+  /** Starts the visit clock for a store and schedules the one-hour clock-out alarm. */
+  startVisit: (storeId: string) => Promise<void>;
+  /** Saves the visit with its start and end time. Only allowed after the 25-minute minimum. */
+  completeVisit: () => Promise<{ storeId: string; minutes: number }>;
+  cancelVisit: () => Promise<void>;
+  /** Continue visit: silences the one-hour alarm and keeps the clock running. */
+  silenceVisitAlarm: () => Promise<void>;
   events: WorkEvent[];
   mileage: MileageLog[];
   expenses: Expense[];
   refresh: () => Promise<void>;
-  logVisit: (storeId: string) => Promise<void>;
   /** Grade and monthly frequency for a store. frequency null = use the grade default. */
   updateStoreSettings: (storeId: string, grade: Grade, frequency: number | null) => Promise<void>;
   undoLastVisit: (storeId: string) => Promise<void>;
@@ -73,7 +85,12 @@ function monthStart(d = new Date()): Date {
 export function DataProvider({ children }: { children: ReactNode }) {
   const { session, profile, refreshProfile } = useAuth();
   const userId = session?.user.id ?? null;
-  // Which user the data below belongs to; nothing is exposed for anyone else.
+  // Store visibility (RLS) follows the profile's role and patch, which the
+  // sign-in refresh (refresh_my_access) settles. Loading waits for that
+  // profile and reloads whenever access changes, so a first sign-in never
+  // caches an empty store list from before the patch was applied.
+  const accessKey = userId && profile?.id === userId && isMember(profile) ? `${userId}|${profile.role}|${(profile.route_managers ?? []).join(',')}` : null;
+  // Which user and access the data below belongs to; nothing is exposed for anyone else.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
@@ -83,14 +100,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
   const lastLoad = useRef(0);
+  const retried = useRef<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
+  const activeKey = userId ? `visit.active.${userId}` : null;
+  const [active, setActive] = useState<{ key: string | null; visit: ActiveVisit | null }>({ key: null, visit: null });
+  const activeVisit = active.key === activeKey ? active.visit : activeKey ? parseActiveVisit(getPref(activeKey)) : null;
+  const saveActive = useCallback(
+    (visit: ActiveVisit | null) => {
+      if (!activeKey) return;
+      setPref(activeKey, visit ? JSON.stringify(visit) : null);
+      setActive({ key: activeKey, visit });
+    },
+    [activeKey],
+  );
 
   const refresh = useCallback(async () => {
-    if (!userId) return;
-    const since = new Date(Date.now() - 120 * DAY_MS).toISOString();
+    if (!userId || !accessKey) return;
     const sinceDate = localDateString(new Date(monthStart().getFullYear(), monthStart().getMonth() - 6, 1));
+    const since = new Date(`${sinceDate}T00:00:00`).toISOString();
     const [s, v, e, m, x, u] = await Promise.all([
       supabase.from('stores').select(STORE_COLUMNS).order('name'),
-      supabase.from('visits').select('id,store_id,user_id,visited_at').eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false }).limit(5000),
+      // '*' so visits load before and after the visit-time columns exist.
+      supabase.from('visits').select('*').eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false }).limit(5000),
       supabase.from('events').select('*').eq('user_id', userId).order('event_date'),
       supabase.from('mileage_logs').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
       supabase.from('expenses').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
@@ -109,18 +140,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!x.error) setExpenses((x.data ?? []) as Expense[]);
     if (!u.error) setChosen((u.data ?? []).map((r: { store_id: string }) => r.store_id));
     lastLoad.current = Date.now();
-    setLoadedFor(userId);
-  }, [userId]);
+    setLoadedFor(accessKey);
+    // A brand-new approval can reach the app a moment before the database
+    // finishes applying the patch. One quiet retry covers that window.
+    if (!s.error && (s.data ?? []).length === 0 && retried.current !== accessKey) {
+      retried.current = accessKey;
+      setTimeout(() => setRetryTick((t) => t + 1), 2000);
+    }
+  }, [userId, accessKey]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!accessKey) return;
     // refresh() only sets state after awaiting the network, never synchronously.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch((err) => {
       setError(err instanceof Error ? err.message : 'Could not load your data');
-      setLoadedFor(userId);
+      setLoadedFor(accessKey);
     });
-  }, [userId, refresh]);
+  }, [accessKey, refresh, retryTick]);
 
   // Refresh when coming back to the app after a while (new month, other devices).
   useEffect(() => {
@@ -130,7 +167,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, [refresh]);
 
-  const mine = !!userId && loadedFor === userId;
+  const mine = !!accessKey && loadedFor === accessKey;
   const loading = !mine;
   const vStores = mine ? stores : EMPTY;
   const vVisits = mine ? visits : EMPTY;
@@ -184,11 +221,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
   const targets = useMemo(() => targetsFor(profile), [profile]);
 
-  const logVisit = useCallback(async (storeId: string) => {
-    const { data, error: err } = await supabase.from('visits').insert({ store_id: storeId }).select('id,store_id,user_id,visited_at').single();
-    if (err) throw err;
+  const startVisit = useCallback(
+    async (storeId: string) => {
+      if (activeVisit && activeVisit.storeId !== storeId) throw new Error('Finish or cancel the visit you already started first.');
+      const visit: ActiveVisit = { storeId, startedAt: new Date().toISOString() };
+      saveActive(visit);
+      const name = stores.find((s) => s.id === storeId)?.name ?? 'Your store';
+      // The alarm is a safety net; the visit clock runs without it.
+      scheduleVisitAlarm(name, storeId, visit.startedAt).catch(() => {});
+    },
+    [activeVisit, saveActive, stores],
+  );
+
+  const completeVisit = useCallback(async () => {
+    const current = activeVisit;
+    if (!current) throw new Error('No visit in progress.');
+    if (!canCompleteVisit(current.startedAt, Date.now())) throw new Error('Visits must be at least 25 minutes long.');
+    const end = new Date().toISOString();
+    const { data, error: err } = await supabase
+      .from('visits')
+      .insert({ store_id: current.storeId, visit_start_time: current.startedAt, visit_end_time: end, visited_at: end })
+      .select('*')
+      .single();
+    if (err) {
+      if (/visit_start_time|visit_end_time/.test(err.message) && !/at least|Start the visit/.test(err.message)) throw new Error('Timed visits need the latest database update. Ask your admin to re-run the SQL file.');
+      throw err;
+    }
     setVisits((prev) => [data as Visit, ...prev]);
-  }, []);
+    saveActive(null);
+    cancelVisitAlarm().catch(() => {});
+    return { storeId: current.storeId, minutes: (new Date(end).getTime() - new Date(current.startedAt).getTime()) / 60_000 };
+  }, [activeVisit, saveActive]);
+
+  const cancelVisit = useCallback(async () => {
+    saveActive(null);
+    await cancelVisitAlarm().catch(() => {});
+  }, [saveActive]);
+
+  const silenceVisitAlarm = useCallback(async () => {
+    if (!activeVisit) return;
+    saveActive({ ...activeVisit, alarmSilenced: true });
+    await cancelVisitAlarm().catch(() => {});
+  }, [activeVisit, saveActive]);
 
   const updateStoreSettings = useCallback(
     async (storeId: string, grade: Grade, frequency: number | null) => {
@@ -349,11 +423,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       managers,
       targets,
       tallies,
+      visits: vVisits as Visit[],
+      activeVisit,
+      startVisit,
+      completeVisit,
+      cancelVisit,
+      silenceVisitAlarm,
       events: vEvents as WorkEvent[],
       mileage: vMileage as MileageLog[],
       expenses: vExpenses as Expense[],
       refresh,
-      logVisit,
       updateStoreSettings,
       undoLastVisit,
       updateStoreAddress,
@@ -365,7 +444,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, patchStores, vChosen, saveChosenStores, managers, targets, tallies, vEvents, vMileage, vExpenses, refresh, logVisit, updateStoreSettings, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, patchStores, vChosen, saveChosenStores, managers, targets, tallies, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
