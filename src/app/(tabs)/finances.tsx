@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Chip, Field, Segmented } from '@/components/controls';
 import { ExpenseForm } from '@/components/ExpenseForm';
@@ -43,6 +43,7 @@ export default function Finances() {
   // Matches GlassCard's inner padding.
   const cardPad = compact ? 16 : 20;
   const month = monthKey(new Date());
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   const budgets = useMemo(() => budgetsFor(profile), [profile]);
   const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
@@ -223,7 +224,8 @@ export default function Finances() {
       <Txt variant="title" style={{ marginBottom: 12 }}>
         Quick expense
       </Txt>
-      <ExpenseForm />
+      {/* After the Spend Dat overlay, back up to the budget rings with the new spend in them. */}
+      <ExpenseForm onCelebrated={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} />
     </GlassCard>
   );
 
@@ -325,6 +327,7 @@ export default function Finances() {
   return (
     <Screen
       inTabs
+      scrollRef={scrollRef}
       kicker="Finances & mileage"
       title="Finances"
       onRefresh={async () => {

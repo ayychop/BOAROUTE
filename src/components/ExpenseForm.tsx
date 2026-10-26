@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
@@ -7,6 +6,7 @@ import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { Field } from '@/components/controls';
 import { Dropdown } from '@/components/Dropdown';
 import { NeonButton } from '@/components/NeonButton';
+import { SpendDatOverlay } from '@/components/SpendDatOverlay';
 import { Txt } from '@/components/Txt';
 import {
   DEFAULT_TAKEOVER_DAY_PENCE,
@@ -42,14 +42,18 @@ function categoryOptions(b: Budgets): { value: ExpenseCategory; label: string; h
 
 const toInput = (pence: number) => (pence % 100 === 0 ? String(pence / 100) : (pence / 100).toFixed(2));
 
-/** Amount, location, recipient, category and receipt photos, saved straight to expenses. */
-export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?: (summary: string) => void; submitLabel?: string }) {
+/**
+ * Amount, location, recipient, category and receipt photos, saved straight to
+ * expenses. Each save plays the Spend Dat overlay; onCelebrated runs once it closes.
+ */
+export function ExpenseForm({ onSaved, onCelebrated, submitLabel = 'Add expense' }: { onSaved?: (summary: string) => void; onCelebrated?: () => void; submitLabel?: string }) {
   const { addExpense, expenses } = useData();
   const { profile, session } = useAuth();
   const { palette } = useTheme();
   const budgets = budgetsFor(profile);
   const today = localDateString(new Date());
   const [amount, setAmount] = useState('');
+  const [celebrating, setCelebrating] = useState(false);
   const [location, setLocation] = useState('');
   const [recipient, setRecipient] = useState('');
   const [label, setLabel] = useState('');
@@ -107,7 +111,8 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
       setLocation('');
       setRecipient('');
       setReceipts([]);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // The overlay fires the sound and a heavy haptic together.
+      setCelebrating(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
     } finally {
@@ -179,6 +184,13 @@ export function ExpenseForm({ onSaved, submitLabel = 'Add expense' }: { onSaved?
         </Txt>
       ) : null}
       <NeonButton label={submitLabel} icon="add-circle" variant="gold" onPress={save} loading={busy} full />
+      <SpendDatOverlay
+        visible={celebrating}
+        onDone={() => {
+          setCelebrating(false);
+          onCelebrated?.();
+        }}
+      />
     </>
   );
 }
