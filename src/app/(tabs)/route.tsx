@@ -35,7 +35,7 @@ export default function RouteScreen() {
   const { palette } = useTheme();
   const { profile } = useAuth();
   const { myStores, tallies, targets, logVisit, loading } = useData();
-  const { contentWidth, expanded, compact } = useLayout();
+  const { contentWidth, compact } = useLayout();
   const units = useUnits();
   const { point: home, error: homeError } = useHomePoint(profile?.starting_location);
   const [maxStops, setMaxStops] = useState(readStops);
@@ -55,8 +55,6 @@ export default function RouteScreen() {
   const [routeState, setRouteState] = useState<{ key: string; result: RouteOptionsResult; liveError: string | null } | null>(null);
   const [selected, setSelected] = useState<'motorway' | 'standard'>('motorway');
   const [busyStop, setBusyStop] = useState<string | null>(null);
-  // Natural height of the right column on wide screens, so the map can grow to match it.
-  const [sideH, setSideH] = useState(0);
 
   const plan = useMemo(
     () =>
@@ -125,8 +123,8 @@ export default function RouteScreen() {
     }
   };
 
-  const mapW = expanded ? Math.min(contentWidth * 0.5, 560) : contentWidth;
-  const mapH = Math.round(Math.min(mapW * (compact ? 0.62 : 0.7), 420));
+  // A fixed-height preview map; the full map lives on the navigation screen.
+  const mapH = compact ? 200 : 250;
 
   const startPicker = <StartPointPicker stores={myStores} selectedId={startStore?.id ?? null} homeLabel={profile?.starting_location ?? 'not set'} onChange={chooseStart} />;
 
@@ -269,27 +267,14 @@ export default function RouteScreen() {
   return (
     <Screen inTabs title="Today's route" kicker={`${plan.stops.length} stops · ${plan.visitsRemaining} visits owed this month`}>
       <DataErrorBanner />
-      <View style={{ marginBottom: 12, gap: 12 }}>
+      {/* One stacked column at every width: Go Anywhere, start point, map preview, route, start, stops today. */}
+      <View style={{ gap: 12 }}>
         {goAnywhere}
         {startPicker}
+        <HudMap width={contentWidth} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
+        {optionsBlock}
+        {settings}
       </View>
-      {expanded ? (
-        <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
-          {/* The map stretches to the right column's height so neither side leaves dead space. */}
-          <HudMap width={mapW} height={Math.max(mapH, sideH)} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
-          {/* Stops today sits under the start button; this column sets the row height the map matches. */}
-          <View style={{ flex: 1, minWidth: 0, gap: 12 }} onLayout={(e) => setSideH(Math.round(e.nativeEvent.layout.height))}>
-            {optionsBlock}
-            {settings}
-          </View>
-        </View>
-      ) : (
-        <View style={{ gap: 12 }}>
-          <HudMap width={mapW} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
-          {optionsBlock}
-          {settings}
-        </View>
-      )}
 
       <SectionHeader title={`Stops · ${formatMinutes(plan.onSiteMinutes)} on site`} />
       <View style={{ gap: 10 }}>
