@@ -19,7 +19,8 @@ const CAR_SERVICE = 'expo.modules.boaroutecar.BoarouteCarAppService';
 const MEDIA_SERVICE = 'expo.modules.boaroutecar.BoarouteLauncherMediaService';
 const ICON = 'ic_boaroute_car';
 const MIN_CAR_API_LEVEL = 1;
-const PERMISSIONS = ['androidx.car.app.NAVIGATION_TEMPLATES', 'androidx.car.app.ACCESS_SURFACE'];
+// CAR_SPEED lets ParkedWatch read the car's speed for the parked-only dash video.
+const PERMISSIONS = ['androidx.car.app.NAVIGATION_TEMPLATES', 'androidx.car.app.ACCESS_SURFACE', 'com.google.android.gms.permission.CAR_SPEED'];
 /** assets/sounds/<name>.mp3, played by CoPilotAudio as res/raw/<name>. */
 const VOICE_NOTES = ['camera_approaching', 'camera_passing'];
 
