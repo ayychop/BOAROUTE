@@ -5,9 +5,10 @@
 //   in the car launcher and pops on the dark dock.
 // - Asks for the navigation template and map surface permissions the
 //   NavigationTemplate needs.
-// - Writes automotive_app_desc.xml declaring "template" only. Declaring
-//   "media", or any MediaBrowserService, makes Android Auto open its own
-//   player UI instead of BOAROUTE's screen.
+// - Writes automotive_app_desc.xml declaring "media" and "template", and
+//   declares an empty MediaBrowserService (BoarouteLauncherMediaService), so
+//   Android Auto lists the sideloaded app in its launcher. The media side
+//   serves nothing; the CarAppService's NavigationTemplate is the real screen.
 // - Copies the co-pilot voice notes into res/raw (with a keep rule so resource
 //   shrinking never drops them; the code finds them by name).
 const fs = require('fs');
@@ -15,6 +16,7 @@ const path = require('path');
 const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
 
 const CAR_SERVICE = 'expo.modules.boaroutecar.BoarouteCarAppService';
+const MEDIA_SERVICE = 'expo.modules.boaroutecar.BoarouteLauncherMediaService';
 const ICON = 'ic_boaroute_car';
 const MIN_CAR_API_LEVEL = 1;
 const PERMISSIONS = ['androidx.car.app.NAVIGATION_TEMPLATES', 'androidx.car.app.ACCESS_SURFACE'];
@@ -23,6 +25,7 @@ const VOICE_NOTES = ['camera_approaching', 'camera_passing'];
 
 const DESCRIPTOR = `<?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
+  <uses name="media" />
   <uses name="template" />
 </automotiveApp>
 `;
@@ -66,8 +69,10 @@ function withCarManifest(config) {
     upsertMeta(app, 'com.google.android.gms.car.application', { 'android:resource': '@xml/automotive_app_desc' });
     upsertMeta(app, 'androidx.car.app.minCarApiLevel', { 'android:value': String(MIN_CAR_API_LEVEL) });
 
-    // Any service from the old react-native-car-projection setup goes, the media browser above all.
-    app.service = (app.service ?? []).filter((s) => !s.$['android:name'].startsWith('expo.modules.androidauto.') && s.$['android:name'] !== CAR_SERVICE);
+    // Any service from the old react-native-car-projection setup goes.
+    app.service = (app.service ?? []).filter(
+      (s) => !s.$['android:name'].startsWith('expo.modules.androidauto.') && ![CAR_SERVICE, MEDIA_SERVICE].includes(s.$['android:name'])
+    );
     app.service.push({
       $: { 'android:name': CAR_SERVICE, 'android:exported': 'true', 'android:label': '@string/app_name', 'android:icon': `@drawable/${ICON}` },
       'intent-filter': [
@@ -76,6 +81,10 @@ function withCarManifest(config) {
           category: [{ $: { 'android:name': 'androidx.car.app.category.NAVIGATION' } }],
         },
       ],
+    });
+    app.service.push({
+      $: { 'android:name': MEDIA_SERVICE, 'android:exported': 'true', 'android:label': '@string/app_name', 'android:icon': `@drawable/${ICON}` },
+      'intent-filter': [{ action: [{ $: { 'android:name': 'android.media.browse.MediaBrowserService' } }] }],
     });
     return cfg;
   });

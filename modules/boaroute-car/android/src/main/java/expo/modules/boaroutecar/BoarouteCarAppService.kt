@@ -10,8 +10,8 @@ import androidx.lifecycle.LifecycleOwner
 
 /**
  * Android Auto's entry point, declared in the manifest as a navigation car
- * app by plugins/withAndroidAuto.js. There is no MediaBrowserService anywhere
- * in the app, so Android Auto never opens a media player for BOAROUTE.
+ * app by plugins/withAndroidAuto.js. BoarouteLauncherMediaService is an empty
+ * media browser that only gets the sideloaded app into the launcher.
  */
 class BoarouteCarAppService : CarAppService() {
   // Every host is accepted, in release too: BOAROUTE is sideloaded, not a
