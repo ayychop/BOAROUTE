@@ -1,125 +1,108 @@
-import { Platform } from 'react-native';
-import type { TemplateConfig } from 'react-native-car-projection';
-import { EMPTY_CAR_CONTEXT, ROOT_SCREEN, carTemplate, type CarContext, type CarListTemplate, type CarNavState } from './car-templates';
+import BoarouteCar from '../../modules/boaroute-car';
+import type { LngLat } from '../../supabase/functions/_shared/route-analysis';
+import { EMPTY_CAR_CONTEXT, carDisplayState, carPath, type CarContext, type CarHazard, type CarNavState, type CarPosition } from './car-state';
 
 /**
- * JS side of the Android Auto car app. The native CarAppService and Session
- * come from react-native-car-projection (Kotlin, declared in the manifest by
- * its config plugin); they build the car screen from the template registered
- * here. This keeps that template in step with the phone's navigation.
- *
- * There is deliberately no media browse tree: with a MediaBrowserService
- * Android Auto opens its own player UI instead of this screen (mediaSupport
- * is off in app.json for that reason).
- *
- * Only Android has the native module, so everything here is a no-op on iOS
- * and web, and in Expo Go.
+ * JS side of the Android Auto car app. The native CarAppService, the
+ * NavigationTemplate screen and the map renderer are in modules/boaroute-car;
+ * this keeps them fed with the phone's route, visit and position, and hands
+ * the car's Start Visit / End Visit presses to whoever registered for them
+ * (CarBridge). Only Android has the native module, so everything here is a
+ * no-op on iOS, web, Expo Go and in tests.
  */
 
-type CarProjection = typeof import('react-native-car-projection').default;
-
-let cached: CarProjection | null | undefined;
-function car(): CarProjection | null {
-  if (cached !== undefined) return cached;
-  cached = null;
-  if (Platform.OS !== 'android') return cached;
-  try {
-    // Loaded lazily so iOS, web and tests never touch the native module (it warns when missing).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    cached = (require('react-native-car-projection') as { default: CarProjection }).default;
-  } catch {
-    cached = null;
-  }
-  return cached;
-}
-
-let lastSent = '';
-let pending: CarListTemplate | null = null;
-let timer: ReturnType<typeof setTimeout> | null = null;
-let lastAt = 0;
-
-/** Android Auto rate-limits template refreshes, and GPS fixes arrive every second or so. */
-const MIN_INTERVAL_MS = 2_000;
-
-let startVisitHandler: ((storeId: string) => void) | null = null;
 let navState: CarNavState | null = null;
 let context: CarContext = EMPTY_CAR_CONTEXT;
+let metric = false;
+let position: CarPosition | null = null;
+let hazards: CarHazard[] = [];
+let lastSent = '';
 
-/** The library matches presses to handlers by these ids (see its prepareScreenConfigForNative). */
-const actionId = (i: number) => `${ROOT_SCREEN}_actionStrip_${i}`;
+let startVisitHandler: ((storeId: string) => void) | null = null;
+let endVisitHandler: (() => void) | null = null;
+const connectionHandlers = new Set<(connected: boolean) => void>();
+let subscribed = false;
 
-async function send(template: CarListTemplate) {
-  const c = car();
-  if (!c) return;
-  const key = JSON.stringify(template);
-  if (key === lastSent) return;
-  lastSent = key;
-  lastAt = Date.now();
-  try {
-    // Registering keeps the template (and the Start Visit handler) for the next
-    // time the car connects; updating redraws it if the car screen is showing now.
-    // Our rows carry no press handlers, which the library's Action type insists on.
-    const withHandlers = {
-      ...template,
-      actionStrip: template.actionStrip?.map((a) => ({ title: a.title, onPress: () => startVisitHandler?.(a.storeId) })),
-    };
-    await c.registerScreen({ name: ROOT_SCREEN, template: withHandlers as unknown as TemplateConfig });
-    // Through JSON so no undefined fields reach the native map conversion. updateScreen
-    // skips the library's id tagging, so tag the actions here or presses go nowhere.
-    const parsed = JSON.parse(key) as CarListTemplate;
-    const native = { ...parsed, actionStrip: parsed.actionStrip?.map((a, i) => ({ title: a.title, id: actionId(i) })) };
-    await c.updateScreen(ROOT_SCREEN, JSON.parse(JSON.stringify(native)) as TemplateConfig);
-  } catch {
-    // No car connected, or the head unit refused the update: the next change retries.
-    lastSent = '';
-  }
-}
-
-function schedule(template: CarListTemplate) {
-  pending = template;
-  if (timer) return;
-  const wait = Math.max(0, MIN_INTERVAL_MS - (Date.now() - lastAt));
-  timer = setTimeout(() => {
-    timer = null;
-    const t = pending;
-    pending = null;
-    if (t) void send(t);
-  }, wait);
-}
-
-function redraw() {
-  schedule(carTemplate(navState, context));
+/** The native side skips redraws when only the map moved; this skips identical sends. */
+function push() {
+  if (!BoarouteCar) return;
+  const json = JSON.stringify(carDisplayState(navState, context, { metric, position, hazards }));
+  if (json === lastSent) return;
+  lastSent = json;
+  BoarouteCar.setState(json);
 }
 
 export const CarAppService = {
-  /** Call once at launch so the car never shows an empty screen while the app is running. */
+  /** Call once at launch: wires the car's buttons and connection events. */
   start() {
-    const c = car();
-    if (!c) return;
-    c.startSession().catch(() => {});
-    redraw();
+    if (!BoarouteCar || subscribed) return;
+    subscribed = true;
+    BoarouteCar.addListener('onStartVisit', ({ storeId }) => startVisitHandler?.(storeId));
+    BoarouteCar.addListener('onEndVisit', () => endVisitHandler?.());
+    BoarouteCar.addListener('onConnectionChange', ({ connected }) => connectionHandlers.forEach((h) => h(connected)));
+    push();
+  },
+
+  /** True while Android Auto has BOAROUTE's car app open. */
+  isConnected(): boolean {
+    return BoarouteCar?.isConnected() ?? false;
   },
 
   /** Shows the live route on the car. Safe to call on every GPS fix. */
   showRoute(state: CarNavState) {
     navState = state;
-    redraw();
+    push();
   },
 
-  /** Navigation ended on the phone: back to the upcoming stores. */
+  /** The route line for the car map; call when the route (not the position) changes. */
+  setPath(geometry: LngLat[]) {
+    BoarouteCar?.setPath(carPath(geometry));
+  },
+
+  /** Navigation ended on the phone: idle screen, line off the map. */
   clear() {
     navState = null;
-    redraw();
+    BoarouteCar?.setPath([]);
+    push();
   },
 
-  /** The person's upcoming stores and visit state, kept current by CarBridge. */
+  setPosition(next: CarPosition | null) {
+    position = next;
+    push();
+  },
+
+  setHazards(next: CarHazard[]) {
+    hazards = next;
+    push();
+  },
+
+  setMetric(next: boolean) {
+    metric = next;
+    push();
+  },
+
+  /** The person's stores and visit state, kept current by CarBridge. */
   setContext(next: CarContext) {
     context = next;
-    redraw();
+    push();
   },
 
-  /** What the car's Start Visit button does. */
+  /** A short message on the car screen. */
+  toast(text: string) {
+    BoarouteCar?.toast(text);
+  },
+
   onStartVisit(handler: ((storeId: string) => void) | null) {
     startVisitHandler = handler;
+  },
+
+  onEndVisit(handler: (() => void) | null) {
+    endVisitHandler = handler;
+  },
+
+  /** Returns an unsubscribe function. */
+  onConnectionChange(handler: (connected: boolean) => void): () => void {
+    connectionHandlers.add(handler);
+    return () => connectionHandlers.delete(handler);
   },
 };

@@ -1,0 +1,31 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.boaroutecar'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.boaroutecar"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+dependencies {
+  // Android for Cars App Library: NavigationTemplate, the map surface and NavigationManager.
+  implementation "androidx.car.app:app:1.7.0"
+  implementation "androidx.car.app:app-projected:1.7.0"
+  implementation "androidx.lifecycle:lifecycle-common-java8:2.7.0"
+  // Same Maps SDK version react-native-maps resolves, so the app ships one copy.
+  implementation "com.google.android.gms:play-services-maps:${safeExtGet('googlePlayServicesMapsVersion', '19.1.0')}"
+}

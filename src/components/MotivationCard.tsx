@@ -12,7 +12,7 @@ import { GlassCard } from './GlassCard';
 import { Txt } from './Txt';
 
 /** Today's Real Talk quote on the Hub. A new one each day; tap the arrows for more, share it or long-press to copy. */
-export function MotivationCard({ now, index = 0 }: { now: number; index?: number }) {
+export function MotivationCard({ now, index = 0, fill }: { now: number; index?: number; fill?: boolean }) {
   const { palette } = useTheme();
   const { isAdmin } = useAuth();
   const quotes = quotesFor(isAdmin);
@@ -43,7 +43,7 @@ export function MotivationCard({ now, index = 0 }: { now: number; index?: number
   };
 
   return (
-    <GlassCard index={index} glow="gold">
+    <GlassCard index={index} glow="gold" fill={fill}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <Ionicons name="flame" size={16} color={palette.gold} />
         <Txt variant="label" tone="gold" style={{ flex: 1 }}>

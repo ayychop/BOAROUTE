@@ -3,11 +3,10 @@ import * as Haptics from 'expo-haptics';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
-import { BRLogo } from '@/components/BRLogo';
-import { CarIllustration } from '@/components/CarIllustration';
 import { Field, Segmented } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
 import { NeonButton } from '@/components/NeonButton';
+import { ProfileHero } from '@/components/ProfileHero';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
@@ -17,7 +16,7 @@ import { geocode, normalisePostcode } from '@/lib/geo';
 import { budgetsFor, formatPence } from '@/lib/budget';
 import { formatOdometer } from '@/lib/odometer';
 import type { DistanceUnit } from '@/lib/units';
-import { vehicleFor } from '@/lib/vehicles';
+import { heroVehicle, vehicleFor } from '@/lib/vehicles';
 import { carIconFor, displayPlate, prefsFor, routeColorFor } from '@/lib/preferences';
 import { datesInMonth, describeDays } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
@@ -59,7 +58,7 @@ function LinkRow({ icon, label, hint, href, tone }: { icon: keyof typeof Ionicon
 
 export default function Me() {
   const { palette, mode, setMode } = useTheme();
-  const { compact, contentWidth } = useLayout();
+  const { compact } = useLayout();
   const units = useUnits();
   const [unitBusy, setUnitBusy] = useState(false);
   const setUnit = async (next: DistanceUnit) => {
@@ -73,10 +72,10 @@ export default function Me() {
       setUnitBusy(false);
     }
   };
-  const carWidth = Math.round(Math.min(150, Math.max(92, contentWidth * 0.34)));
   const { profile, isAdmin, updateProfile, signOut } = useAuth();
   const { managers, myStores, chosenStoreIds } = useData();
   const vehicle = vehicleFor(profile?.vehicle_model);
+  const hero = heroVehicle(profile?.vehicle_model, isAdmin);
   const look = prefsFor(profile);
   const today = new Date();
   const shiftHint = profile?.shift_dates
@@ -105,29 +104,18 @@ export default function Me() {
 
   return (
     <Screen inTabs kicker={isAdmin ? 'Admin' : 'Merchandiser'} title={profile?.name ?? 'Me'}>
-      {/* Same glass as every other card; no entrance animation, so it never flickers on refocus. */}
-      <GlassCard glow="gold" animateIn={false} padded={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 12, paddingRight: 14 }}>
-          <View style={{ width: carWidth, flexShrink: 0, alignItems: 'center' }}>
-            <CarIllustration width={carWidth} accent={palette.gold} plate={displayPlate(profile)} shadow={palette.statusBar === 'dark' ? 'rgba(60,40,10,0.18)' : 'rgba(0,0,0,0.5)'} />
-          </View>
-          <View style={{ flex: 1, flexShrink: 1, minWidth: 0, gap: 3 }}>
-            <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">
-              {profile?.email}
-            </Txt>
-            <Txt variant="strong" numberOfLines={2}>
-              {look.car_make_model ?? (vehicle ? `${vehicle.year} BMW X1 M Sport Hybrid` : 'No vehicle selected')}
-              {look.car_reg ? ` · ${look.car_reg}` : ''}
-            </Txt>
-            <Txt variant="caption" tone="primary" numberOfLines={2}>
-              {formatOdometer(profile?.current_mileage == null ? null : units.milesValue(Number(profile.current_mileage)))} {units.label} · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
-            </Txt>
-          </View>
-          <View style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
-            <BRLogo size={compact ? 26 : 32} glow={false} />
-          </View>
-        </View>
-      </GlassCard>
+      <ProfileHero vehicle={hero} plate={displayPlate(profile)}>
+        <Txt variant="strong" numberOfLines={2} style={{ fontSize: 17, lineHeight: 22 }}>
+          {look.car_make_model ?? `${hero.year} BMW X1 M Sport Hybrid`}
+          {look.car_reg ? ` · ${look.car_reg}` : ''}
+        </Txt>
+        <Txt variant="caption" tone="primary" numberOfLines={2}>
+          {formatOdometer(profile?.current_mileage == null ? null : units.milesValue(Number(profile.current_mileage)))} {units.label} · {chosenStoreIds.length ? `${myStores.length} stores` : `Routes: ${managers.map(managerShort).join(' + ')}`}
+        </Txt>
+        <Txt variant="caption" tone="faint" numberOfLines={1} ellipsizeMode="middle">
+          {profile?.email}
+        </Txt>
+      </ProfileHero>
 
       <SectionHeader title="Distance units" />
       <GlassCard animateIn={false}>

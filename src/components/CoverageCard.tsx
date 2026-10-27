@@ -44,7 +44,7 @@ function Spark({ i, burst, ringSize }: { i: number; burst: SharedValue<number>; 
 }
 
 /** Home card: how much of this person's patch is on target this month. Celebrates once it is all cleared. */
-export function CoverageCard({ coverage, index = 0, onPress }: { coverage: PatchCoverage; index?: number; onPress?: () => void }) {
+export function CoverageCard({ coverage, index = 0, onPress, fill }: { coverage: PatchCoverage; index?: number; onPress?: () => void; fill?: boolean }) {
   const { palette } = useTheme();
   const { compact } = useLayout();
   const reduced = useReducedMotion();
@@ -74,7 +74,7 @@ export function CoverageCard({ coverage, index = 0, onPress }: { coverage: Patch
   const haloStyle = useAnimatedStyle(() => ({ opacity: 0.25 + pulse.value * 0.45, transform: [{ scale: 1 + pulse.value * 0.06 }] }));
 
   return (
-    <GlassCard glow={cleared ? 'gold' : false} index={index} onPress={onPress} accessibilityLabel={`Coverage progress: ${coverage.completed} of ${coverage.total} stores on target${cleared ? ', patch cleared' : ''}`}>
+    <GlassCard glow={cleared ? 'gold' : false} index={index} onPress={onPress} fill={fill} accessibilityLabel={`Coverage progress: ${coverage.completed} of ${coverage.total} stores on target${cleared ? ', patch cleared' : ''}`}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8 }}>
         <Txt variant="label" tone="dim" numberOfLines={1} style={{ flexShrink: 1 }}>
           Coverage progress

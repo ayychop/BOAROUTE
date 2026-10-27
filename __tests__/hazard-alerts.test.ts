@@ -1,4 +1,4 @@
-import { nearestHazardWithin, nextHazardAhead, proximityPhrase } from '../src/lib/hazard-alerts';
+import { CAMERA_APPROACH_M, CAMERA_PASSING_M, cameraCue, nearestHazardWithin, nextHazardAhead, proximityPhrase } from '../src/lib/hazard-alerts';
 import type { HazardReport } from '../src/lib/hazards';
 import { prepareRoute } from '../src/lib/nav-progress';
 import type { LngLat } from '../supabase/functions/_shared/route-analysis';
@@ -59,5 +59,22 @@ describe('background voice alerts within 500 m', () => {
     expect(a?.hazard.id).toBe('p');
     expect(proximityPhrase('speed_camera')).toBe('Speed camera ahead');
     expect(proximityPhrase('police')).toBe('Police reported ahead');
+  });
+});
+
+describe('speed camera voice notes', () => {
+  it('plays "approaching" from 500 m, once', () => {
+    expect(cameraCue(CAMERA_APPROACH_M + 1, undefined)).toBeNull();
+    expect(cameraCue(CAMERA_APPROACH_M, undefined)).toBe('approaching');
+    expect(cameraCue(300, 'approaching')).toBeNull();
+  });
+
+  it('plays "next to the camera" under 100 m, once', () => {
+    expect(cameraCue(CAMERA_PASSING_M, 'approaching')).toBe('passing');
+    expect(cameraCue(40, 'passing')).toBeNull();
+  });
+
+  it('goes straight to "passing" when the first fix is already close', () => {
+    expect(cameraCue(60, undefined)).toBe('passing');
   });
 });

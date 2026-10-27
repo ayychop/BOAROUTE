@@ -82,19 +82,7 @@
           }
         }
       ],
-      [
-        "react-native-car-projection",
-        {
-          "carAppCategory": "navigation",
-          "minCarApiLevel": 1,
-          "targetCarApiLevel": 6,
-          "mediaSupport": false,
-          "customPermissions": [
-            "androidx.car.app.NAVIGATION_TEMPLATES"
-          ]
-        }
-      ],
-      "./plugins/withCarAppDescriptor"
+      "./plugins/withAndroidAuto"
     ],
     "experiments": {
       "typedRoutes": true

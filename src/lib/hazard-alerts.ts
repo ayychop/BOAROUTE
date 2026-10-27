@@ -131,3 +131,22 @@ export function nearestHazardWithin(
 export function proximityPhrase(type: HazardType): string {
   return type === 'speed_camera' ? 'Speed camera ahead' : type === 'police' ? 'Police reported ahead' : 'Hazard reported ahead';
 }
+
+/** The "camera approaching" voice note plays from this far out. */
+export const CAMERA_APPROACH_M = 500;
+/** The "next to the camera" voice note plays this close. */
+export const CAMERA_PASSING_M = 100;
+
+export type CameraCue = 'approaching' | 'passing';
+
+/**
+ * Which voice note a speed camera this far away should get now, given the
+ * last one it got. Each plays once per camera; a camera first seen inside
+ * CAMERA_PASSING_M (a late GPS fix) goes straight to "passing".
+ */
+export function cameraCue(distanceM: number, played: CameraCue | undefined): CameraCue | null {
+  if (played === 'passing') return null;
+  if (distanceM <= CAMERA_PASSING_M) return 'passing';
+  if (distanceM <= CAMERA_APPROACH_M && !played) return 'approaching';
+  return null;
+}

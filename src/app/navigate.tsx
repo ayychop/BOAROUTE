@@ -20,6 +20,7 @@ import { useNow } from '@/hooks/useNow';
 import { useUnits } from '@/hooks/useUnits';
 import { spokenDistance } from '@/lib/units';
 import { CarAppService } from '@/car/CarAppService';
+import { carHazards } from '@/car/car-state';
 import { formatMinutes, formatTime } from '@/lib/format';
 import { haversineKm } from '@/lib/geo';
 import { hazardMeta, isLiveHazard, type HazardReport, type HazardType } from '@/lib/hazards';
@@ -32,7 +33,7 @@ import type { LatLng } from '@/lib/types';
 import { fetchRouteOptions } from '@/services/functions';
 import { useAuth } from '@/providers/AuthProvider';
 import { clearHazard, fetchLiveHazards, reportHazard } from '@/services/hazards';
-import { markHazardWarned, startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
+import { announceHazard, setRouteAlertsOnScreen, startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
 import { COCKPIT_MAP_STYLE } from '@/theme/map-style';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, springs } from '@/theme/typography';
@@ -251,7 +252,6 @@ export default function Navigate() {
   const [clearing, setClearing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [ahead, setAhead] = useState<HazardAhead | null>(null);
-  const warned = useRef(new Set<string>());
   const units = useUnits();
   // The driver's zoom survives following, recentring and the next trip.
   const zoom = useRef(clampZoom(Number(getPref('nav.zoom')) || FOLLOW_ZOOM));
@@ -369,13 +369,15 @@ export default function Navigate() {
         Alert.alert('Location unavailable', 'Turn on location to follow the route.');
         setNavigating(false);
       });
-    // Keeps camera and police alerts talking when the screen locks or Android Auto is in front.
-    startHazardWatch().catch(() => {});
+    // Keeps the co-pilot talking when the screen locks or Android Auto is in front.
+    startHazardWatch('navigate').catch(() => {});
+    setRouteAlertsOnScreen(true);
     return () => {
       alive = false;
       sub?.remove();
       Speech.stop();
-      stopHazardWatch().catch(() => {});
+      setRouteAlertsOnScreen(false);
+      stopHazardWatch('navigate').catch(() => {});
     };
   }, [navigating]);
 
@@ -394,15 +396,16 @@ export default function Navigate() {
       );
     }
 
-    // Reports on the road ahead: a countdown banner, plus one spoken warning per report.
-    const next = nextHazardAhead(prepared, p.vertex, here, hazards.filter((h) => isLiveHazard(h)));
+    // Reports on the road ahead: a countdown banner, the camera voice notes at
+    // 500 m and 100 m, and one spoken warning for anything else.
+    const live = hazards.filter((h) => isLiveHazard(h));
+    const next = nextHazardAhead(prepared, p.vertex, here, live);
     setAhead(next);
-    if (next && !warned.current.has(next.hazard.id)) {
-      warned.current.add(next.hazard.id);
-      markHazardWarned(next.hazard.id);
+    if (next && !muted && announceHazard(next.hazard, next.distanceM, `${hazardMeta(next.hazard.hazard_type).label} reported in ${spokenDistance(units.nav(next.distanceM))}`)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-      say(`${hazardMeta(next.hazard.hazard_type).label} reported in ${spokenDistance(units.nav(next.distanceM))}`);
     }
+    CarAppService.setPosition({ ...here, heading: position.coords.heading ?? null });
+    CarAppService.setHazards(carHazards(live, here));
 
     // Stops along the way.
     for (const w of waypoints) {
@@ -454,15 +457,21 @@ export default function Navigate() {
     CarAppService.showRoute({
       title: req.title,
       instruction: progress?.nextStep?.instruction ?? option.steps[0]?.instruction ?? null,
-      distanceToNext: progress?.nextStep ? units.nav(progress.distanceToNextM) : null,
-      arrival: formatTime(new Date(Date.now() + remainingS * 1000)),
-      remaining: `${formatMinutes(remainingS / 60)} · ${units.distance(remainingM / 1000)}`,
+      distanceToNextM: progress?.nextStep ? progress.distanceToNextM : null,
+      arrivalMs: Date.now() + remainingS * 1000,
+      remainingM,
+      remainingS,
       // Arriving at the destination leaves no waypoints ahead; keep it named on the car.
       stops: (ahead.length || !progress?.arrived ? ahead : waypoints.slice(-1)).map((w) => w.label),
       arrived: !!progress?.arrived,
       rerouting,
     });
-  }, [navigating, option, prepared, progress, waypoints, rerouting, req, units]);
+  }, [navigating, option, prepared, progress, waypoints, rerouting, req]);
+
+  // The route line on the car map, sent once per route rather than per fix.
+  useEffect(() => {
+    if (navigating && option) CarAppService.setPath(option.geometry);
+  }, [navigating, option]);
 
   useEffect(() => {
     if (!navigating) return;
@@ -479,7 +488,6 @@ export default function Navigate() {
       return;
     }
     announced.current.clear();
-    warned.current.clear();
     setFollowing(true);
     setNavigating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});

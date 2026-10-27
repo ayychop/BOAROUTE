@@ -53,9 +53,13 @@ function Sheen({ height }: { height: number }) {
  * A UK rear number plate showing the driver's name (SARAH, JO, DAVID), with
  * the blue UK band. Scales from a badge on a card to the hero on Your vehicle.
  * `sheen` adds the sweeping glass reflection used on the Home car card.
+ *
+ * It never squashes: given `maxWidth`, the whole plate scales down at the real
+ * 4.4:1 proportion instead of the yellow narrowing while the height stays.
  */
-export function NumberPlate({ text, height = 30, sheen = false }: { text: string; height?: number; sheen?: boolean }) {
+export function NumberPlate({ text, height: wanted = 30, maxWidth, sheen = false }: { text: string; height?: number; maxWidth?: number; sheen?: boolean }) {
   const label = text.toUpperCase().slice(0, 8) || 'BOA';
+  const height = maxWidth ? Math.max(16, Math.min(wanted, maxWidth / 4.4)) : wanted;
   // Real UK plate proportions, so a short name and KMKM25ML sit on the same size plate.
   const width = height * 4.4;
   const band = height * 0.48;
@@ -69,8 +73,8 @@ export function NumberPlate({ text, height = 30, sheen = false }: { text: string
       accessibilityLabel={`Number plate reading ${label}`}
       style={{
         width,
-        maxWidth: '100%',
         height,
+        flexShrink: 0,
         flexDirection: 'row',
         alignItems: 'stretch',
         borderRadius: height * 0.14,

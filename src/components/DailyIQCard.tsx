@@ -70,7 +70,7 @@ function Dot({ i, x, width }: { i: number; x: SharedValue<number>; width: number
 }
 
 /** Daily Samsung IQ on Home: five questions a day from the approved pool, swipe through and tap to reveal. */
-export function DailyIQCard({ now, index = 0 }: { now: number; index?: number }) {
+export function DailyIQCard({ now, index = 0, fill }: { now: number; index?: number; fill?: boolean }) {
   const { palette } = useTheme();
   const [pool, setPool] = useState<TrainingQuestion[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -112,7 +112,7 @@ export function DailyIQCard({ now, index = 0 }: { now: number; index?: number })
   const seen = today.filter((q) => isRevealed(q.id)).length;
 
   return (
-    <GlassCard index={index} glow="gold">
+    <GlassCard index={index} glow="gold" fill={fill}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <Ionicons name="school" size={16} color={palette.gold} />
         <Txt variant="label" tone="gold" style={{ flex: 1 }} numberOfLines={1}>

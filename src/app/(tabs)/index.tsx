@@ -16,6 +16,7 @@ import { MotivationCard } from '@/components/MotivationCard';
 import { NumberPlate } from '@/components/NumberPlate';
 import { Odometer } from '@/components/Odometer';
 import { Screen, SectionHeader } from '@/components/Screen';
+import { TodayCard } from '@/components/TodayCard';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useUnits } from '@/hooks/useUnits';
@@ -24,15 +25,15 @@ import { patchCoverage } from '@/lib/coverage';
 import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/budget';
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
 import { odometerValue } from '@/lib/odometer';
-import { computeDue, monthProgress } from '@/lib/route-engine';
+import { computeDue, monthProgress, type DueStore } from '@/lib/route-engine';
 import { displayPlate, prefsFor } from '@/lib/preferences';
-import { vehicleFor } from '@/lib/vehicles';
+import type { Store } from '@/lib/types';
+import { heroVehicle } from '@/lib/vehicles';
 import { isWorkingDate, workingDatesLeft } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
 import { COCKPIT_INK, greetingFor } from '@/theme/palettes';
 import { useTheme } from '@/theme/ThemeProvider';
-import { radius } from '@/theme/typography';
 
 function ActionTile({ icon, label, sub, onPress, index, tone = 'primary' }: { icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void; index: number; tone?: 'primary' | 'gold' }) {
   const { palette } = useTheme();
@@ -70,32 +71,53 @@ function TileGrid({ children }: { children: ReactNode[] }) {
   );
 }
 
+/**
+ * Two cards side by side on the Fold's inner screen, stacked on phones. Side
+ * by side they stretch to the taller one (cards pass `fill`), so a short card
+ * never leaves a block of empty background under it.
+ */
+function Pair({ wide, children }: { wide: boolean; children: [ReactNode, ReactNode] }) {
+  const [a, b] = children;
+  if (!wide || !a || !b) {
+    return (
+      <>
+        {a}
+        {b}
+      </>
+    );
+  }
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 14 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>{a}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>{b}</View>
+    </View>
+  );
+}
+
+/**
+ * Home, most urgent first for a field worker:
+ * 1. Today: the visit running now (countdown, End Visit) or the next store (Start Visit, today's route).
+ * 2. The patch: coverage, the stores after that, Daily Samsung IQ.
+ * 3. Money and the rest: car and mileage, budgets, events, motivation, tools.
+ */
 export default function Hub() {
-  const { palette, phase } = useTheme();
+  const { phase } = useTheme();
   const { profile, isAdmin } = useAuth();
-  const { myStores, patchStores, tallies, targets, events, expenses, mileage, refresh } = useData();
+  const { myStores, patchStores, tallies, targets, weekLocked, activeVisit, startVisit, completeVisit, refresh } = useData();
   const { compact, expanded } = useLayout();
-  const units = useUnits();
   const [refreshing, setRefreshing] = useState(false);
 
   const nowMs = useNow();
   const now = new Date(nowMs);
-  const month = monthKey(new Date(nowMs));
   const progress = useMemo(() => monthProgress(myStores, tallies, targets), [myStores, tallies, targets]);
-  const due = useMemo(() => computeDue(myStores, tallies, targets), [myStores, tallies, targets]);
+  // Stores an OM is locked out of this week would only refuse Start Visit, so they are left off.
+  const due = useMemo(() => computeDue(myStores.filter((s) => !weekLocked.has(s.id)), tallies, targets), [myStores, weekLocked, tallies, targets]);
   // Coverage counts the whole patch they are meant to cover, not just the stores they picked to route.
   const coverage = useMemo(() => patchCoverage(patchStores, tallies, targets), [patchStores, tallies, targets]);
-  const budgets = useMemo(() => budgetsFor(profile), [profile]);
-  const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
-  const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
-  const upcoming = useMemo(() => events.filter((e) => new Date(e.event_date).getTime() >= nowMs - 3_600_000).slice(0, 3), [events, nowMs]);
-  const vehicle = vehicleFor(profile?.vehicle_model);
-  const carPrefs = prefsFor(profile);
-  // The shift calendar's exact dates; the weekly pattern only until it is saved.
   const shiftDates = profile?.shift_dates ?? null;
   const workingToday = isWorkingDate(now, shiftDates, profile?.working_days);
-  const daysLeft = workingDatesLeft(now, shiftDates, profile?.working_days);
   const owed = due.reduce((a, d) => a + d.remaining, 0);
+  const visitStore = activeVisit ? (patchStores.find((s) => s.id === activeVisit.storeId) ?? null) : null;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -104,7 +126,7 @@ export default function Hub() {
   };
 
   const header = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 12 : 16, marginBottom: compact ? 16 : 22 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 12 : 16, marginBottom: compact ? 14 : 20 }}>
       <BRLogo size={compact ? 40 : expanded ? 60 : 50} animated={phase === 'cockpit'} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Txt variant="label" tone="primary" numberOfLines={1}>
@@ -117,34 +139,135 @@ export default function Hub() {
     </View>
   );
 
-  // 1. Car and mileage
-  const carCard = (
-    <GlassCard glow="gold" padded={false} index={0} onPress={() => router.navigate('/finances')} accessibilityLabel="Vehicle and mileage">
-      {vehicle && (
-        <View style={{ aspectRatio: compact ? 2.1 : 2.3 }}>
-          <Image source={vehicle.image} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
-          <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
-          <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <View style={{ flexShrink: 1 }}>
-              <NumberPlate text={displayPlate(profile)} height={compact ? 24 : 28} sheen />
-            </View>
-            <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workingToday ? palette.success : palette.textFaint }} />
-              <Txt variant="label" numberOfLines={1} style={{ color: COCKPIT_INK.text, fontSize: 9.5 }}>
-                {workingToday ? 'Working day' : 'Day off'}
+  return (
+    <Screen inTabs onRefresh={onRefresh} refreshing={refreshing}>
+      {header}
+      <DataErrorBanner />
+
+      {/* 1. Today */}
+      <TodayCard
+        activeVisit={activeVisit}
+        visitStore={visitStore}
+        next={due[0] ?? null}
+        workingToday={workingToday}
+        progressLine={`${progress.done} of ${progress.target} visits · ${owed} owed`}
+        startVisit={startVisit}
+        completeVisit={completeVisit}
+      />
+
+      {/* 2. The patch */}
+      <SectionHeader title="Your patch" />
+      <View style={{ gap: 14 }}>
+        <Pair wide={expanded}>
+          <CoverageCard coverage={coverage} index={1} onPress={() => router.navigate('/stores')} fill={expanded} />
+          <NextStores due={due.slice(activeVisit ? 0 : 1, activeVisit ? 4 : 5)} fill={expanded} />
+        </Pair>
+        {profile?.show_training ? <DailyIQCard now={nowMs} index={2} /> : null}
+      </View>
+
+      {/* 3. Money, events and tools */}
+      <SectionHeader title="Mileage & budgets" />
+      <Pair wide={expanded}>
+        <CarCard fill={expanded} />
+        <BudgetCard fill={expanded} />
+      </Pair>
+      <EventsBlock now={nowMs} />
+      <SectionHeader title="Daily motivation" />
+      <MotivationCard now={nowMs} index={3} />
+      <SectionHeader title="Quick actions" />
+      <TileGrid>
+        {
+          [
+            <ActionTile key="miles" index={5} icon="speedometer" label="Log a trip" sub="Work or personal" onPress={() => router.navigate('/finances')} />,
+            <ActionTile key="event" index={6} icon="calendar" label="Log event" sub="Sales Day, OOH, meetings" onPress={() => router.push('/event-new')} />,
+            <ActionTile key="ai" index={7} icon="sparkles" label="Draft a message" sub="Notes and emails" onPress={() => router.push('/ai-writer')} />,
+            <ActionTile key="stores" index={8} icon="storefront" label="My stores" sub={`${myStores.length} on your patch`} onPress={() => router.push('/my-stores')} />,
+            isAdmin ? <ActionTile key="admin" index={9} icon="shield-checkmark" tone="gold" label="Store management" sub="Assign and move stores" onPress={() => router.push('/admin/stores')} /> : null,
+          ].filter(Boolean) as ReactNode[]
+        }
+      </TileGrid>
+    </Screen>
+  );
+}
+
+/** The stores after the one on the Today card, most pressing first. */
+function NextStores({ due, fill }: { due: DueStore<Store>[]; fill?: boolean }) {
+  const { palette } = useTheme();
+  return (
+    <GlassCard index={1} fill={fill} accessibilityLabel="Stores to visit next">
+      <Txt variant="label" tone="dim" numberOfLines={1} style={{ marginBottom: 6 }}>
+        Up next
+      </Txt>
+      {due.length === 0 ? (
+        <Txt variant="caption" tone="faint">
+          No other store is owed a visit this month.
+        </Txt>
+      ) : (
+        due.map((d, i) => (
+          <Pressable
+            key={d.store.id}
+            accessibilityRole="link"
+            onPress={() => router.push(`/store/${d.store.id}`)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingVertical: 10,
+              borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth,
+              borderTopColor: palette.border,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Txt variant="strong" numberOfLines={1}>
+                {d.store.name}
+              </Txt>
+              <Txt variant="caption" tone="faint" numberOfLines={1}>
+                Grade {d.store.grade} · {d.remaining} {d.remaining === 1 ? 'visit' : 'visits'} to go
               </Txt>
             </View>
-          </View>
-          <View style={{ position: 'absolute', left: 18, right: 18, bottom: 6 }}>
-            <Txt variant="title" numberOfLines={1}>
-              {carPrefs.car_make_model ?? 'BMW X1 M Sport Hybrid'}
-            </Txt>
-          </View>
-        </View>
+            <Ionicons name="chevron-forward" size={18} color={palette.textFaint} style={{ flexShrink: 0 }} />
+          </Pressable>
+        ))
       )}
-      <View style={{ padding: compact ? 16 : 20, paddingTop: vehicle ? 10 : undefined, gap: 14 }}>
+    </GlassCard>
+  );
+}
+
+/** Car photo with the plate, odometer and this month's mileage. */
+function CarCard({ fill }: { fill?: boolean }) {
+  const { palette } = useTheme();
+  const { profile, isAdmin } = useAuth();
+  const { mileage } = useData();
+  const { compact, expanded, contentWidth } = useLayout();
+  const units = useUnits();
+  const nowMs = useNow();
+  const now = new Date(nowMs);
+  const month = monthKey(new Date(nowMs));
+  const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
+  const vehicle = heroVehicle(profile?.vehicle_model, isAdmin);
+  const carPrefs = prefsFor(profile);
+  const daysLeft = workingDatesLeft(now, profile?.shift_dates ?? null, profile?.working_days);
+  const cardWidth = expanded ? (contentWidth - 14) / 2 : contentWidth;
+
+  return (
+    <GlassCard glow="gold" padded={false} index={4} fill={fill} onPress={() => router.navigate('/finances')} accessibilityLabel="Vehicle and mileage">
+      <View style={{ aspectRatio: compact ? 2.1 : 2.3 }}>
+        <Image source={vehicle.image} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
+        <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
+        <View style={{ position: 'absolute', top: 14, left: 16 }}>
+          {/* Sized from the card's width, so it is never squeezed by anything beside it. */}
+          <NumberPlate text={displayPlate(profile)} height={compact ? 26 : 32} maxWidth={cardWidth * 0.55} sheen />
+        </View>
+        <View style={{ position: 'absolute', left: 18, right: 18, bottom: 6 }}>
+          <Txt variant="title" numberOfLines={1} style={{ color: COCKPIT_INK.text }}>
+            {carPrefs.car_make_model ?? 'BMW X1 M Sport Hybrid'}
+          </Txt>
+        </View>
+      </View>
+      <View style={{ flex: fill ? 1 : undefined, justifyContent: 'space-between', padding: compact ? 16 : 20, paddingTop: 10, gap: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <Odometer value={odometerValue(profile?.current_mileage)} size={compact ? 'sm' : 'md'} maxWidth={expanded ? 420 : undefined} />
+          <Odometer value={odometerValue(profile?.current_mileage)} size={compact ? 'sm' : 'md'} maxWidth={expanded ? 360 : undefined} />
           <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
         </View>
         <View style={{ flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, paddingTop: 12 }}>
@@ -155,25 +278,30 @@ export default function Hub() {
       </View>
     </GlassCard>
   );
+}
 
-  // 2. Patch coverage
-  const coverageCard = <CoverageCard coverage={coverage} index={1} onPress={() => router.navigate('/stores')} />;
-
-  // Daily Samsung IQ, for whoever the admin has switched it on for.
-  const iqCard = profile?.show_training ? <DailyIQCard now={nowMs} index={1} /> : null;
-
-  // 3. Budgets
-  const budgetCard = (
-    <GlassCard index={1} onPress={() => router.navigate('/finances')} accessibilityLabel="Budgets">
+function BudgetCard({ fill }: { fill?: boolean }) {
+  const { profile } = useAuth();
+  const { expenses } = useData();
+  const nowMs = useNow();
+  const month = monthKey(new Date(nowMs));
+  const budgets = useMemo(() => budgetsFor(profile), [profile]);
+  const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
+  return (
+    <GlassCard index={4} fill={fill} onPress={() => router.navigate('/finances')} accessibilityLabel="Budgets">
       <Txt variant="label" tone="dim" numberOfLines={1} style={{ marginBottom: 14 }}>
         Budgets this month
       </Txt>
       <BudgetRings budget={budget} />
     </GlassCard>
   );
+}
 
-  // 4. Upcoming events
-  const eventsBlock = (
+function EventsBlock({ now }: { now: number }) {
+  const { palette } = useTheme();
+  const { events } = useData();
+  const upcoming = useMemo(() => events.filter((e) => new Date(e.event_date).getTime() >= now - 3_600_000).slice(0, 3), [events, now]);
+  return (
     <View>
       <SectionHeader
         title="Upcoming events"
@@ -219,55 +347,6 @@ export default function Hub() {
         </View>
       )}
     </View>
-  );
-
-  // 5. Quick actions
-  const actions = (
-    <View>
-      <SectionHeader title="Quick actions" />
-      <TileGrid>
-        {[
-          <ActionTile key="route" index={5} icon="navigate" label="Today's route" sub={owed ? `${progress.done} of ${progress.target} visits · ${owed} owed` : 'Every store on target'} onPress={() => router.navigate('/route')} />,
-          <ActionTile key="miles" index={6} icon="speedometer" label="Log a trip" sub="Work or personal" onPress={() => router.navigate('/finances')} />,
-          <ActionTile key="event" index={7} icon="calendar" label="Log event" sub="Sales Day, OOH, meetings" onPress={() => router.push('/event-new')} />,
-          <ActionTile key="ai" index={8} icon="sparkles" label="Draft a message" sub="Notes and emails" onPress={() => router.push('/ai-writer')} />,
-          isAdmin ? <ActionTile key="admin" index={9} icon="shield-checkmark" tone="gold" label="Store management" sub="Assign and move stores" onPress={() => router.push('/admin/stores')} /> : null,
-          <ActionTile key="stores" index={10} icon="storefront" label="My stores" sub={`${myStores.length} on your patch`} onPress={() => router.push('/my-stores')} />,
-        ].filter(Boolean) as ReactNode[]}
-      </TileGrid>
-    </View>
-  );
-
-  return (
-    <Screen inTabs onRefresh={onRefresh} refreshing={refreshing}>
-      {header}
-      <DataErrorBanner />
-      {expanded ? (
-        <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
-          <View style={{ flex: 1.1, gap: 14 }}>
-            {carCard}
-            {coverageCard}
-            <MotivationCard now={nowMs} index={1} />
-            {iqCard}
-            {budgetCard}
-          </View>
-          <View style={{ flex: 1 }}>
-            {eventsBlock}
-            {actions}
-          </View>
-        </View>
-      ) : (
-        <View style={{ gap: 14 }}>
-          {carCard}
-          {coverageCard}
-          <MotivationCard now={nowMs} index={1} />
-          {iqCard}
-          {budgetCard}
-          {eventsBlock}
-          {actions}
-        </View>
-      )}
-    </Screen>
   );
 }
 

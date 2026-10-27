@@ -56,3 +56,12 @@ export function vehicleFor(model: string | null | undefined): Vehicle | null {
   if (!model) return null;
   return VEHICLES.find((v) => v.model === model) ?? null;
 }
+
+/**
+ * The car to show in a hero: their saved model, else the one for their role
+ * (25 plate for admins, 26 for merchandisers). A profile with no model, or one
+ * saved under an old name, still gets the photo and the full-size plate.
+ */
+export function heroVehicle(model: string | null | undefined, isAdmin: boolean): Vehicle {
+  return vehicleFor(model) ?? (isAdmin ? VEHICLES[0] : VEHICLES[1]);
+}
