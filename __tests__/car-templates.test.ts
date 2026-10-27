@@ -1,4 +1,4 @@
-import { MAX_CAR_ROWS, carTemplate, type CarNavState } from '../src/car/car-templates';
+import { MAX_CAR_ROWS, carTemplate, type CarContext, type CarNavState } from '../src/car/car-templates';
 
 const base: CarNavState = {
   title: 'Tuesday route',
@@ -57,5 +57,44 @@ describe('Android Auto car screen', () => {
     const t = carTemplate({ ...base, stops: ['A'.repeat(100)] });
     expect(t.items[2].title.length).toBeLessThanOrEqual(60);
     expect(t.items[2].title.endsWith('…')).toBe(true);
+  });
+});
+
+describe('Android Auto upcoming stores and Start Visit', () => {
+  const ctx: CarContext = {
+    upcoming: [
+      { id: 's1', name: 'Currys Aylesbury', detail: 'Grade A · 2 visits to go' },
+      { id: 's2', name: 'Argos Thame', detail: 'Grade B · 1 visit to go' },
+    ],
+    storeIds: { 'Currys Aylesbury': 's1', 'Argos Thame': 's2' },
+    visiting: null,
+  };
+
+  it('lists upcoming stores with Start Visit for the first when there is no route', () => {
+    const t = carTemplate(null, ctx);
+    expect(t.title).toBe('Upcoming stores');
+    expect(t.items.map((r) => r.title)).toEqual(['Currys Aylesbury', 'Argos Thame']);
+    expect(t.items[0].texts).toEqual(['Next · Grade A · 2 visits to go']);
+    expect(t.actionStrip).toEqual([{ title: 'Start Visit', storeId: 's1' }]);
+  });
+
+  it('caps the idle list at the driving row limit', () => {
+    const upcoming = Array.from({ length: 9 }, (_, i) => ({ id: `s${i}`, name: `Store ${i}`, detail: 'Grade C · 1 visit to go' }));
+    expect(carTemplate(null, { ...ctx, upcoming }).items).toHaveLength(MAX_CAR_ROWS);
+  });
+
+  it('offers Start Visit for the next stop while navigating', () => {
+    expect(carTemplate(base, ctx).actionStrip).toEqual([{ title: 'Start Visit', storeId: 's1' }]);
+  });
+
+  it('has no Start Visit when the next stop is not a store', () => {
+    expect(carTemplate({ ...base, stops: ['Home'] }, ctx).actionStrip).toBeUndefined();
+  });
+
+  it('shows the visit in progress instead of another Start Visit', () => {
+    const idle = carTemplate(null, { ...ctx, visiting: 'Argos Thame' });
+    expect(idle.items).toEqual([{ title: 'Visiting Argos Thame', texts: ['Complete the visit on your phone.'] }]);
+    expect(idle.actionStrip).toBeUndefined();
+    expect(carTemplate(base, { ...ctx, visiting: 'Argos Thame' }).actionStrip).toBeUndefined();
   });
 });

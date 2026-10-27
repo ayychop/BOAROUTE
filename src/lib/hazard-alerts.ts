@@ -78,3 +78,56 @@ export function nextHazardAhead(route: PreparedRoute, vertex: number, here: LatL
   }
   return found;
 }
+
+/** Background voice alerts fire this close to a report, as the crow flies. */
+export const PROXIMITY_ALERT_M = 500;
+/** Types the background watcher announces. */
+export const PROXIMITY_TYPES: readonly HazardType[] = ['speed_camera', 'police'];
+/** A report more than this far off the driver's heading is beside or behind them. */
+const AHEAD_CONE_DEG = 60;
+
+function metresBetween(a: LatLng, b: LatLng): number {
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function bearingDeg(a: LatLng, b: LatLng): number {
+  const y = Math.sin(rad(b.lng - a.lng)) * Math.cos(rad(b.lat));
+  const x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * The closest speed camera or police report within PROXIMITY_ALERT_M that the
+ * driver has not been warned about. Used without a planned route (the
+ * background watcher), so when the heading is known, reports outside a cone
+ * ahead of the car are skipped.
+ */
+export function nearestHazardWithin(
+  here: LatLng,
+  heading: number | null,
+  hazards: HazardReport[],
+  warned: ReadonlySet<string>,
+  radiusM = PROXIMITY_ALERT_M,
+): HazardAhead | null {
+  let found: HazardAhead | null = null;
+  for (const h of hazards) {
+    if (!PROXIMITY_TYPES.includes(h.hazard_type) || warned.has(h.id)) continue;
+    const p = { lat: h.latitude, lng: h.longitude };
+    const distanceM = metresBetween(here, p);
+    if (distanceM > radiusM) continue;
+    if (heading != null && heading >= 0 && distanceM > 30) {
+      const diff = Math.abs(((bearingDeg(here, p) - heading + 540) % 360) - 180);
+      if (diff > AHEAD_CONE_DEG) continue;
+    }
+    if (!found || distanceM < found.distanceM) found = { hazard: h, distanceM };
+  }
+  return found;
+}
+
+/** What the voice says, kept short so the driver never needs the screen. */
+export function proximityPhrase(type: HazardType): string {
+  return type === 'speed_camera' ? 'Speed camera ahead' : type === 'police' ? 'Police reported ahead' : 'Hazard reported ahead';
+}

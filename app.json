@@ -88,7 +88,7 @@
           "carAppCategory": "navigation",
           "minCarApiLevel": 1,
           "targetCarApiLevel": 6,
-          "mediaSupport": false,
+          "mediaSupport": true,
           "customPermissions": [
             "androidx.car.app.NAVIGATION_TEMPLATES"
           ]

@@ -1,7 +1,8 @@
 /**
  * The Android Auto screen, built from the phone's live navigation. Pure data in
  * the shape react-native-car-projection sends to the native Car App Library,
- * so it can be tested without a head unit.
+ * so it can be tested without a head unit. A Start Visit button in the action
+ * strip starts the timed visit for the next store without touching the phone.
  *
  * The library renders ListTemplate, PaneTemplate and MessageTemplate only (no
  * map surface), so the car shows the next manoeuvre, arrival and the stops as
@@ -37,13 +38,40 @@ export interface CarRow {
   texts?: string[];
 }
 
+/** A button in the car's action strip. CarAppService turns storeId into the press handler. */
+export interface CarAction {
+  title: 'Start Visit';
+  storeId: string;
+}
+
 export interface CarListTemplate {
   type: 'ListTemplate';
   title: string;
   items: CarRow[];
   /** "app_icon" is mapped to the car's standard app icon header. */
   headerAction: { title: 'app_icon' };
+  actionStrip?: CarAction[];
 }
+
+/** A store still owed visits, for the car's idle screen. */
+export interface CarStore {
+  id: string;
+  name: string;
+  /** e.g. "Grade A · 2 visits to go". */
+  detail: string;
+}
+
+/** What the phone knows about the person's stores, beyond the live route. */
+export interface CarContext {
+  /** Stores to visit next, most pressing first. */
+  upcoming: CarStore[];
+  /** Store id by name, so the next route stop can be started from the car. */
+  storeIds: Record<string, string>;
+  /** Name of the store being visited now, if a visit is running. */
+  visiting: string | null;
+}
+
+export const EMPTY_CAR_CONTEXT: CarContext = { upcoming: [], storeIds: {}, visiting: null };
 
 /** Car screens truncate long lines; keep titles readable at a glance. */
 function clip(text: string, max = 60): string {
@@ -56,16 +84,26 @@ function stopLabel(i: number, total: number): string {
   return i === total - 1 ? 'Destination' : `Stop ${i + 1}`;
 }
 
-/** What the car shows: the live route while the phone navigates, a prompt otherwise. */
-export function carTemplate(state: CarNavState | null): CarListTemplate {
-  if (!state) {
-    return {
-      type: 'ListTemplate',
-      title: 'BOAROUTE',
-      items: [{ title: 'No active route', texts: ['Start navigation on your phone and your route appears here.'] }],
-      headerAction: { title: 'app_icon' },
-    };
+function startVisit(storeId: string | undefined, ctx: CarContext): CarAction[] | undefined {
+  return storeId && !ctx.visiting ? [{ title: 'Start Visit', storeId }] : undefined;
+}
+
+/** Without a route: the visit in progress, else the stores to visit next with a Start Visit button for the first. */
+function idleTemplate(ctx: CarContext): CarListTemplate {
+  const header = { headerAction: { title: 'app_icon' as const } };
+  if (ctx.visiting) {
+    return { type: 'ListTemplate', title: 'BOAROUTE', items: [{ title: clip(`Visiting ${ctx.visiting}`), texts: ['Complete the visit on your phone.'] }], ...header };
   }
+  if (ctx.upcoming.length === 0) {
+    return { type: 'ListTemplate', title: 'BOAROUTE', items: [{ title: 'No active route', texts: ['Start navigation on your phone and your route appears here.'] }], ...header };
+  }
+  const items = ctx.upcoming.slice(0, MAX_CAR_ROWS).map((s, i) => ({ title: clip(s.name), texts: [i === 0 ? `Next · ${s.detail}` : s.detail] }));
+  return { type: 'ListTemplate', title: 'Upcoming stores', items, ...header, actionStrip: startVisit(ctx.upcoming[0].id, ctx) };
+}
+
+/** What the car shows: the live route while the phone navigates, the upcoming stores otherwise. */
+export function carTemplate(state: CarNavState | null, ctx: CarContext = EMPTY_CAR_CONTEXT): CarListTemplate {
+  if (!state) return idleTemplate(ctx);
 
   const items: CarRow[] = [];
   const next = state.stops[0];
@@ -83,5 +121,7 @@ export function carTemplate(state: CarNavState | null): CarListTemplate {
     if (hidden > 0) items.push({ title: `+${hidden} more stops`, texts: [`Ending at ${clip(state.stops[state.stops.length - 1], 40)}`] });
   }
 
-  return { type: 'ListTemplate', title: clip(state.title, 40), items, headerAction: { title: 'app_icon' } };
+  const template: CarListTemplate = { type: 'ListTemplate', title: clip(state.title, 40), items, headerAction: { title: 'app_icon' } };
+  const actions = startVisit(next ? ctx.storeIds[next] : undefined, ctx);
+  return actions ? { ...template, actionStrip: actions } : template;
 }

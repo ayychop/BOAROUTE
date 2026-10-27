@@ -1,6 +1,6 @@
 import { managersFor } from '../src/lib/frequency';
 import type { RoutableStore } from '../src/lib/route-engine';
-import { storesForPerson } from '../src/lib/store-selection';
+import { ownerTabs, storesForPerson } from '../src/lib/store-selection';
 import type { StoreOwner } from '../src/lib/types';
 
 const store = (id: string, owner: StoreOwner): RoutableStore => ({
@@ -45,5 +45,42 @@ describe('storesForPerson', () => {
   it('shows nothing to a pending account, handed stores included', () => {
     const none = managersFor({ role: 'unassigned', route_managers: null });
     expect(storesForPerson(all, none, [], []).patch).toEqual([]);
+  });
+});
+
+describe('ownerTabs', () => {
+  const david = managersFor({ role: 'user', route_managers: null, manager_name: 'David' });
+  const table = [
+    ...all,
+    store('jermaine1', 'Jermaine'),
+    store('kishan2', 'Kishan'),
+    store('raphael1', 'Raphael'),
+    store('dave-old', 'David'),
+  ];
+
+  it('gives Sarah Jo, Pete and Marcia, without her legacy name', () => {
+    const { patch } = storesForPerson(table, sarah, [], []);
+    expect(ownerTabs(sarah, patch)).toEqual(['Joseph', 'Pete', 'Marcia']);
+  });
+
+  it('gives David Jermaine, Kishan and Raphael', () => {
+    const { patch } = storesForPerson(table, david, [], []);
+    expect(ownerTabs(david, patch)).toEqual(['Jermaine', 'Kishan', 'Raphael']);
+  });
+
+  it('keeps every tab when she routes only a few picked stores', () => {
+    const { patch, mine } = storesForPerson(table, sarah, ['pete1'], []);
+    expect(ids(mine)).toEqual(['pete1']);
+    expect(ownerTabs(sarah, patch)).toEqual(['Joseph', 'Pete', 'Marcia']);
+  });
+
+  it('adds no tab for a store handed over from outside the patch', () => {
+    const { patch } = storesForPerson(table, sarah, [], ['kishan1']);
+    expect(ownerTabs(sarah, patch)).not.toContain('Kishan');
+  });
+
+  it('drops a manager with no stores in the table', () => {
+    const { patch } = storesForPerson(table.filter((s) => s.assigned_manager !== 'Marcia'), sarah, [], []);
+    expect(ownerTabs(sarah, patch)).toEqual(['Joseph', 'Pete']);
   });
 });

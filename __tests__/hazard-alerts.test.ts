@@ -1,4 +1,4 @@
-import { nextHazardAhead } from '../src/lib/hazard-alerts';
+import { nearestHazardWithin, nextHazardAhead, proximityPhrase } from '../src/lib/hazard-alerts';
 import type { HazardReport } from '../src/lib/hazards';
 import { prepareRoute } from '../src/lib/nav-progress';
 import type { LngLat } from '../supabase/functions/_shared/route-analysis';
@@ -31,5 +31,33 @@ describe('speed camera proximity', () => {
     expect(nextHazardAhead(route, 5, { lat: 51.6051, lng: -0.75 }, [camera('c', 51.605)])).toBeNull();
     const two = nextHazardAhead(route, 0, here, [camera('second', 51.607), camera('first', 51.603)]);
     expect(two?.hazard.id).toBe('first');
+  });
+});
+
+describe('background voice alerts within 500 m', () => {
+  const here = { lat: 51.6, lng: -0.75 };
+  const police = (id: string, lat: number): HazardReport => ({ ...camera(id, lat), hazard_type: 'police' });
+
+  it('finds a camera inside 500 m and ignores one beyond it', () => {
+    expect(nearestHazardWithin(here, null, [camera('near', 51.604)], new Set())?.hazard.id).toBe('near');
+    expect(nearestHazardWithin(here, null, [camera('far', 51.6055)], new Set())).toBeNull();
+  });
+
+  it('only warns about speed cameras and police, once each', () => {
+    const accident: HazardReport = { ...camera('acc', 51.601), hazard_type: 'accident' };
+    expect(nearestHazardWithin(here, null, [accident], new Set())).toBeNull();
+    expect(nearestHazardWithin(here, null, [police('p', 51.602)], new Set(['p']))).toBeNull();
+  });
+
+  it('skips reports behind the driver when the heading is known', () => {
+    expect(nearestHazardWithin(here, 0, [camera('ahead', 51.603)], new Set())?.hazard.id).toBe('ahead');
+    expect(nearestHazardWithin(here, 180, [camera('ahead', 51.603)], new Set())).toBeNull();
+  });
+
+  it('picks the nearest and words it for speech', () => {
+    const a = nearestHazardWithin(here, null, [camera('c', 51.604), police('p', 51.602)], new Set());
+    expect(a?.hazard.id).toBe('p');
+    expect(proximityPhrase('speed_camera')).toBe('Speed camera ahead');
+    expect(proximityPhrase('police')).toBe('Police reported ahead');
   });
 });

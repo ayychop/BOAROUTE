@@ -16,6 +16,7 @@ import { useNow } from '@/hooks/useNow';
 import { monthKey } from '@/lib/budget';
 import { GRADES, managerShort, storeTarget } from '@/lib/frequency';
 import { getPref, setPref } from '@/lib/prefs';
+import { ownerTabs } from '@/lib/store-selection';
 import type { Grade, Store, StoreOwner } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
@@ -36,7 +37,7 @@ function gridColumns(width: number): number {
 
 export default function Stores() {
   const { isAdmin } = useAuth();
-  const { myStores, managers, tallies, targets, loading, refresh } = useData();
+  const { myStores, patchStores, managers, tallies, targets, loading, refresh } = useData();
   const { palette } = useTheme();
   const { width } = useLayout();
   const columns = gridColumns(width);
@@ -74,8 +75,7 @@ export default function Stores() {
     setManager(m);
   };
 
-  // Only owners who actually have stores here, so a leftover name never shows an empty filter.
-  const owners = useMemo(() => managers.filter((m) => myStores.some((s) => s.assigned_manager === m)), [managers, myStores]);
+  const owners = useMemo(() => ownerTabs(managers, patchStores), [managers, patchStores]);
   const showOwner = owners.length > 1;
 
   const filtered = useMemo(() => {
@@ -234,7 +234,13 @@ export default function Stores() {
               filtered.length > 0 ? (
                 <EmptyState icon="trophy-outline" title="All done here" body="Every store in this view has hit its target this month. Enjoy your wins below." />
               ) : (
-                <EmptyState icon="storefront-outline" title="No stores match" body={myStores.length ? 'Try a different search or filter.' : 'No stores on your patch yet. Tap Edit to choose yours.'} />
+                <EmptyState icon="storefront-outline" title="No stores match" body={
+                    !myStores.length
+                      ? 'No stores on your patch yet. Tap Edit to choose yours.'
+                      : manager !== 'all' && !myStores.some((s) => s.assigned_manager === manager)
+                        ? `You haven't picked any of ${managerShort(manager)}'s stores. Tap Edit to add them.`
+                        : 'Try a different search or filter.'
+                  } />
               )
             )
           }

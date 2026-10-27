@@ -10,6 +10,9 @@ module.exports = ({ config }) => {
       'expo-location',
       {
         locationWhenInUsePermission: 'BOAROUTE uses your location to guide you turn by turn and to place hazard reports on the map.',
+        locationAlwaysAndWhenInUsePermission: 'BOAROUTE keeps using your location while you navigate with the screen off, so it can warn you about speed cameras and police ahead.',
+        isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
       },
     ],
   ];

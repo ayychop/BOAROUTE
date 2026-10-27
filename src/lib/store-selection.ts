@@ -1,3 +1,4 @@
+import { distinctOwners, patchOwners } from './frequency';
 import type { RoutableStore } from './route-engine';
 import type { Store, StoreOwner } from './types';
 
@@ -19,6 +20,19 @@ export function storesForPerson<S extends RoutableStore>(
   const picked = new Set(chosen);
   const mine = patch.some((s) => picked.has(s.id)) ? patch.filter((s) => picked.has(s.id) || handed.has(s.id)) : patch;
   return { patch, mine };
+}
+
+/**
+ * Owner filter tabs on the Stores screen: the managers in this person's patch
+ * (from their role and team seat) that own at least one store in the stores
+ * table, in the usual order. Built from the whole patch, not just the stores
+ * they picked, so Sarah always gets Jo, Pete and Marcia and David gets
+ * Jermaine, Kishan and Raphael. Legacy owner names (stores still under Sarah or
+ * David) and stores handed over from outside the patch stay under "All".
+ */
+export function ownerTabs(managers: readonly StoreOwner[], patch: readonly { assigned_manager: string | null }[]): StoreOwner[] {
+  const inTable = new Set(distinctOwners([...patch]).map((o) => o.owner));
+  return patchOwners(managers).filter((m) => inTable.has(m));
 }
 
 /** Jo (the admin) starts with every Joseph store ticked; everyone else picks from scratch. */

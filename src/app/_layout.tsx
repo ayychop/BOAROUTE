@@ -9,6 +9,7 @@ import { Alert, Platform, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CarAppService } from '@/car/CarAppService';
+import { CarBridge } from '@/car/CarBridge';
 import { BRLogo } from '@/components/BRLogo';
 import { NeonButton } from '@/components/NeonButton';
 import { Screen } from '@/components/Screen';
@@ -19,6 +20,8 @@ import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { DataProvider } from '@/providers/DataProvider';
 import { configureNotifications } from '@/services/notifications';
+// Defines the background hazard task at load, before any screen mounts.
+import '@/services/hazard-watch';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -107,6 +110,8 @@ function RootNavigator() {
       </Stack>
       {/* The one-hour clock-out alarm rings over any screen. */}
       {signedIn && onboarded && <VisitAlarm />}
+      {/* Upcoming stores and the Start Visit button on Android Auto. */}
+      {signedIn && onboarded && <CarBridge />}
       {/* Once per release, after installing or updating. */}
       {signedIn && onboarded && <WhatsNew />}
     </Animated.View>

@@ -32,6 +32,7 @@ import type { LatLng } from '@/lib/types';
 import { fetchRouteOptions } from '@/services/functions';
 import { useAuth } from '@/providers/AuthProvider';
 import { clearHazard, fetchLiveHazards, reportHazard } from '@/services/hazards';
+import { markHazardWarned, startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
 import { COCKPIT_MAP_STYLE } from '@/theme/map-style';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, springs } from '@/theme/typography';
@@ -368,10 +369,13 @@ export default function Navigate() {
         Alert.alert('Location unavailable', 'Turn on location to follow the route.');
         setNavigating(false);
       });
+    // Keeps camera and police alerts talking when the screen locks or Android Auto is in front.
+    startHazardWatch().catch(() => {});
     return () => {
       alive = false;
       sub?.remove();
       Speech.stop();
+      stopHazardWatch().catch(() => {});
     };
   }, [navigating]);
 
@@ -395,6 +399,7 @@ export default function Navigate() {
     setAhead(next);
     if (next && !warned.current.has(next.hazard.id)) {
       warned.current.add(next.hazard.id);
+      markHazardWarned(next.hazard.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       say(`${hazardMeta(next.hazard.hazard_type).label} reported in ${spokenDistance(units.nav(next.distanceM))}`);
     }
