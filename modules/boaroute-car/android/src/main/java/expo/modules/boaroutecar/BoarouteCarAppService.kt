@@ -1,7 +1,6 @@
 package expo.modules.boaroutecar
 
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
@@ -15,13 +14,9 @@ import androidx.lifecycle.LifecycleOwner
  * in the app, so Android Auto never opens a media player for BOAROUTE.
  */
 class BoarouteCarAppService : CarAppService() {
-  override fun createHostValidator(): HostValidator =
-    if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-      // Debug builds also talk to the Desktop Head Unit.
-      HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
-    } else {
-      HostValidator.Builder(applicationContext).addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample).build()
-    }
+  // Every host is accepted, in release too: BOAROUTE is sideloaded, not a
+  // Play Store car app, so it doesn't rely on the sample host allowlist.
+  override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
   override fun onCreateSession(): Session = BoarouteSession()
 }
