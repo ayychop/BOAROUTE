@@ -15,8 +15,8 @@ import androidx.car.app.model.Template
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.NavigationManagerCallback
 import androidx.car.app.navigation.model.MessageInfo
-import androidx.car.app.navigation.model.NavigationInfo
 import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.car.app.navigation.model.NavigationTemplate.NavigationInfo
 import androidx.car.app.navigation.model.RoutingInfo
 import androidx.car.app.navigation.model.Step
 import androidx.car.app.navigation.model.TravelEstimate
