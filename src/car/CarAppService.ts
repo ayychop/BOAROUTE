@@ -1,6 +1,5 @@
-import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
-import type { MediaItem, TemplateConfig } from 'react-native-car-projection';
+import type { TemplateConfig } from 'react-native-car-projection';
 import { EMPTY_CAR_CONTEXT, ROOT_SCREEN, carTemplate, type CarContext, type CarListTemplate, type CarNavState } from './car-templates';
 
 /**
@@ -9,9 +8,9 @@ import { EMPTY_CAR_CONTEXT, ROOT_SCREEN, carTemplate, type CarContext, type CarL
  * its config plugin); they build the car screen from the template registered
  * here. This keeps that template in step with the phone's navigation.
  *
- * It also registers a small media browse tree ("Focus Sounds"). Android Auto
- * lists an app in its launcher when it offers a MediaBrowserService (declared
- * through mediaSupport in app.json); the player is a placeholder for now.
+ * There is deliberately no media browse tree: with a MediaBrowserService
+ * Android Auto opens its own player UI instead of this screen (mediaSupport
+ * is off in app.json for that reason).
  *
  * Only Android has the native module, so everything here is a no-op on iOS
  * and web, and in Expo Go.
@@ -92,33 +91,12 @@ function redraw() {
   schedule(carTemplate(navState, context));
 }
 
-const FOCUS_ROOT = '__ROOT__';
-const FOCUS_TREE: Record<string, MediaItem[]> = {
-  [FOCUS_ROOT]: [{ id: 'focus', title: 'Focus Sounds', browsable: true }],
-  focus: [{ id: 'focus-drive', title: 'Drive Focus', artist: 'BOAROUTE', playable: true }],
-};
-
-/** Placeholder until real tracks ship: acknowledge the tap so the car doesn't look broken. */
-function playFocus() {
-  const c = car();
-  if (!c) return;
-  c.updateMediaPlaybackState({ state: 'paused', position: 0, duration: 0, title: 'Focus Sounds', artist: 'Coming soon' }).catch(() => {});
-  Speech.speak('Focus Sounds are coming soon to BOAROUTE.', { language: 'en-GB' });
-}
-
-function startMedia(c: CarProjection) {
-  c.setMediaBrowseTree(FOCUS_TREE).catch(() => {});
-  c.addMediaPlayListener(playFocus);
-  c.addMediaPlayFromIdListener(playFocus);
-}
-
 export const CarAppService = {
   /** Call once at launch so the car never shows an empty screen while the app is running. */
   start() {
     const c = car();
     if (!c) return;
     c.startSession().catch(() => {});
-    startMedia(c);
     redraw();
   },
 

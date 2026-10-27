@@ -72,7 +72,7 @@ describe('Android Auto upcoming stores and Start Visit', () => {
 
   it('lists upcoming stores with Start Visit for the first when there is no route', () => {
     const t = carTemplate(null, ctx);
-    expect(t.title).toBe('Upcoming stores');
+    expect(t.title).toBe('No active route');
     expect(t.items.map((r) => r.title)).toEqual(['Currys Aylesbury', 'Argos Thame']);
     expect(t.items[0].texts).toEqual(['Next · Grade A · 2 visits to go']);
     expect(t.actionStrip).toEqual([{ title: 'Start Visit', storeId: 's1' }]);

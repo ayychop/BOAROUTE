@@ -88,7 +88,7 @@ function startVisit(storeId: string | undefined, ctx: CarContext): CarAction[] |
   return storeId && !ctx.visiting ? [{ title: 'Start Visit', storeId }] : undefined;
 }
 
-/** Without a route: the visit in progress, else the stores to visit next with a Start Visit button for the first. */
+/** Without a route: the visit in progress, else "No active route" over the stores to visit next, with Start Visit for the first. */
 function idleTemplate(ctx: CarContext): CarListTemplate {
   const header = { headerAction: { title: 'app_icon' as const } };
   if (ctx.visiting) {
@@ -98,7 +98,7 @@ function idleTemplate(ctx: CarContext): CarListTemplate {
     return { type: 'ListTemplate', title: 'BOAROUTE', items: [{ title: 'No active route', texts: ['Start navigation on your phone and your route appears here.'] }], ...header };
   }
   const items = ctx.upcoming.slice(0, MAX_CAR_ROWS).map((s, i) => ({ title: clip(s.name), texts: [i === 0 ? `Next · ${s.detail}` : s.detail] }));
-  return { type: 'ListTemplate', title: 'Upcoming stores', items, ...header, actionStrip: startVisit(ctx.upcoming[0].id, ctx) };
+  return { type: 'ListTemplate', title: 'No active route', items, ...header, actionStrip: startVisit(ctx.upcoming[0].id, ctx) };
 }
 
 /** What the car shows: the live route while the phone navigates, the upcoming stores otherwise. */
