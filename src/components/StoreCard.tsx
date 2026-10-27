@@ -36,6 +36,8 @@ interface Props {
   onExited?: (id: string) => void;
   /** Show whose store this is ("PETE'S STORE"), for people who work several owners' stores. */
   showOwner?: boolean;
+  /** OM who has used this week's visits here: the card greys out with a "Done this week" tick. */
+  weekLocked?: boolean;
 }
 
 /** Above this many visits a month the bar is continuous instead of one segment per visit. */
@@ -81,7 +83,7 @@ export function GoalBar({ done, target, met }: { done: number; target: number; m
   );
 }
 
-export const StoreCard = memo(function StoreCard({ store, tally, target, index, now, animateIn = true, exiting = false, onExited, showOwner = false }: Props) {
+export const StoreCard = memo(function StoreCard({ store, tally, target, index, now, animateIn = true, exiting = false, onExited, showOwner = false, weekLocked = false }: Props) {
   const { palette } = useTheme();
   const { compact } = useLayout();
   const done = tally?.count ?? 0;
@@ -116,16 +118,29 @@ export const StoreCard = memo(function StoreCard({ store, tally, target, index, 
     shadowOpacity: glow.value * 0.9,
   }));
 
-  const status = met ? 'Target hit' : left === 1 ? 'Last one to go' : `${left} more to go`;
+  const status = met ? 'Target hit' : weekLocked ? 'Done this week' : left === 1 ? 'Last one to go' : `${left} more to go`;
 
   // Sized by its content, never by the cell: the list rows stretch cards to the
   // tallest in the row, so every text block keeps its full natural height.
   return (
-    <Animated.View style={[{ flex: 1 }, exitStyle]}>
-      <GlassCard index={index} animateIn={animateIn} fill onPress={() => router.push({ pathname: '/store/[id]', params: { id: store.id } })} accessibilityLabel={`${store.name}, grade ${store.grade}, ${done} of ${target} visits`}>
+    <Animated.View style={[{ flex: 1, opacity: weekLocked && !exiting ? 0.55 : 1 }, exitStyle]}>
+      <GlassCard
+        index={index}
+        animateIn={animateIn}
+        fill
+        onPress={() => router.push({ pathname: '/store/[id]', params: { id: store.id } })}
+        accessibilityLabel={`${store.name}, grade ${store.grade}, ${done} of ${target} visits${weekLocked ? ', done for this week' : ''}`}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
           <GradeBadge grade={store.grade} size={30} />
-          {met ? <Ionicons name="trophy" size={18} color={palette.gold} /> : null}
+          {met ? (
+            <Ionicons name="trophy" size={18} color={palette.gold} />
+          ) : weekLocked ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.borderStrong }}>
+              <Ionicons name="checkmark-circle" size={13} color={palette.textDim} />
+              <Ionicons name="lock-closed" size={11} color={palette.textDim} />
+            </View>
+          ) : null}
         </View>
         {showOwner && (
           <View style={{ flexDirection: 'row', marginBottom: 8 }}>
@@ -142,7 +157,7 @@ export const StoreCard = memo(function StoreCard({ store, tally, target, index, 
         {/* Takes up the slack when a neighbour in the row is taller, so progress bars line up. */}
         <View style={{ flexGrow: 1, minHeight: 10 }} />
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
-          <Txt variant="caption" tone={met ? 'gold' : left === 1 ? 'primary' : 'dim'} numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flex: 1 }}>
+          <Txt variant="caption" tone={met ? 'gold' : weekLocked ? 'faint' : left === 1 ? 'primary' : 'dim'} numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flex: 1 }}>
             {status}
           </Txt>
           <Txt variant="caption" tone={met ? 'gold' : 'faint'} numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ flexShrink: 0, fontVariant: ['tabular-nums'] }}>

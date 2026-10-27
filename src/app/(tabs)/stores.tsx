@@ -37,7 +37,7 @@ function gridColumns(width: number): number {
 
 export default function Stores() {
   const { isAdmin } = useAuth();
-  const { myStores, patchStores, managers, tallies, targets, loading, refresh } = useData();
+  const { myStores, patchStores, managers, tallies, targets, visitsLeftThisWeek, loading, refresh } = useData();
   const { palette } = useTheme();
   const { width } = useLayout();
   const columns = gridColumns(width);
@@ -104,10 +104,11 @@ export default function Stores() {
           exiting={focused && split.exiting.has(item.id)}
           onExited={onExited}
           showOwner={showOwner}
+          weekLocked={visitsLeftThisWeek(item.id) <= 0}
         />
       </View>
     ),
-    [columns, tallies, targets, now, touched, focused, split.exiting, onExited, showOwner],
+    [columns, tallies, targets, visitsLeftThisWeek, now, touched, focused, split.exiting, onExited, showOwner],
   );
 
   const winsSection =

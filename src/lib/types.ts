@@ -3,6 +3,8 @@
  * 'unassigned' is a pending sign-up, 'denied' a refused one: neither gets into the app.
  */
 export type Role = 'admin' | 'user' | 'unassigned' | 'denied';
+/** Field role picked on the Role Selection screen after the first sign-in (profiles.user_role). */
+export type UserRole = 'OM' | 'OTM';
 export type Grade = 'A' | 'B' | 'C' | 'D';
 /** Store owners: the names Jo assigns stores to. Only Jo (Joseph) uses the app among them by default. */
 export type Manager = 'Joseph' | 'Pete' | 'Marcia' | 'Jermaine' | 'Kishan' | 'Raphael';
@@ -52,6 +54,8 @@ export interface Profile {
   ooh_session_allowance?: number | string | null;
   /** Daily Samsung IQ on Home. Only the admin switches it, per person, in Team Management. */
   show_training?: boolean;
+  /** OM or OTM. NULL until picked; the app asks before anything else. Only the admin can change it after. */
+  user_role?: UserRole | null;
 }
 
 export interface Store {

@@ -10,8 +10,8 @@
 -- (current mileage, working days, chosen stores), personal budgets,
 -- timed visits, shift calendar, preferences, expense receipts,
 -- per-person store hand-outs (store_assignees), Daily Samsung IQ
--- training questions and the per-person show_training switch,
--- RLS on everything.
+-- training questions and the per-person show_training switch, the OM / OTM
+-- field role with the OM weekly visit limit, RLS on everything.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -1495,6 +1495,83 @@ values
   ('Gemini AI', 'What is Circle to Search?', 'Long-press the home button or navigation handle, then circle, tap or highlight anything on screen to search it with Google without leaving the app.'),
   ('Gemini AI', 'What is Gemini Live?', 'A hands-free, back-and-forth voice conversation with Gemini. On supported Galaxy phones the customer can also share the camera or screen and ask about what it sees.')
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------
+-- 16. Field role (OM / OTM) and the OM weekly visit limit
+-- ---------------------------------------------------------------------
+-- Picked by each person on the Role Selection screen straight after their
+-- first sign-in. NULL until they pick. Separate from profiles.role, which is
+-- access (admin / user) and always comes from team_members.
+alter table public.profiles add column if not exists user_role text;
+alter table public.profiles drop constraint if exists profiles_user_role_check;
+alter table public.profiles add constraint profiles_user_role_check
+  check (user_role is null or user_role in ('OM', 'OTM'));
+
+-- People pick their role once. Changing it afterwards takes the admin, so an
+-- OM cannot switch to OTM to get round the weekly limit.
+create or replace function public.profiles_user_role_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is not null and not public.is_admin()
+     and old.user_role is not null and new.user_role is distinct from old.user_role then
+    raise exception 'Ask your admin to change your role' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_user_role_guard on public.profiles;
+create trigger profiles_user_role_guard
+  before update of user_role on public.profiles
+  for each row execute function public.profiles_user_role_guard();
+
+-- OMs may log 1 visit per store per week (Monday to Sunday, UK time), or 2
+-- at D grade stores. OTMs have no weekly limit. Counts every visit, timed or
+-- logged by hand. Matches src/lib/visit-limits.ts.
+create or replace function public.visits_weekly_limit_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_role text;
+  v_grade text;
+  v_limit integer;
+  v_week timestamptz;
+  v_count integer;
+begin
+  -- The SQL editor and the service role (no auth.uid()) can always insert.
+  if auth.uid() is null then
+    return new;
+  end if;
+  select p.user_role into v_role from public.profiles p where p.id = new.user_id;
+  if v_role is distinct from 'OM' then
+    return new;
+  end if;
+  select s.grade into v_grade from public.stores s where s.id = new.store_id;
+  v_limit := case when v_grade = 'D' then 2 else 1 end;
+  v_week := date_trunc('week', now() at time zone 'Europe/London') at time zone 'Europe/London';
+  -- One check at a time per person and store, so two devices cannot both slip in.
+  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':' || new.store_id::text));
+  select count(*) into v_count from public.visits v
+   where v.user_id = new.user_id and v.store_id = new.store_id and v.visited_at >= v_week;
+  if v_count >= v_limit then
+    raise exception 'Visit limit reached for this store. OM standard limit is 1 visit (2 for D Grade).'
+      using errcode = 'P0001', hint = 'om_weekly_limit';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists visits_weekly_limit_guard on public.visits;
+create trigger visits_weekly_limit_guard
+  before insert on public.visits
+  for each row execute function public.visits_weekly_limit_guard();
 
 -- Make the new table and function visible to the API straight away.
 notify pgrst, 'reload schema';

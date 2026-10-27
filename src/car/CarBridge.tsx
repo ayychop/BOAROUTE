@@ -11,10 +11,11 @@ import { EMPTY_CAR_CONTEXT, MAX_CAR_ROWS, type CarContext } from './car-template
  * Start Visit button. Renders nothing; mounted once for signed-in users.
  */
 export function CarBridge() {
-  const { myStores, patchStores, tallies, targets, activeVisit, startVisit } = useData();
+  const { myStores, patchStores, tallies, targets, weekLocked, activeVisit, startVisit } = useData();
 
   const context = useMemo<CarContext>(() => {
-    const due = computeDue(myStores, tallies, targets).slice(0, MAX_CAR_ROWS);
+    // Stores an OM is locked out of this week would only refuse Start Visit, so they are left off.
+    const due = computeDue(myStores.filter((s) => !weekLocked.has(s.id)), tallies, targets).slice(0, MAX_CAR_ROWS);
     const storeIds: Record<string, string> = {};
     for (const s of patchStores) storeIds[s.name] = s.id;
     for (const s of myStores) storeIds[s.name] = s.id;
@@ -24,7 +25,7 @@ export function CarBridge() {
       storeIds,
       visiting,
     };
-  }, [myStores, patchStores, tallies, targets, activeVisit]);
+  }, [myStores, patchStores, tallies, targets, weekLocked, activeVisit]);
 
   useEffect(() => {
     CarAppService.setContext(context);

@@ -16,6 +16,7 @@ import { PastVisitSheet } from '@/components/PastVisitSheet';
 import { StoreSettingsSheet } from '@/components/StoreSettingsSheet';
 import { TaskCard } from '@/components/TaskCard';
 import { Txt } from '@/components/Txt';
+import { VisitLimitModal } from '@/components/VisitLimitModal';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
 import { localDateString } from '@/lib/budget';
@@ -24,6 +25,7 @@ import { remainingMessage, storeTarget } from '@/lib/frequency';
 import { geocode } from '@/lib/geo';
 import { encodeNavRequest } from '@/lib/nav-request';
 import { hasCoords, toLatLng } from '@/lib/route-engine';
+import { isVisitLimitError } from '@/lib/visit-limits';
 import { MIN_VISIT_MINUTES, VISIT_ALARM_MINUTES, formatCountdown, formatDuration, lockRemainingMs } from '@/lib/visit-timer';
 import { supabase } from '@/lib/supabaseClient';
 import type { Task } from '@/lib/types';
@@ -35,7 +37,7 @@ export default function StoreDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { palette } = useTheme();
   const { expanded } = useLayout();
-  const { stores, tallies, targets, activeVisit, startVisit, completeVisit, cancelVisit, undoLastVisit, logPastVisits, updateStoreAddress, updateStoreSettings } = useData();
+  const { stores, tallies, targets, visitsLeftThisWeek, activeVisit, startVisit, completeVisit, cancelVisit, undoLastVisit, logPastVisits, updateStoreAddress, updateStoreSettings } = useData();
   const store = stores.find((s) => s.id === id);
   const visitHere = !!activeVisit && activeVisit.storeId === id;
   const visitElsewhere = activeVisit && !visitHere ? stores.find((s) => s.id === activeVisit.storeId) ?? null : null;
@@ -51,6 +53,7 @@ export default function StoreDetail() {
   const [locating, setLocating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pastOpen, setPastOpen] = useState(false);
+  const [limitOpen, setLimitOpen] = useState(false);
   const [cheer, setCheer] = useState<{ text: string; done: boolean } | null>(null);
 
   // The encouragement after a visit fades after a few seconds.
@@ -138,6 +141,8 @@ export default function StoreDetail() {
 
   const lockMs = visitHere ? lockRemainingMs(activeVisit.startedAt, now) : 0;
   const locked = visitHere && lockMs > 0;
+  // OMs: 1 visit per store a week (2 at D grade). OTMs never lock.
+  const weekLocked = visitsLeftThisWeek(store.id) <= 0;
   const elapsedMin = visitHere ? Math.max(0, (now - new Date(activeVisit.startedAt).getTime()) / 60_000) : 0;
 
   const beginVisit = async () => {
@@ -146,6 +151,7 @@ export default function StoreDetail() {
       await startVisit(store.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     } catch (e) {
+      if (isVisitLimitError(e)) return setLimitOpen(true);
       Alert.alert('Visit not started', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setVisitBusy(false);
@@ -155,6 +161,7 @@ export default function StoreDetail() {
   // A second visit on the same day is usually a mistake, so confirm it.
   const onStartVisit = () => {
     if (visitBusy) return;
+    if (weekLocked) return setLimitOpen(true);
     if (!visitedToday) return beginVisit();
     Alert.alert('Already visited today', `Start another visit to ${store.name}?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -170,6 +177,7 @@ export default function StoreDetail() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setCheer({ text: `${formatDuration(minutes)} on site. ${remainingMessage(done + 1, target)}`, done: done + 1 >= target });
     } catch (e) {
+      if (isVisitLimitError(e)) return setLimitOpen(true);
       Alert.alert('Visit not saved', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setVisitBusy(false);
@@ -241,6 +249,7 @@ export default function StoreDetail() {
           ? `Target met: ${done} of ${target} visits this month. This store is out of today's route.`
           : `${done} of ${target} visits this month · ${owed === 1 ? 'Last one to go' : `${owed} more to go`}`}
         {visitedToday ? ' · Visited today' : ''}
+        {weekLocked ? ' · Done for this week' : ''}
       </Txt>
       {cheer ? (
         <Animated.View
@@ -303,9 +312,10 @@ export default function StoreDetail() {
         <View style={{ marginTop: 10 }}>
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <NeonButton
-              label={visitElsewhere ? 'Visit in progress elsewhere' : visitedToday ? 'Start another visit' : 'Start Visit'}
-              icon="play-circle"
-              variant="gold"
+              label={visitElsewhere ? 'Visit in progress elsewhere' : weekLocked ? 'Visit limit reached' : visitedToday ? 'Start another visit' : 'Start Visit'}
+              icon={weekLocked && !visitElsewhere ? 'lock-closed' : 'play-circle'}
+              variant={weekLocked ? 'subtle' : 'gold'}
+              accessibilityHint={weekLocked ? 'You have used this week\'s visits for this store' : undefined}
               size="lg"
               onPress={onStartVisit}
               loading={visitBusy}
@@ -315,11 +325,18 @@ export default function StoreDetail() {
             />
             {done > 0 && <NeonButton label="Undo" icon="arrow-undo" variant="ghost" onPress={onUndo} />}
           </View>
-          <NeonButton label="Log Past Visit" icon="time-outline" variant="outline" onPress={() => setPastOpen(true)} disabled={visitBusy} style={{ marginTop: 10 }} accessibilityHint="Add visits you already did this month" full />
+          <NeonButton label="Log Past Visit" icon="time-outline" variant="outline" onPress={() => (weekLocked ? setLimitOpen(true) : setPastOpen(true))} disabled={visitBusy} style={{ marginTop: 10 }} accessibilityHint="Add visits you already did this month" full />
           {visitElsewhere ? (
             <Txt variant="caption" tone="dim" style={{ marginTop: 8 }} onPress={() => router.replace({ pathname: '/store/[id]', params: { id: visitElsewhere.id } })}>
               You are on a visit at {visitElsewhere.name}. Complete or cancel it there first.
             </Txt>
+          ) : weekLocked ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <Ionicons name="checkmark-circle" size={15} color={palette.gold} />
+              <Txt variant="caption" tone="gold" style={{ flex: 1 }}>
+                Visited this week. Unlocks again on Monday.
+              </Txt>
+            </View>
           ) : (
             <Txt variant="caption" tone="faint" style={{ marginTop: 8 }}>
               Tap Start Visit when you walk in. You can complete it after {MIN_VISIT_MINUTES} minutes.
@@ -437,7 +454,15 @@ export default function StoreDetail() {
           open={pastOpen}
           onClose={() => setPastOpen(false)}
           onSave={async (count) => {
-            await logPastVisits(store.id, count);
+            try {
+              await logPastVisits(store.id, count);
+            } catch (e) {
+              if (isVisitLimitError(e)) {
+                setPastOpen(false);
+                setLimitOpen(true);
+              }
+              throw e;
+            }
             setCheer({ text: `${count} past ${count === 1 ? 'visit' : 'visits'} logged. ${remainingMessage(done + count, target)}`, done: done + count >= target });
           }}
         />
@@ -445,6 +470,7 @@ export default function StoreDetail() {
       {settingsOpen && (
         <StoreSettingsSheet store={store} targets={targets} open={settingsOpen} onClose={() => setSettingsOpen(false)} onSave={(grade, frequency) => updateStoreSettings(store.id, grade, frequency)} />
       )}
+      <VisitLimitModal open={limitOpen} onClose={() => setLimitOpen(false)} footnote="Your visits here unlock again on Monday." />
       <MediaViewer path={viewing} url={viewing ? urls[viewing] ?? null : null} onClose={() => setViewing(null)} />
     </Screen>
   );

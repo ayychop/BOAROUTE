@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import { isMember } from '@/lib/frequency';
-import type { Profile, UserPreferences } from '@/lib/types';
+import type { Profile, UserPreferences, UserRole } from '@/lib/types';
 
 interface AuthValue {
   ready: boolean;
@@ -14,6 +14,10 @@ interface AuthValue {
   /** Approved in team_members. Anyone else stays on the sign-in screen. */
   isMember: boolean;
   onboarded: boolean;
+  /** OM or OTM; null until picked on the Role Selection screen. */
+  userRole: UserRole | null;
+  /** Saves the role picked on the Role Selection screen. */
+  setUserRole: (role: UserRole) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   /** Returns true when the user must confirm their email before signing in. */
   signUp: (email: string, password: string, name: string) => Promise<boolean>;
@@ -27,6 +31,7 @@ interface AuthValue {
 /** Plain words for a save that failed because the database is behind the app. */
 function schemaError(err: { message: string }): Error {
   if (/shift_dates/.test(err.message)) return new Error('The shift calendar needs the latest database update. Ask your admin to re-run the SQL file.');
+  if (/user_role/.test(err.message)) return new Error('Choosing your role needs the latest database update. Ask your admin to re-run the SQL file.');
   if (/preferences/.test(err.message)) return new Error('Personal settings need the latest database update. Ask your admin to re-run the SQL file.');
   return err instanceof Error ? err : new Error(err.message);
 }
@@ -128,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [profile?.preferences, updateProfile],
   );
 
+  const setUserRole = useCallback((role: UserRole) => updateProfile({ user_role: role }), [updateProfile]);
+
   const refreshProfile = useCallback(async () => {
     if (session) await applySession(session);
   }, [session, applySession]);
@@ -141,6 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: profile?.role === 'admin',
       isMember: isMember(profile),
       onboarded: !!profile?.onboarded_at,
+      userRole: profile?.user_role ?? null,
+      setUserRole,
       signIn,
       signUp,
       signOut,
@@ -148,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshProfile,
       updatePreferences,
     }),
-    [ready, session, profile, profileError, signIn, signUp, signOut, updateProfile, refreshProfile, updatePreferences],
+    [ready, session, profile, profileError, signIn, signUp, signOut, updateProfile, setUserRole, refreshProfile, updatePreferences],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

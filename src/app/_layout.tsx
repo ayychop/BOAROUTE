@@ -60,7 +60,7 @@ const PUSH = Platform.OS === 'android' ? 'ios_from_right' : 'default';
 
 function RootNavigator() {
   const { palette, contentOpacity } = useTheme();
-  const { ready, session, profile, profileError, onboarded, isMember } = useAuth();
+  const { ready, session, profile, profileError, onboarded, isMember, userRole } = useAuth();
   const fade = useAnimatedStyle(() => ({ opacity: contentOpacity.value }));
 
   useEffect(() => {
@@ -78,16 +78,22 @@ function RootNavigator() {
 
   // Pending or denied sign-ups stay on the sign-in screen, which explains why.
   const signedIn = !!session && !!profile && isMember;
+  // Everyone picks OM or OTM before anything else; it sets their weekly visit limits.
+  const hasRole = !!userRole;
+  const inApp = signedIn && hasRole && onboarded;
   return (
     <Animated.View style={[{ flex: 1, backgroundColor: palette.bg[0] }, fade]}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg[0] }, animation: 'fade' }}>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="sign-in" />
         </Stack.Protected>
-        <Stack.Protected guard={signedIn && !onboarded}>
+        <Stack.Protected guard={signedIn && !hasRole}>
+          <Stack.Screen name="role-select" />
+        </Stack.Protected>
+        <Stack.Protected guard={signedIn && hasRole && !onboarded}>
           <Stack.Screen name="onboarding" />
         </Stack.Protected>
-        <Stack.Protected guard={signedIn && onboarded}>
+        <Stack.Protected guard={inApp}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="store/[id]" options={{ animation: PUSH }} />
           <Stack.Screen name="task-new" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
@@ -109,11 +115,11 @@ function RootNavigator() {
         </Stack.Protected>
       </Stack>
       {/* The one-hour clock-out alarm rings over any screen. */}
-      {signedIn && onboarded && <VisitAlarm />}
+      {inApp && <VisitAlarm />}
       {/* Upcoming stores and the Start Visit button on Android Auto. */}
-      {signedIn && onboarded && <CarBridge />}
+      {inApp && <CarBridge />}
       {/* Once per release, after installing or updating. */}
-      {signedIn && onboarded && <WhatsNew />}
+      {inApp && <WhatsNew />}
     </Animated.View>
   );
 }

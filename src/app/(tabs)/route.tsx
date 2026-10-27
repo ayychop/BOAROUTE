@@ -19,6 +19,7 @@ import { useLayout } from '@/hooks/useLayout';
 import { useUnits } from '@/hooks/useUnits';
 import { localDateString } from '@/lib/budget';
 import { formatMinutes } from '@/lib/format';
+import { storeTarget } from '@/lib/frequency';
 import { encodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { getPref, setPref } from '@/lib/prefs';
 import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, hasCoords, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
@@ -36,7 +37,7 @@ function readStops(): number {
 export default function RouteScreen() {
   const { palette } = useTheme();
   const { profile } = useAuth();
-  const { myStores, tallies, targets, activeVisit, loading } = useData();
+  const { myStores, tallies, targets, weekLocked, activeVisit, loading } = useData();
   // The shift calendar decides; the weekly pattern only applies until it is saved.
   const workingToday = isWorkingDate(new Date(), profile?.shift_dates ?? null, profile?.working_days);
   const { contentWidth, compact } = useLayout();
@@ -65,11 +66,17 @@ export default function RouteScreen() {
         ? planDayRoute(myStores, tallies, targets, start, {
             maxStops,
             end,
-            excludeIds: startStore ? [startStore.id] : [],
+            // OMs who have used this week's visits at a store don't drive there again until Monday.
+            excludeIds: startStore ? [startStore.id, ...weekLocked] : [...weekLocked],
             anchorNearStart: !!startStore,
           })
         : null,
-    [myStores, tallies, targets, start, end, startStore, maxStops],
+    [myStores, tallies, targets, weekLocked, start, end, startStore, maxStops],
+  );
+  // Stores still owed visits this month but locked for the week (OM limit).
+  const lockedOwed = useMemo(
+    () => myStores.filter((s) => weekLocked.has(s.id) && (tallies[s.id]?.count ?? 0) < storeTarget(s, targets)).length,
+    [myStores, weekLocked, tallies, targets],
   );
   const points = useMemo(() => (plan && start && plan.stops.length ? planWaypoints(plan, start) : []), [plan, start]);
   const pointsKey = points.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
@@ -222,9 +229,15 @@ export default function RouteScreen() {
         {settings}
         <View style={{ height: 12 }} />
         <EmptyState
-          icon="trophy-outline"
-          title={plan.dueCount > 0 ? 'Nothing else owed nearby' : 'All targets met'}
-          body={plan.dueCount > 0 ? 'The only store still owed visits is the one you are starting from. Start a visit from its store page.' : 'Every store in your patch has hit its monthly visit target. Enjoy the open road.'}
+          icon={lockedOwed > 0 ? 'lock-closed-outline' : 'trophy-outline'}
+          title={lockedOwed > 0 ? 'Done for this week' : plan.dueCount > 0 ? 'Nothing else owed nearby' : 'All targets met'}
+          body={
+            lockedOwed > 0
+              ? `You have used this week's visits at ${lockedOwed === 1 ? 'the 1 store' : `all ${lockedOwed} stores`} still owed visits. ${lockedOwed === 1 ? 'It comes' : 'They come'} back into your route on Monday.`
+              : plan.dueCount > 0
+                ? 'The only store still owed visits is the one you are starting from. Start a visit from its store page.'
+                : 'Every store in your patch has hit its monthly visit target. Enjoy the open road.'
+          }
         />
       </Screen>
     );

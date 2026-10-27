@@ -8,6 +8,7 @@ import type { VisitTally } from '@/lib/route-engine';
 import { storesForPerson } from '@/lib/store-selection';
 import { supabase } from '@/lib/supabaseClient';
 import type { EventType, Expense, ExpenseCategory, Grade, GradeTargets, Manager, MileageLog, MileageType, Store, StoreOwner, Visit, WorkEvent } from '@/lib/types';
+import { VisitLimitError, isVisitLimitError, visitsLeftThisWeek, weekLockedIds, weeklyVisitCounts } from '@/lib/visit-limits';
 import { canCompleteVisit, parseActiveVisit, type ActiveVisit } from '@/lib/visit-timer';
 import { deleteMedia } from '@/services/media';
 import { syncEventReminders } from '@/services/notifications';
@@ -58,6 +59,12 @@ interface DataValue {
   managers: StoreOwner[];
   targets: GradeTargets;
   tallies: Record<string, VisitTally>;
+  /** Visits per store since Monday. */
+  weekCounts: Record<string, number>;
+  /** Visits this person may still log at a store this week: Infinity for OTMs, 0 when an OM is locked out. */
+  visitsLeftThisWeek: (storeId: string) => number;
+  /** Stores an OM has used up this week's visits at. The route planner and Android Auto leave them out until Monday. */
+  weekLocked: Set<string>;
   /** This person's visits from the last six months, newest first. */
   visits: Visit[];
   /** The visit in progress on this device, if any. */
@@ -95,7 +102,7 @@ function monthStart(d = new Date()): Date {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { session, profile, refreshProfile } = useAuth();
+  const { session, profile, refreshProfile, userRole } = useAuth();
   const userId = session?.user.id ?? null;
   // Store visibility (RLS) follows the profile's role and patch, which the
   // sign-in refresh (refresh_my_access) settles. Loading waits for that
@@ -205,6 +212,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return out;
   }, [vVisits]);
 
+  // Recomputed with the visits; coming back to the app after a while reloads them, which rolls the week over.
+  const weekCounts = useMemo(() => weeklyVisitCounts(vVisits as Visit[]), [vVisits]);
+  const leftThisWeek = useCallback(
+    (storeId: string) => {
+      const store = stores.find((s) => s.id === storeId);
+      return store ? visitsLeftThisWeek(userRole, store.grade, weekCounts[storeId] ?? 0) : Infinity;
+    },
+    [stores, weekCounts, userRole],
+  );
+
+  const weekLocked = useMemo(() => weekLockedIds(vStores as Store[], userRole, weekCounts), [vStores, userRole, weekCounts]);
+
   const managers = useMemo(() => managersFor(profile), [profile]);
   const handedToMe = useMemo(() => (vAssignees as StoreAssignee[]).filter((r) => r.user_id === userId).map((r) => r.store_id), [vAssignees, userId]);
   const { patch: patchStores, mine: myStores } = useMemo(
@@ -239,13 +258,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const startVisit = useCallback(
     async (storeId: string) => {
       if (activeVisit && activeVisit.storeId !== storeId) throw new Error('Finish or cancel the visit you already started first.');
+      // OMs are stopped before the clock starts, not 25 minutes later.
+      if (leftThisWeek(storeId) <= 0) throw new VisitLimitError();
       const visit: ActiveVisit = { storeId, startedAt: new Date().toISOString() };
       saveActive(visit);
       const name = stores.find((s) => s.id === storeId)?.name ?? 'Your store';
       // The alarm is a safety net; the visit clock runs without it.
       scheduleVisitAlarm(name, storeId, visit.startedAt).catch(() => {});
     },
-    [activeVisit, saveActive, stores],
+    [activeVisit, saveActive, stores, leftThisWeek],
   );
 
   const completeVisit = useCallback(async () => {
@@ -259,6 +280,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .select('*')
       .single();
     if (err) {
+      if (isVisitLimitError(err)) {
+        // Over the limit (another device logged one first): nothing to complete.
+        saveActive(null);
+        cancelVisitAlarm().catch(() => {});
+        throw new VisitLimitError();
+      }
       if (/visit_start_time|visit_end_time/.test(err.message) && !/at least|Start the visit/.test(err.message)) throw new Error('Timed visits need the latest database update. Ask your admin to re-run the SQL file.');
       throw err;
     }
@@ -311,14 +338,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const logPastVisits = useCallback(async (storeId: string, count: number) => {
+    if (count > leftThisWeek(storeId)) throw new VisitLimitError();
     const { data, error: err } = await supabase.rpc('log_past_visits', { p_store_id: storeId, p_count: count });
     if (err) {
+      if (isVisitLimitError(err)) throw new VisitLimitError();
       if (/log_past_visits|is_manual/.test(err.message) && /not find|does not exist|schema cache/.test(err.message)) throw new Error('Logging past visits needs the latest database update. Ask your admin to re-run the SQL file.');
       throw new Error(err.message);
     }
     const added = (data ?? []) as Visit[];
     setVisits((prev) => [...added, ...prev]);
-  }, []);
+  }, [leftThisWeek]);
 
   const updateStoreAddress = useCallback(
     async (storeId: string, address: string) => {
@@ -472,6 +501,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       managers,
       targets,
       tallies,
+      weekCounts,
+      visitsLeftThisWeek: leftThisWeek,
+      weekLocked,
       visits: vVisits as Visit[],
       activeVisit,
       startVisit,
@@ -494,7 +526,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, logPastVisits, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, weekCounts, leftThisWeek, weekLocked, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, logPastVisits, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
