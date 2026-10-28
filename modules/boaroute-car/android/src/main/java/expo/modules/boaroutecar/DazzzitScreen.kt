@@ -101,14 +101,20 @@ class DazzzitScreen(carContext: CarContext) : Screen(carContext), DefaultLifecyc
     invalidate()
   }
 
-  /** Open the BOAROUTE app on the phone; it carries its own driving-safe car screen. */
+  /**
+   * Open the BOAROUTE app on the phone, then point the driver at BOAROUTE's own
+   * Android Auto car app (the map with Start/End Visit) for the in-car
+   * experience. We don't mirror the phone onto the car surface: BOAROUTE
+   * already has a proper, driving-safe car screen, so the right move is to send
+   * the driver to it, not to re-draw the phone here.
+   */
   private fun launchBoaroute() {
     val intent = carContext.packageManager.getLaunchIntentForPackage(BOAROUTE_PACKAGE)
     if (intent == null) return toast("BOAROUTE is not installed on this phone.")
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
       carContext.applicationContext.startActivity(intent)
-      toast("Opening BOAROUTE on your phone.")
+      toast("BOAROUTE is open on your phone. Pick BOAROUTE from the Android Auto app list for the in-car map.")
     } catch (e: Exception) {
       toast("Could not open BOAROUTE.")
     }
