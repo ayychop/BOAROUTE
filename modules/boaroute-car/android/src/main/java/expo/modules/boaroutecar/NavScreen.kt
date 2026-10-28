@@ -8,6 +8,7 @@ import androidx.car.app.AppManager
 import androidx.car.app.CarContext
 import androidx.car.app.CarToast
 import androidx.car.app.Screen
+import androidx.car.app.SurfaceCallback
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
@@ -44,9 +45,12 @@ import kotlin.math.roundToInt
  */
 class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
   private val map = MapRenderer(carContext)
+  private val idle = IdleScreensaver(carContext)
   private val youtube = DashVideo(carContext, "https://m.youtube.com", "YouTube") { d, reason -> onDashFailed(d, reason) }
   private val arcade = DashVideo(carContext, "https://gamesnacks.com", "Arcade") { d, reason -> onDashFailed(d, reason) }
-  private val surface = SurfaceRouter(map)
+  // Starts on the idle screensaver — the common cold-start state — so the map's
+  // MapView is only created once a route or visit actually needs it.
+  private val surface = SurfaceRouter(idle)
   private val parkedWatch = ParkedWatch(carContext) { onParkedChange() }
   private val navigation = carContext.getCarService(NavigationManager::class.java)
   private val handler = Handler(Looper.getMainLooper())
@@ -97,6 +101,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
     youtube.release()
     arcade.release()
     map.release()
+    idle.release()
     if (navigating) navigation.navigationEnded()
     navigating = false
   }
@@ -112,7 +117,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
       navigation.navigationStarted()
       navigating = true
     }
-    map.render()
+    updateSurface()
     handler.removeCallbacks(tick)
     if ((CarState.visit?.lockRemainingMs() ?: 0) > 0) handler.post(tick)
     invalidateIfChanged()
@@ -127,9 +132,10 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
   }
 
   override fun onGetTemplate(): Template {
-    val builder = NavigationTemplate.Builder()
-      .setActionStrip(actionStrip())
-      .setNavigationInfo(navigationInfo())
+    val builder = NavigationTemplate.Builder().setActionStrip(actionStrip())
+    // When idle the surface is the screensaver, so no routing card is drawn
+    // over it — just the action strip (Start Visit, or a pointer to the phone).
+    navigationInfo()?.let { builder.setNavigationInfo(it) }
     // Pan mode is what lets drags on the car screen scroll the video page.
     if (active != null && carContext.carAppApiLevel >= CarAppApiLevels.LEVEL_2) builder.setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
     val route = CarState.route
@@ -143,7 +149,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
     return builder.build()
   }
 
-  private fun navigationInfo(): NavigationInfo {
+  private fun navigationInfo(): NavigationInfo? {
     val visit = CarState.visit
     val route = CarState.route
     return when {
@@ -156,7 +162,8 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
         val cue = route.instruction ?: "Continue to ${route.nextStop ?: "your destination"}"
         RoutingInfo.Builder().setCurrentStep(Step.Builder(cue).build(), distance(route.distanceToNextM ?: route.remainingM)).build()
       }
-      else -> message("No active route", "Open BOAROUTE on your phone to load your stores." + (CarState.start?.let { "\nNext store: ${it.storeName}" } ?: "") + (CarState.lunch?.let { "\n$it" } ?: ""))
+      // Idle: the screensaver carries the moment, so no card is drawn over it.
+      else -> null
     }
   }
 
@@ -208,8 +215,25 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
   private fun stopDash() {
     if (active == null) return
     active = null
-    surface.switchTo(map)
+    updateSurface()
     invalidateIfChanged()
+  }
+
+  /** The screensaver while idle, the parked video when one is open, the map otherwise. */
+  private fun desiredSurface(): SurfaceCallback = when {
+    active != null -> active!!
+    CarState.route == null && CarState.visit == null -> idle
+    else -> map
+  }
+
+  /** Puts the right renderer on the car Surface and brings it up to date. */
+  private fun updateSurface() {
+    val target = desiredSurface()
+    surface.switchTo(target)
+    when (target) {
+      map -> map.render()
+      idle -> idle.update()
+    }
   }
 
   private fun onParkedChange() {
