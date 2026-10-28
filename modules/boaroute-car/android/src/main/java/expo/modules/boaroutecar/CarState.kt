@@ -48,6 +48,8 @@ object CarState {
     private set
   var hazards: List<Hazard> = emptyList()
     private set
+  var lunch: String? = null
+    private set
   var path: List<LatLng> = emptyList()
     private set
   /** Bumped when the path changes, so the map redraws the line only then. */
@@ -101,6 +103,7 @@ object CarState {
       val h = list.getJSONObject(i)
       Hazard(h.optDouble("lat"), h.optDouble("lng"), h.optString("type"))
     }
+    lunch = json.optStringOrNull("lunch")
     notifyListeners()
   }
 

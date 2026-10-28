@@ -106,6 +106,8 @@ function RootNavigator() {
           <Stack.Screen name="credits" options={{ animation: PUSH }} />
           <Stack.Screen name="vehicle" options={{ animation: PUSH }} />
           <Stack.Screen name="my-stores" options={{ animation: PUSH }} />
+          <Stack.Screen name="memos" options={{ animation: PUSH }} />
+          <Stack.Screen name="lunch" options={{ animation: PUSH }} />
           <Stack.Screen name="working-days" options={{ animation: PUSH }} />
           <Stack.Screen name="budget-settings" options={{ animation: PUSH }} />
           <Stack.Screen name="go-anywhere" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

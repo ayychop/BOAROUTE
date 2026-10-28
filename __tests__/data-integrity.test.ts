@@ -26,7 +26,18 @@ describe('seed data', () => {
     expect(migration.match(/'Joseph', 'fun and lively'/g)).toHaveLength(78);
     expect(migration.match(/'David', 'reserved'/g)).toHaveLength(65);
     expect(migration).toContain("'HP13 6BU'");
-    expect(fs.readdirSync(path.join(root, 'supabase/migrations'))).toEqual(['20261025000000_boaroute_init.sql']);
+    expect(fs.readdirSync(path.join(root, 'supabase/migrations')).sort()).toEqual(['20261025000000_boaroute_init.sql', '20261027120000_team_features.sql']);
+  });
+
+  it('enables RLS on the team-feature tables', () => {
+    const team = fs.readFileSync(path.join(root, 'supabase/migrations/20261027120000_team_features.sql'), 'utf8');
+    for (const t of ['voice_memos', 'team_orders', 'team_order_items']) {
+      expect(team).toContain(`create table if not exists public.${t}`);
+      expect(team).toContain(`alter table public.${t} enable row level security`);
+    }
+    expect(team).toContain("insert into storage.buckets");
+    // The scrapped fleet-map table must not come back.
+    expect(team).not.toContain('live_locations');
   });
 
   it('enables RLS on every table', () => {

@@ -4,8 +4,9 @@ import { AppState, Platform } from 'react-native';
 import { CarAppService } from '@/car/CarAppService';
 import { carHazards } from '@/car/car-state';
 import { cameraCue, nearestHazardWithin, proximityPhrase, type CameraCue } from '@/lib/hazard-alerts';
-import { isLiveHazard, type HazardReport } from '@/lib/hazards';
+import { hazardMeta, isLiveHazard, type HazardReport } from '@/lib/hazards';
 import { getPref } from '@/lib/prefs';
+import { checkInAt } from '@/services/checkin-watch';
 import { fetchLiveHazards } from '@/services/hazards';
 import { playCameraCue, speakWarning } from '@/services/copilot-audio';
 
@@ -33,6 +34,8 @@ let fetchedAt = 0;
 let fetching = false;
 /** What each report has had: a camera's last voice note, or 'spoken' for the one-off warnings. */
 const announced = new Map<string, CameraCue | 'spoken'>();
+/** Crowd-sourced reports already flashed on the car screen, so each shows once. */
+const toasted = new Set<string>();
 const reasons = new Set<WatchReason>();
 let routeAlertsOnScreen = false;
 
@@ -86,6 +89,19 @@ function onFix(fix: Location.LocationObject) {
   // Keeps the car map moving when the phone is not on the navigate screen.
   CarAppService.setPosition({ ...here, heading });
   CarAppService.setHazards(carHazards(live, here));
+
+  // A crew report nearby pops up quietly on the car screen (no voice): the
+  // subtle, auto-clearing counterpart to the spoken speed-camera cues.
+  if (CarAppService.isConnected()) {
+    const near = nearestHazardWithin(here, heading, live, toasted);
+    if (near && near.hazard.hazard_type !== 'speed_camera') {
+      toasted.add(near.hazard.id);
+      CarAppService.toast(`Heads up: ${hazardMeta(near.hazard.hazard_type).label.toLowerCase()} reported nearby.`);
+    }
+  }
+
+  // Remind the driver to clock in when they reach one of their own stores.
+  checkInAt(here.lat, here.lng).catch(() => {});
 
   if (routeAlertsOnScreen && AppState.currentState === 'active') return;
   // Fully announced reports drop out, so a nearer camera never hides one still due.
@@ -149,4 +165,5 @@ export async function stopHazardWatch(reason: WatchReason): Promise<void> {
     // Already stopped.
   }
   announced.clear();
+  toasted.clear();
 }

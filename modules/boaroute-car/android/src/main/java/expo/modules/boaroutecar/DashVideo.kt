@@ -21,17 +21,18 @@ import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
 
 /**
- * Parked-only YouTube on the car display, drawn the same way as MapRenderer:
- * a WebView with m.youtube.com in a Presentation on a private VirtualDisplay
- * over the host's Surface. Taps on the car screen are passed to the page and
- * pan-mode drags scroll it.
+ * Parked-only web content on the car display (YouTube, the GameSnacks arcade),
+ * drawn the same way as MapRenderer: a WebView in a Presentation on a private
+ * VirtualDisplay over the host's Surface. Taps on the car screen are passed to
+ * the page and pan-mode drags scroll it. A gamepad connected over USB or
+ * Bluetooth reaches the page through the standard web Gamepad API.
  *
  * Anything that goes wrong (no WebView, the display refused, the page failing
  * or not loading within 12 seconds, the renderer dying) calls onFail once and
  * clears the surface. A head unit that simply hides our surface throws
  * nothing, so that case still shows black.
  */
-class DashVideo(private val context: CarContext, private val onFail: (String) -> Unit) : SurfaceCallback {
+class DashVideo(private val context: CarContext, val url: String, val label: String, private val onFail: (DashVideo, String) -> Unit) : SurfaceCallback {
   private val handler = Handler(Looper.getMainLooper())
   private var display: VirtualDisplay? = null
   private var presentation: Presentation? = null
@@ -51,7 +52,7 @@ class DashVideo(private val context: CarContext, private val onFail: (String) ->
     container = surfaceContainer
     try {
       val vd = context.getSystemService(DisplayManager::class.java).createVirtualDisplay(
-        "boaroute-car-video", surfaceContainer.width, surfaceContainer.height, surfaceContainer.dpi, surface,
+        "boaroute-car-" + label, surfaceContainer.width, surfaceContainer.height, surfaceContainer.dpi, surface,
         DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
       ) ?: return fail("car display refused")
       display = vd
@@ -81,7 +82,7 @@ class DashVideo(private val context: CarContext, private val onFail: (String) ->
       p.show()
       presentation = p
       web = wv
-      wv.loadUrl(URL)
+      wv.loadUrl(url)
       handler.postDelayed(timeout, LOAD_TIMEOUT_MS)
     } catch (e: Exception) {
       fail(e.message ?: e.javaClass.simpleName)
@@ -134,11 +135,10 @@ class DashVideo(private val context: CarContext, private val onFail: (String) ->
     if (failed) return
     failed = true
     release()
-    handler.post { onFail(reason) }
+    handler.post { onFail(this, reason) }
   }
 
   private companion object {
-    const val URL = "https://m.youtube.com"
     const val LOAD_TIMEOUT_MS = 12_000L
   }
 }

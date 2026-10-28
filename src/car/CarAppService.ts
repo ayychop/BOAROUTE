@@ -16,6 +16,7 @@ let context: CarContext = EMPTY_CAR_CONTEXT;
 let metric = false;
 let position: CarPosition | null = null;
 let hazards: CarHazard[] = [];
+let lunch: string | null = null;
 let lastSent = '';
 
 let startVisitHandler: ((storeId: string) => void) | null = null;
@@ -26,7 +27,7 @@ let subscribed = false;
 /** The native side skips redraws when only the map moved; this skips identical sends. */
 function push() {
   if (!BoarouteCar) return;
-  const json = JSON.stringify(carDisplayState(navState, context, { metric, position, hazards }));
+  const json = JSON.stringify(carDisplayState(navState, context, { metric, position, hazards, lunch }));
   if (json === lastSent) return;
   lastSent = json;
   BoarouteCar.setState(json);
@@ -73,6 +74,12 @@ export const CarAppService = {
 
   setHazards(next: CarHazard[]) {
     hazards = next;
+    push();
+  },
+
+  /** One-line summary of the open group lunch order on the idle car screen. */
+  setLunch(next: string | null) {
+    lunch = next;
     push();
   },
 

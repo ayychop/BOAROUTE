@@ -3,8 +3,11 @@ import { useEffect, useMemo } from 'react';
 import { useUnits } from '@/hooks/useUnits';
 import { computeDue } from '@/lib/route-engine';
 import { formatDuration, MIN_VISIT_MS } from '@/lib/visit-timer';
+import { supabase } from '@/lib/supabaseClient';
 import { useData } from '@/providers/DataProvider';
+import { setCheckinStores, setCheckinVisiting } from '@/services/checkin-watch';
 import { startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
+import { fetchOpenOrder, fetchOrderItems } from '@/services/team-orders';
 import { CarAppService } from './CarAppService';
 import { EMPTY_CAR_CONTEXT, type CarContext } from './car-state';
 
@@ -42,6 +45,47 @@ export function CarBridge() {
   useEffect(() => {
     CarAppService.setMetric(units.unit === 'km');
   }, [units.unit]);
+
+  // Feed the check-in reminder: the person's own stores that have coordinates.
+  useEffect(() => {
+    setCheckinStores(
+      myStores
+        .filter((s): s is typeof s & { latitude: number; longitude: number } => s.latitude != null && s.longitude != null)
+        .map((s) => ({ id: s.id, name: s.name, lat: s.latitude, lng: s.longitude })),
+    );
+  }, [myStores]);
+
+  useEffect(() => {
+    setCheckinVisiting(!!activeVisit);
+  }, [activeVisit]);
+
+  // Keep the idle car screen showing the running group lunch order.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshLunch = async () => {
+      try {
+        const open = await fetchOpenOrder();
+        if (cancelled) return;
+        if (!open) return CarAppService.setLunch(null);
+        const items = await fetchOrderItems(open.id);
+        if (cancelled) return;
+        const where = open.place ? ` (${open.place})` : '';
+        CarAppService.setLunch(items.length === 0 ? `Lunch order open${where}` : `Lunch${where}: ${items.length} ${items.length === 1 ? 'item' : 'items'}`);
+      } catch {
+        // Leave the last summary in place if the fetch fails.
+      }
+    };
+    refreshLunch();
+    const channel = supabase
+      .channel('car-lunch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_order_items' }, refreshLunch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_orders' }, refreshLunch)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const nameOf = (id: string) => patchStores.find((s) => s.id === id)?.name ?? 'your store';

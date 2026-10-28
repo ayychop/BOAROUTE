@@ -68,6 +68,8 @@ export interface CarDisplayState {
   metric: boolean;
   position: CarPosition | null;
   hazards: CarHazard[];
+  /** One-line summary of the open group lunch order, or null. */
+  lunch: string | null;
 }
 
 /** Start Visit goes to the next stop on the route, else the most pressing store. */
@@ -82,7 +84,7 @@ function startTarget(nav: CarNavState | null, ctx: CarContext): CarDisplayState[
 export function carDisplayState(
   nav: CarNavState | null,
   ctx: CarContext,
-  extra: { metric: boolean; position: CarPosition | null; hazards: CarHazard[] },
+  extra: { metric: boolean; position: CarPosition | null; hazards: CarHazard[]; lunch?: string | null },
 ): CarDisplayState {
   const startedAtMs = ctx.visit ? new Date(ctx.visit.startedAt).getTime() : NaN;
   return {
@@ -102,6 +104,7 @@ export function carDisplayState(
     visit: ctx.visit && Number.isFinite(startedAtMs) ? { storeName: ctx.visit.storeName, startedAtMs, lockMs: ctx.lockMs } : null,
     start: startTarget(nav, ctx),
     ...extra,
+    lunch: extra.lunch ?? null,
   };
 }
 

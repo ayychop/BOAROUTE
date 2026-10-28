@@ -181,8 +181,10 @@ export default function Hub() {
             <ActionTile key="miles" index={5} icon="speedometer" label="Log a trip" sub="Work or personal" onPress={() => router.navigate('/finances')} />,
             <ActionTile key="event" index={6} icon="calendar" label="Log event" sub="Sales Day, OOH, meetings" onPress={() => router.push('/event-new')} />,
             <ActionTile key="ai" index={7} icon="sparkles" label="Draft a message" sub="Notes and emails" onPress={() => router.push('/ai-writer')} />,
-            <ActionTile key="stores" index={8} icon="storefront" label="My stores" sub={`${myStores.length} on your patch`} onPress={() => router.push('/my-stores')} />,
-            isAdmin ? <ActionTile key="admin" index={9} icon="shield-checkmark" tone="gold" label="Store management" sub="Assign and move stores" onPress={() => router.push('/admin/stores')} /> : null,
+            <ActionTile key="memos" index={8} icon="mic" label="Voice memos" sub="Shared team notes" onPress={() => router.push('/memos')} />,
+            <ActionTile key="lunch" index={9} icon="fast-food" label="Lunch" sub="Group order & the wheel" onPress={() => router.push('/lunch')} />,
+            <ActionTile key="stores" index={10} icon="storefront" label="My stores" sub={`${myStores.length} on your patch`} onPress={() => router.push('/my-stores')} />,
+            isAdmin ? <ActionTile key="admin" index={11} icon="shield-checkmark" tone="gold" label="Store management" sub="Assign and move stores" onPress={() => router.push('/admin/stores')} /> : null,
           ].filter(Boolean) as ReactNode[]
         }
       </TileGrid>

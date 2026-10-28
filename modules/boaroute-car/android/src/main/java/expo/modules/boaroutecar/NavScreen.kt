@@ -1,6 +1,5 @@
 package expo.modules.boaroutecar
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
@@ -38,13 +37,15 @@ import kotlin.math.roundToInt
  * or End Visit button. Presses go to JS, which starts the 25-minute timer or
  * logs the visit to Supabase exactly as the phone's own buttons do.
  *
- * Once the car has been parked for 30 seconds a YouTube button appears. It
- * swaps the map for DashVideo on the car display; if the car or the page
- * refuses, YouTube opens on the phone instead. Moving off closes the video.
+ * Once the car has been parked for 30 seconds YouTube and Arcade buttons
+ * appear. They swap the map for DashVideo on the car display; if the car or
+ * the page refuses, it opens on the phone instead. Moving off closes it. The
+ * idle screen also shows the running group lunch order.
  */
 class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
   private val map = MapRenderer(carContext)
-  private val video = DashVideo(carContext) { reason -> onDashVideoFailed(reason) }
+  private val youtube = DashVideo(carContext, "https://m.youtube.com", "YouTube") { d, reason -> onDashFailed(d, reason) }
+  private val arcade = DashVideo(carContext, "https://gamesnacks.com", "Arcade") { d, reason -> onDashFailed(d, reason) }
   private val surface = SurfaceRouter(map)
   private val parkedWatch = ParkedWatch(carContext) { onParkedChange() }
   private val navigation = carContext.getCarService(NavigationManager::class.java)
@@ -54,8 +55,8 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
   private var navigating = false
   /** Another navigation app (Waze, Google Maps) took over until this route ends. */
   private var handedOver = false
-  /** DashVideo is on the car display instead of the map. */
-  private var watching = false
+  /** The parked web view (YouTube or the arcade) on the car display, or null for the map. */
+  private var active: DashVideo? = null
   private var shownKey = ""
 
   private val onState: () -> Unit = { refresh() }
@@ -93,7 +94,8 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
     handler.removeCallbacks(tick)
     parkedWatch.stop()
     carContext.getCarService(AppManager::class.java).setSurfaceCallback(null)
-    video.release()
+    youtube.release()
+    arcade.release()
     map.release()
     if (navigating) navigation.navigationEnded()
     navigating = false
@@ -118,7 +120,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
 
   /** GPS fixes arrive every second; only ask the host for a new template when the text changes. */
   private fun invalidateIfChanged() {
-    val key = listOf(infoKey(), CarState.visit?.let { "end" } ?: CarState.start?.storeId, navigating, handedOver, parkedWatch.parked, watching).joinToString("|")
+    val key = listOf(infoKey(), CarState.visit?.let { "end" } ?: CarState.start?.storeId, navigating, handedOver, parkedWatch.parked, active != null).joinToString("|")
     if (key == shownKey) return
     shownKey = key
     invalidate()
@@ -129,7 +131,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
       .setActionStrip(actionStrip())
       .setNavigationInfo(navigationInfo())
     // Pan mode is what lets drags on the car screen scroll the video page.
-    if (watching && carContext.carAppApiLevel >= CarAppApiLevels.LEVEL_2) builder.setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
+    if (active != null && carContext.carAppApiLevel >= CarAppApiLevels.LEVEL_2) builder.setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
     val route = CarState.route
     if (route != null && navigating && !route.rerouting) {
       builder.setDestinationTravelEstimate(
@@ -145,7 +147,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
     val visit = CarState.visit
     val route = CarState.route
     return when {
-      watching -> message("Parked", "YouTube closes as soon as the car moves.")
+      active != null -> message("Parked", "${active?.label} closes as soon as the car moves.")
       visit != null -> message("Visiting ${visit.storeName}", visitText(visit))
       route != null && route.arrived -> message("Arrived${route.nextStop?.let { " at $it" } ?: ""}", "Tap Start Visit when you are in store.")
       route != null && handedOver -> message("Another app is navigating", "BOAROUTE speed camera alerts stay on.")
@@ -154,7 +156,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
         val cue = route.instruction ?: "Continue to ${route.nextStop ?: "your destination"}"
         RoutingInfo.Builder().setCurrentStep(Step.Builder(cue).build(), distance(route.distanceToNextM ?: route.remainingM)).build()
       }
-      else -> message("No active route", "Open BOAROUTE on your phone." + (CarState.start?.let { "\nNext store: ${it.storeName}" } ?: ""))
+      else -> message("No active route", "Open BOAROUTE on your phone." + (CarState.start?.let { "\nNext store: ${it.storeName}" } ?: "") + (CarState.lunch?.let { "\n$it" } ?: ""))
     }
   }
 
@@ -163,10 +165,10 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
     val visit = CarState.visit
     val route = CarState.route
     return when {
-      watching -> "watching"
+      active != null -> "dash:${active?.label}"
       visit != null -> "v:${visit.storeName}:${visitText(visit)}"
       route != null -> "r:${route.instruction}:${route.distanceToNextM?.let { distanceLabel(it) }}:${route.arrived}:${route.rerouting}:${route.nextStop}:${(route.remainingS / 60).roundToInt()}"
-      else -> "idle:${CarState.start?.storeName}"
+      else -> "idle:${CarState.start?.storeName}:${CarState.lunch}"
     }
   }
 
@@ -181,54 +183,53 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
       else -> strip.addAction(Action.Builder().setTitle("BOAROUTE").setOnClickListener { toast("Open BOAROUTE on your phone.") }.build())
     }
     when {
-      watching -> strip.addAction(Action.Builder().setTitle("Close video").setOnClickListener { stopVideo() }.build())
-      parkedWatch.parked -> strip.addAction(
-        Action.Builder()
-          .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_play)).setTint(CarColor.RED).build())
-          .setTitle("YouTube")
-          .setOnClickListener { startVideo() }
-          .build(),
-      )
+      active != null -> strip.addAction(Action.Builder().setTitle("Close ${active?.label}").setOnClickListener { stopDash() }.build())
+      parkedWatch.parked -> {
+        strip.addAction(
+          Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_play)).setTint(CarColor.RED).build())
+            .setTitle("YouTube")
+            .setOnClickListener { startDash(youtube) }
+            .build(),
+        )
+        strip.addAction(Action.Builder().setTitle("Arcade").setOnClickListener { startDash(arcade) }.build())
+      }
     }
     return strip.build()
   }
 
-  private fun startVideo() {
-    if (!parkedWatch.parked) return toast("YouTube is only for when you are parked.")
-    watching = true
-    surface.switchTo(video)
+  private fun startDash(which: DashVideo) {
+    if (!parkedWatch.parked) return toast("${which.label} is only for when you are parked.")
+    active = which
+    surface.switchTo(which)
     invalidateIfChanged()
   }
 
-  private fun stopVideo() {
-    if (!watching) return
-    watching = false
+  private fun stopDash() {
+    if (active == null) return
+    active = null
     surface.switchTo(map)
     invalidateIfChanged()
   }
 
   private fun onParkedChange() {
-    if (!parkedWatch.parked && watching) {
-      stopVideo()
-      toast("Video closed: the car is moving.")
+    if (!parkedWatch.parked && active != null) {
+      stopDash()
+      toast("Closed: the car is moving.")
     }
     invalidateIfChanged()
   }
 
-  /** The car would not show the video, so play it on the phone, still only while parked. */
-  private fun onDashVideoFailed(reason: String) {
-    stopVideo()
+  /** The car would not show the page, so open it on the phone, still only while parked. */
+  private fun onDashFailed(which: DashVideo, reason: String) {
+    stopDash()
     if (!parkedWatch.parked) return
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(which.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
-      try {
-        carContext.applicationContext.startActivity(Intent(intent).setPackage("com.google.android.youtube"))
-      } catch (_: ActivityNotFoundException) {
-        carContext.applicationContext.startActivity(intent)
-      }
-      toast("The car blocked video ($reason). YouTube is opening on your phone.")
+      carContext.applicationContext.startActivity(intent)
+      toast("The car blocked ${which.label} ($reason). Opening it on your phone.")
     } catch (e: Exception) {
-      toast("The car blocked video and the phone could not open YouTube.")
+      toast("The car blocked ${which.label} and the phone could not open it.")
     }
   }
 
