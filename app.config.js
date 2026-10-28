@@ -3,11 +3,13 @@
 // Maps SDK for Android key, so restrict it to this app's package and SHA-1
 // in Google Cloud. The Directions API key lives server side as a Supabase secret.
 //
-// APP_VARIANT=dazzzit (set by the "dazzzit" EAS profile) builds Dazzzit, a
-// standalone parked-only media launcher: its own package id and name so it
-// installs alongside BOAROUTE, and ./plugins/withDazzzit in place of
-// ./plugins/withAndroidAuto so only Dazzzit's car app service is registered.
-// Everything else — the Maps key, location config — is shared.
+// APP_VARIANT=dazzzit (set by the "dazzzit" EAS profile) builds the dual-identity
+// variant: on the phone it stays BOAROUTE (same name, same BR shield icon, same
+// dashboard) and only its package id differs (com.boanets.dazzzit) so it can
+// sideload alongside the regular build. On the car screen it presents as DAZZZIT
+// with the gold DZ logo — ./plugins/withDazzzit runs in place of
+// ./plugins/withAndroidAuto and labels the car app service "DAZZZIT". Everything
+// else — the Maps key, location config — is shared.
 const IS_DAZZZIT = (process.env.APP_VARIANT ?? '').trim() === 'dazzzit';
 
 module.exports = ({ config }) => {
@@ -35,7 +37,8 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
-    name: IS_DAZZZIT ? 'Dazzzit' : config.name,
+    // Phone identity stays BOAROUTE for both variants; only the car surface is
+    // rebranded to DAZZZIT, by ./plugins/withDazzzit. So no `name` override here.
     // Same key as the plugin above, also set in the classic location. It is read
     // from the environment because the repository is public.
     android: mapsKey ? { ...androidBase, config: { ...androidBase?.config, googleMaps: { apiKey: mapsKey } } } : androidBase,

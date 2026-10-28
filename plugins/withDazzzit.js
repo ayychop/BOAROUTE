@@ -16,7 +16,11 @@ const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins'
 const CAR_SERVICE = 'expo.modules.boaroutecar.DazzzitCarAppService';
 // Reused as-is: an empty browser whose only job is to get the app listed.
 const MEDIA_SERVICE = 'expo.modules.boaroutecar.BoarouteLauncherMediaService';
-const ICON = 'ic_dazzzit_car';
+// The car-only brand: this is what the Android Auto launcher shows, while the
+// phone app stays "BOAROUTE" (@string/app_name). The DZ logo is a drawable
+// shipped by the boaroute-car module, so it resolves in the merged manifest.
+const CAR_LABEL = 'DAZZZIT';
+const ICON = 'ic_dazzzit_dz';
 const MIN_CAR_API_LEVEL = 1;
 // CAR_SPEED lets ParkedWatch read the car's speed for the parked-only gate.
 const PERMISSIONS = ['androidx.car.app.NAVIGATION_TEMPLATES', 'androidx.car.app.ACCESS_SURFACE', 'com.google.android.gms.permission.CAR_SPEED'];
@@ -32,12 +36,11 @@ function withCarResources(config) {
   return withDangerousMod(config, [
     'android',
     async (cfg) => {
-      const root = cfg.modRequest.projectRoot;
       const res = path.join(cfg.modRequest.platformProjectRoot, 'app', 'src', 'main', 'res');
-      for (const dir of ['xml', 'drawable-nodpi']) fs.mkdirSync(path.join(res, dir), { recursive: true });
+      fs.mkdirSync(path.join(res, 'xml'), { recursive: true });
       fs.writeFileSync(path.join(res, 'xml', 'automotive_app_desc.xml'), DESCRIPTOR);
-      // Dazzzit reuses BOAROUTE's car shield until it has its own art.
-      fs.copyFileSync(path.join(root, 'assets', 'car-icon.png'), path.join(res, 'drawable-nodpi', `${ICON}.png`));
+      // The DZ car logo (@drawable/ic_dazzzit_dz) ships in the boaroute-car
+      // module's own res, so there is nothing to copy here.
       return cfg;
     },
   ]);
@@ -64,7 +67,7 @@ function withCarManifest(config) {
 
     app.service = (app.service ?? []).filter((s) => ![CAR_SERVICE, MEDIA_SERVICE].includes(s.$['android:name']));
     app.service.push({
-      $: { 'android:name': CAR_SERVICE, 'android:exported': 'true', 'android:label': '@string/app_name', 'android:icon': `@drawable/${ICON}` },
+      $: { 'android:name': CAR_SERVICE, 'android:exported': 'true', 'android:label': CAR_LABEL, 'android:icon': `@drawable/${ICON}` },
       'intent-filter': [
         {
           action: [{ $: { 'android:name': 'androidx.car.app.CarAppService' } }],
@@ -73,7 +76,7 @@ function withCarManifest(config) {
       ],
     });
     app.service.push({
-      $: { 'android:name': MEDIA_SERVICE, 'android:exported': 'true', 'android:label': '@string/app_name', 'android:icon': `@drawable/${ICON}` },
+      $: { 'android:name': MEDIA_SERVICE, 'android:exported': 'true', 'android:label': CAR_LABEL, 'android:icon': `@drawable/${ICON}` },
       'intent-filter': [{ action: [{ $: { 'android:name': 'android.media.browse.MediaBrowserService' } }] }],
     });
     return cfg;

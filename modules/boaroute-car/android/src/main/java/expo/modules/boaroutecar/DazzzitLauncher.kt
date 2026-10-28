@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.car.app.CarContext
@@ -96,6 +97,11 @@ class DazzzitLauncher(
       gravity = Gravity.CENTER
       setPadding(dp(ctx, SIDE_DP), dp(ctx, 24), dp(ctx, SIDE_DP), dp(ctx, 24))
     }
+    // The gold DZ logo over the DAZZZIT wordmark: the car screen reads as its
+    // own premium product, even though the phone app is still BOAROUTE.
+    column.addView(ImageView(ctx).apply {
+      setImageResource(R.drawable.ic_dazzzit_dz)
+    }, LinearLayout.LayoutParams(dp(ctx, 72), dp(ctx, 72)).apply { bottomMargin = dp(ctx, 12) })
     column.addView(TextView(ctx).apply {
       text = "DAZZZIT"
       setTextColor(GOLD)
