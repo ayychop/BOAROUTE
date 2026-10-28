@@ -6,7 +6,8 @@ import org.json.JSONObject
 
 /**
  * What the phone last told the car: the live route, the visit in progress and
- * the store Start Visit would open, plus the driver's position for the map.
+ * the store Start Visit would open, the stores ahead, plus the driver's
+ * position for the map.
  * JS writes it through BoarouteCarModule; the car screen and map read it.
  * Every read and write happens on the main thread.
  */
@@ -32,6 +33,8 @@ object CarState {
   data class StartTarget(val storeId: String, val storeName: String)
   data class Position(val lat: Double, val lng: Double, val heading: Double?)
   data class Hazard(val lat: Double, val lng: Double, val type: String)
+  /** A stop or store ahead; storeId is null for a route stop that is not a store. */
+  data class Upcoming(val storeId: String?, val name: String)
 
   private val main = Handler(Looper.getMainLooper())
   private val listeners = mutableSetOf<() -> Unit>()
@@ -50,6 +53,8 @@ object CarState {
     private set
   var lunch: String? = null
     private set
+  var upcoming: List<Upcoming> = emptyList()
+    private set
   var path: List<LatLng> = emptyList()
     private set
   /** Bumped when the path changes, so the map redraws the line only then. */
@@ -65,6 +70,14 @@ object CarState {
 
   /** Shows a short message on the car screen; set while the car screen exists. */
   var toaster: ((String) -> Unit)? = null
+
+  /** Shows it on the split-screen side panel (BoarouteLauncherMediaService) too, while that is connected. */
+  var panelToaster: ((String) -> Unit)? = null
+
+  fun toast(text: String) {
+    toaster?.invoke(text)
+    panelToaster?.invoke(text)
+  }
 
   fun addListener(l: () -> Unit) { listeners.add(l) }
   fun removeListener(l: () -> Unit) { listeners.remove(l) }
@@ -104,6 +117,11 @@ object CarState {
       Hazard(h.optDouble("lat"), h.optDouble("lng"), h.optString("type"))
     }
     lunch = json.optStringOrNull("lunch")
+    val stores = json.optJSONArray("upcoming")
+    upcoming = if (stores == null) emptyList() else List(stores.length()) { i ->
+      val u = stores.getJSONObject(i)
+      Upcoming(u.optStringOrNull("storeId"), u.optString("name"))
+    }
     notifyListeners()
   }
 

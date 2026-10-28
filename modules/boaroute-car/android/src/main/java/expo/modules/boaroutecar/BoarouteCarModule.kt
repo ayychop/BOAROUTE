@@ -34,7 +34,7 @@ class BoarouteCarModule : Module() {
     }
 
     Function("toast") { text: String ->
-      CarState.post { CarState.toaster?.invoke(text) }
+      CarState.post { CarState.toast(text) }
     }
 
     Function("isConnected") {

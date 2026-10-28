@@ -6,7 +6,9 @@ import type { LatLng } from '@/lib/types';
  * What the Android Auto screen shows, as plain data for the native car module
  * (modules/boaroute-car). The native side draws it as a NavigationTemplate:
  * BOAROUTE's map with the route, the car and nearby cameras; the next turn or
- * the visit countdown; and one big Start Visit or End Visit button. Pure, so
+ * the visit countdown; and one big Start Visit or End Visit button. When
+ * another app (Waze) has the map, the car's side panel shows the media entry
+ * instead: the same status, Start / End Visit and the upcoming stores. Pure, so
  * it is tested without a head unit.
  */
 
@@ -70,6 +72,22 @@ export interface CarDisplayState {
   hazards: CarHazard[];
   /** One-line summary of the open group lunch order, or null. */
   lunch: string | null;
+  /**
+   * The stores ahead, listed on the car's side panel: the route's remaining
+   * stops while navigating (storeId null for a stop that is not a store),
+   * else the most pressing stores.
+   */
+  upcoming: { storeId: string | null; name: string }[];
+}
+
+/** The side panel has room for a short list; the head unit may cut it shorter. */
+const MAX_UPCOMING = 8;
+
+function upcomingStores(nav: CarNavState | null, ctx: CarContext): CarDisplayState['upcoming'] {
+  const list = nav && nav.stops.length > 0
+    ? nav.stops.map((name) => ({ storeId: ctx.storeIds[name] ?? null, name }))
+    : ctx.upcoming.map((s) => ({ storeId: s.id, name: s.name }));
+  return list.slice(0, MAX_UPCOMING);
 }
 
 /** Start Visit goes to the next stop on the route, else the most pressing store. */
@@ -105,6 +123,7 @@ export function carDisplayState(
     start: startTarget(nav, ctx),
     ...extra,
     lunch: extra.lunch ?? null,
+    upcoming: upcomingStores(nav, ctx),
   };
 }
 

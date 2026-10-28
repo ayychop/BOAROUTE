@@ -55,6 +55,22 @@ describe('Android Auto car state', () => {
     expect(s.visit).toEqual({ storeName: 'Argos Thame', startedAtMs: Date.parse(startedAt), lockMs: 25 * 60_000 });
   });
 
+  it('lists the route stops ahead for the side panel, with ids where they are stores', () => {
+    expect(carDisplayState(base, ctx, extra).upcoming).toEqual([
+      { storeId: 's1', name: 'Currys Aylesbury' },
+      { storeId: 's2', name: 'Argos Thame' },
+      { storeId: null, name: 'Currys Oxford' },
+    ]);
+  });
+
+  it('lists the most pressing stores when no route is running, and nothing before the phone has data', () => {
+    expect(carDisplayState(null, ctx, extra).upcoming).toEqual([
+      { storeId: 's1', name: 'Currys Aylesbury' },
+      { storeId: 's2', name: 'Argos Thame' },
+    ]);
+    expect(carDisplayState(null, EMPTY_CAR_CONTEXT, extra).upcoming).toEqual([]);
+  });
+
   it('drops a visit with an unreadable start time rather than showing a broken clock', () => {
     expect(carDisplayState(null, { ...ctx, visit: { storeName: 'X', startedAt: 'nope' } }, extra).visit).toBeNull();
   });

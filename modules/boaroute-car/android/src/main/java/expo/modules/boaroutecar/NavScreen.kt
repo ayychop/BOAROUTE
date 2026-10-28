@@ -156,7 +156,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
         val cue = route.instruction ?: "Continue to ${route.nextStop ?: "your destination"}"
         RoutingInfo.Builder().setCurrentStep(Step.Builder(cue).build(), distance(route.distanceToNextM ?: route.remainingM)).build()
       }
-      else -> message("No active route", "Open BOAROUTE on your phone." + (CarState.start?.let { "\nNext store: ${it.storeName}" } ?: "") + (CarState.lunch?.let { "\n$it" } ?: ""))
+      else -> message("No active route", "Open BOAROUTE on your phone to load your stores." + (CarState.start?.let { "\nNext store: ${it.storeName}" } ?: "") + (CarState.lunch?.let { "\n$it" } ?: ""))
     }
   }
 
@@ -180,7 +180,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleOb
       visit != null -> strip.addAction(bigButton("End Visit", CarColor.RED) { endVisit(visit) })
       start != null -> strip.addAction(bigButton("Start Visit", CarColor.GREEN) { send("onStartVisit", mapOf("storeId" to start.storeId)) })
       // The strip may not be empty; with nothing to start, point the driver at the phone.
-      else -> strip.addAction(Action.Builder().setTitle("BOAROUTE").setOnClickListener { toast("Open BOAROUTE on your phone.") }.build())
+      else -> strip.addAction(Action.Builder().setTitle("Open phone to start route").setOnClickListener { toast("Open BOAROUTE on your phone to load your stores.") }.build())
     }
     when {
       active != null -> strip.addAction(Action.Builder().setTitle("Close ${active?.label}").setOnClickListener { stopDash() }.build())

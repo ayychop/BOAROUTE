@@ -10,8 +10,9 @@ import androidx.lifecycle.LifecycleOwner
 
 /**
  * Android Auto's entry point, declared in the manifest as a navigation car
- * app by plugins/withAndroidAuto.js. BoarouteLauncherMediaService is an empty
- * media browser that only gets the sideloaded app into the launcher.
+ * app by plugins/withAndroidAuto.js. BoarouteLauncherMediaService gets the
+ * sideloaded app into the launcher and fills the split-screen side panel
+ * when another app (Waze) has the map.
  */
 class BoarouteCarAppService : CarAppService() {
   // Every host is accepted, in release too: BOAROUTE is sideloaded, not a

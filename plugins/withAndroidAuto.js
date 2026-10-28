@@ -6,9 +6,10 @@
 // - Asks for the navigation template and map surface permissions the
 //   NavigationTemplate needs.
 // - Writes automotive_app_desc.xml declaring "media" and "template", and
-//   declares an empty MediaBrowserService (BoarouteLauncherMediaService), so
-//   Android Auto lists the sideloaded app in its launcher. The media side
-//   serves nothing; the CarAppService's NavigationTemplate is the real screen.
+//   declares a MediaBrowserService (BoarouteLauncherMediaService), so
+//   Android Auto lists the sideloaded app in its launcher. On split-screen
+//   cars it is also the side panel while another app (Waze) has the map:
+//   Start / End Visit and the stores ahead as a list.
 // - Copies the co-pilot voice notes into res/raw (with a keep rule so resource
 //   shrinking never drops them; the code finds them by name).
 const fs = require('fs');
