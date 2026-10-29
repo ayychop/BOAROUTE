@@ -39,3 +39,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# secrets (never commit in this public repo)
+google-services*.json
+
+# local camera-seeding data artifacts
+cameras.json
+insert_cameras.sql
+scripts/__pycache__/
