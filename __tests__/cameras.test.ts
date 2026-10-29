@@ -2,6 +2,7 @@ import {
   buildOverpassQuery,
   overpassElementToCamera,
   overpassElementsToCameras,
+  parseBbox,
   parseDirection,
   type OverpassElement,
 } from '../supabase/functions/_shared/cameras';
@@ -9,8 +10,9 @@ import { bboxAround } from '../src/lib/geo';
 
 describe('buildOverpassQuery', () => {
   const q = buildOverpassQuery();
-  it('pins the query to Great Britain', () => {
-    expect(q).toContain('"ISO3166-1"="GB"');
+  it('pins the query to the UK bounding box (lighter than an area filter)', () => {
+    expect(q).toContain('(49.8,-8.65,61.1,1.8)');
+    expect(q).not.toContain('ISO3166-1');
   });
   it('asks for both camera node kinds', () => {
     expect(q).toContain('node["highway"="speed_camera"]');
@@ -18,6 +20,25 @@ describe('buildOverpassQuery', () => {
   });
   it('returns JSON with a generous timeout', () => {
     expect(q).toContain('[out:json][timeout:180]');
+  });
+  it('accepts a custom bounding box', () => {
+    expect(buildOverpassQuery([51.48, -0.98, 51.78, -0.52])).toContain('(51.48,-0.98,51.78,-0.52)');
+  });
+});
+
+describe('parseBbox', () => {
+  it('parses a valid south,west,north,east string', () => {
+    expect(parseBbox('51.48,-0.98,51.78,-0.52')).toEqual([51.48, -0.98, 51.78, -0.52]);
+  });
+  it.each([
+    ['empty', undefined],
+    ['too few parts', '51.48,-0.98,51.78'],
+    ['non-numeric', '51.48,a,51.78,-0.52'],
+    ['south past north', '51.78,-0.98,51.48,-0.52'],
+    ['west past east', '51.48,-0.52,51.78,-0.98'],
+    ['out of range', '91,-0.98,92,-0.52'],
+  ])('rejects %s', (_label, input) => {
+    expect(parseBbox(input as string | undefined)).toBeNull();
   });
 });
 

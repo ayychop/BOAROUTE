@@ -25,21 +25,53 @@ export interface OverpassElement {
   tags?: Record<string, string>;
 }
 
-/** Public Overpass endpoint. Override with OVERPASS_ENDPOINT in the function. */
-export const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
+/**
+ * Overpass mirrors, tried in order. overpass-api.de is the official endpoint
+ * but the busiest (it rate-limits with 429 / times out with 504); the others
+ * are faster community mirrors. The OVERPASS_ENDPOINT env var, when set,
+ * overrides this whole list with a single endpoint.
+ */
+export const OVERPASS_MIRRORS = [
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+/** First mirror; also the documented default for OVERPASS_ENDPOINT. */
+export const OVERPASS_ENDPOINT = OVERPASS_MIRRORS[0];
+
+export type Bbox = readonly [number, number, number, number];
+
+/** Great Britain + Northern Ireland bounding box: south, west, north, east. */
+export const UK_BBOX: Bbox = [49.8, -8.65, 61.1, 1.8];
 
 /**
- * Every speed camera in the United Kingdom. The area filter pins it to GB so
- * we never pull the whole planet; the long timeout lets Overpass finish a
- * nationwide query.
+ * Parses an "south,west,north,east" string (the OVERPASS_BBOX env override)
+ * into a bbox, or null when missing or malformed. Lets a smaller area be used
+ * for testing without a code change or redeploy.
  */
-export function buildOverpassQuery(): string {
+export function parseBbox(value: string | undefined): Bbox | null {
+  if (!value) return null;
+  const parts = value.split(',').map((p) => Number(p.trim()));
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
+  const [s, w, n, e] = parts;
+  if (Math.abs(s) > 90 || Math.abs(n) > 90 || Math.abs(w) > 180 || Math.abs(e) > 180 || s >= n || w >= e) return null;
+  return [s, w, n, e];
+}
+
+/**
+ * Every speed camera in a bounding box (the UK by default). A box is far
+ * lighter than an `area["ISO3166-1"="GB"]` filter, which makes Overpass
+ * resolve the whole country boundary first; the box returns the same nodes
+ * without that cost.
+ */
+export function buildOverpassQuery(bbox: Bbox = UK_BBOX): string {
+  const bb = `(${bbox.join(',')})`;
   return [
     '[out:json][timeout:180];',
-    'area["ISO3166-1"="GB"][admin_level=2]->.gb;',
     '(',
-    '  node["highway"="speed_camera"](area.gb);',
-    '  node["enforcement"="maxspeed"](area.gb);',
+    `  node["highway"="speed_camera"]${bb};`,
+    `  node["enforcement"="maxspeed"]${bb};`,
     ');',
     'out body;',
   ].join('\n');
