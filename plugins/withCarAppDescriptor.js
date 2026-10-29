@@ -5,17 +5,17 @@
 //   templates car app only. Declaring "media" as well, or registering a
 //   MediaBrowserService, makes Android Auto treat BOAROUTE as a media app: it
 //   opens its own player UI and never shows the store list.
-// - Gives the CarAppService the BOAROUTE name and a high-contrast icon
-//   (gold shield on transparent, so it reads on the dark car launcher).
+// - Labels the CarAppService "BOA ROUTE" and gives it the phone's launcher
+//   icon (the BR shield), so the car launcher shows the same app as the phone.
 //   The library labels it "Android Auto Service" with no icon.
 // - Removes the library's MediaBrowserService if it ever gets declared.
 const fs = require('fs');
 const path = require('path');
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const { AndroidConfig, withAndroidManifest, withDangerousMod, withStringsXml } = require('@expo/config-plugins');
 
 const CAR_SERVICE = 'expo.modules.androidauto.AndroidAutoCarAppService';
 const MEDIA_SERVICE = 'expo.modules.androidauto.AndroidAutoMediaBrowserService';
-const ICON = 'ic_boaroute_car';
+const CAR_LABEL = 'BOA ROUTE';
 
 const DESCRIPTOR = `<?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
@@ -35,11 +35,19 @@ function withCarResources(config) {
       const res = path.join(cfg.modRequest.platformProjectRoot, 'app', 'src', 'main', 'res');
       fs.mkdirSync(path.join(res, 'xml'), { recursive: true });
       fs.writeFileSync(path.join(res, 'xml', 'automotive_app_desc.xml'), DESCRIPTOR);
-      fs.mkdirSync(path.join(res, 'drawable-nodpi'), { recursive: true });
-      fs.copyFileSync(path.join(cfg.modRequest.projectRoot, 'assets', 'car-icon.png'), path.join(res, 'drawable-nodpi', `${ICON}.png`));
       return cfg;
     },
   ]);
+}
+
+function withCarLabel(config) {
+  return withStringsXml(config, (cfg) => {
+    cfg.modResults = AndroidConfig.Strings.setStringItem(
+      [{ $: { name: 'car_app_label', translatable: 'false' }, _: CAR_LABEL }],
+      cfg.modResults,
+    );
+    return cfg;
+  });
 }
 
 function withCarManifest(config) {
@@ -64,12 +72,12 @@ function withCarManifest(config) {
       };
       app.service.push(service);
     }
-    service.$['android:label'] = '@string/app_name';
-    service.$['android:icon'] = `@drawable/${ICON}`;
+    service.$['android:label'] = '@string/car_app_label';
+    service.$['android:icon'] = '@mipmap/ic_launcher';
     return cfg;
   });
 }
 
 module.exports = function withCarAppDescriptor(config) {
-  return withCarManifest(withCarResources(config));
+  return withCarManifest(withCarLabel(withCarResources(config)));
 };

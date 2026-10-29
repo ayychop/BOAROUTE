@@ -1,8 +1,9 @@
 // route-options: live-traffic driving options for a multi-stop day route.
 // For every leg it asks the Google Routes API (TRAFFIC_AWARE_OPTIMAL, live
 // traffic) for alternatives, falling back to Mapbox
-// driving-traffic, then builds a motorway-preferred and a standard option
-// with turn-by-turn steps for the in-app navigator.
+// driving-traffic, then builds up to four whole-day options (recommended with
+// country roads penalised, fastest, motorway, shortest) with turn-by-turn
+// steps for the in-app navigator.
 // Secrets: GOOGLE_MAPS_API_KEY (preferred) or MAPBOX_ACCESS_TOKEN.
 import { corsHeaders, json, requireUser } from '../_shared/http.ts';
 import {
@@ -36,23 +37,36 @@ function parsePoints(body: unknown): Point[] {
   });
 }
 
+// The fuel-efficient reference route is often a distinct extra option. If a
+// project or region refuses it, the leg is asked again without it.
+let fuelEfficientRefused = false;
+
 async function fetchGoogleLeg(from: Point, to: Point, key: string): Promise<MapboxRoute[]> {
-  const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': ROUTES_API_FIELD_MASK },
-    body: JSON.stringify({
-      origin: { location: { latLng: { latitude: from.lat, longitude: from.lng } } },
-      destination: { location: { latLng: { latitude: to.lat, longitude: to.lng } } },
-      travelMode: 'DRIVE',
-      // Live traffic. TRAFFIC_UNAWARE would ignore current conditions.
-      routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
-      computeAlternativeRoutes: true,
-      languageCode: 'en-GB',
-      regionCode: 'GB',
-      units: 'IMPERIAL',
-    }),
-  });
-  const data = await res.json().catch(() => null);
+  const request = (withEco: boolean) =>
+    fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': ROUTES_API_FIELD_MASK },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: from.lat, longitude: from.lng } } },
+        destination: { location: { latLng: { latitude: to.lat, longitude: to.lng } } },
+        travelMode: 'DRIVE',
+        // Live traffic. TRAFFIC_UNAWARE would ignore current conditions.
+        routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
+        // Up to three alternatives besides the default route.
+        computeAlternativeRoutes: true,
+        ...(withEco ? { requestedReferenceRoutes: ['FUEL_EFFICIENT'] } : null),
+        languageCode: 'en-GB',
+        regionCode: 'GB',
+        units: 'IMPERIAL',
+      }),
+    });
+  let res = await request(!fuelEfficientRefused);
+  let data = await res.json().catch(() => null);
+  if (res.status === 400 && !fuelEfficientRefused) {
+    fuelEfficientRefused = true;
+    res = await request(false);
+    data = await res.json().catch(() => null);
+  }
   if (!res.ok) throw new Error(`Google Routes ${res.status}${data?.error?.message ? `: ${data.error.message}` : ''}`);
   const routes = (data?.routes ?? []) as RoutesApiRoute[];
   if (routes.length === 0) throw new Error('Google Routes returned no routes');

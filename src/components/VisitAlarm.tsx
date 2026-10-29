@@ -15,9 +15,10 @@ import { radius } from '@/theme/typography';
 import { PremiumButton } from './PremiumButton';
 import { Txt } from './Txt';
 
-const CHIME = require('../../assets/sounds/clock_out.wav');
+// The chime then the voice ("Time's up! ... Clock out now!"), looped until answered.
+const CHIME = require('../../assets/sounds/clock_out_alarm.wav');
 
-/** Loops the clock-out chime and the vibration while `on`, and stops both the moment it turns off. */
+/** Loops the clock-out call and the vibration while `on`, and stops both the moment it turns off. */
 function useAlarmSignal(on: boolean) {
   const player = useRef<AudioPlayer | null>(null);
   useEffect(() => {

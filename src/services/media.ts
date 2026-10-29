@@ -77,10 +77,10 @@ export function uploadReceipts(userId: string, photos: PickedMedia[], onProgress
   return uploadTaskMedia(userId, photos, onProgress, `receipts/${folderId()}`);
 }
 
-/** Time-limited URLs for private media (1 hour). */
-export async function signMedia(paths: string[]): Promise<Record<string, string>> {
+/** Time-limited URLs for private media (1 hour unless asked for longer, e.g. links in an exported report). */
+export async function signMedia(paths: string[], expiresInS = 3600): Promise<Record<string, string>> {
   if (paths.length === 0) return {};
-  const { data, error } = await supabase.storage.from(TASK_MEDIA_BUCKET).createSignedUrls(paths, 3600);
+  const { data, error } = await supabase.storage.from(TASK_MEDIA_BUCKET).createSignedUrls(paths, expiresInS);
   if (error || !data) return {};
   const out: Record<string, string> = {};
   for (const row of data) if (row.path && row.signedUrl) out[row.path] = row.signedUrl;

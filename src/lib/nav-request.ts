@@ -1,4 +1,7 @@
+import type { RouteKind } from '../../supabase/functions/_shared/route-analysis';
 import type { LatLng } from './types';
+
+const ROUTE_KINDS: readonly RouteKind[] = ['recommended', 'standard', 'motorway', 'shortest', 'alternative'];
 
 export interface NavDestination extends LatLng {
   label: string;
@@ -9,7 +12,10 @@ export interface NavRequest {
   from: 'here' | NavDestination;
   /** Stops in order; the last one is the destination. */
   to: NavDestination[];
-  prefer: 'motorway' | 'standard';
+  /** Option to start on. Recommended (country roads avoided) unless the person picked another. */
+  prefer: RouteKind;
+  /** Which of several options of the same kind (alternatives), by position in the list. */
+  optionIndex?: number;
   title: string;
 }
 
@@ -46,7 +52,8 @@ export function decodeNavRequest(raw: string | string[] | undefined): NavRequest
     return {
       from,
       to,
-      prefer: v.prefer === 'standard' ? 'standard' : 'motorway',
+      prefer: ROUTE_KINDS.includes(v.prefer as RouteKind) ? (v.prefer as RouteKind) : 'recommended',
+      ...(typeof v.optionIndex === 'number' && Number.isInteger(v.optionIndex) && v.optionIndex >= 0 && v.optionIndex < 8 ? { optionIndex: v.optionIndex } : {}),
       title: typeof v.title === 'string' && v.title.trim() ? v.title.trim() : to[to.length - 1].label,
     };
   } catch {

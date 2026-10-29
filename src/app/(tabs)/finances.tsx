@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
@@ -16,7 +16,7 @@ import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useUnits } from '@/hooks/useUnits';
-import { CATEGORY_LABEL, budgetsFor, formatPence, inMonth, monthKey, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
+import { CATEGORY_LABEL, budgetsFor, formatPence, inMonth, parseMiles, summariseBudget, summariseMileage, toPence } from '@/lib/budget';
 import { copyText } from '@/lib/external';
 import { formatOdometer, odometerValue, parseOdometer } from '@/lib/odometer';
 import { vehicleFor } from '@/lib/vehicles';
@@ -25,24 +25,22 @@ import { formatDuration, summariseVisitTimes } from '@/lib/visit-timer';
 import type { ExpenseCategory, MileageType } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
+import { recentMonths } from '@/lib/history';
 import { signMedia } from '@/services/media';
+import { exportMonthlyReport, type ExportFormat } from '@/services/report-export';
 import { useTheme } from '@/theme/ThemeProvider';
 import { fonts, radius } from '@/theme/typography';
 
-function recentMonths(n: number): string[] {
-  const now = new Date();
-  return Array.from({ length: n }, (_, i) => monthKey(new Date(now.getFullYear(), now.getMonth() - i, 1)));
-}
-
 export default function Finances() {
   const { palette } = useTheme();
-  const { profile, updateProfile } = useAuth();
-  const { mileage, expenses, visits, stores, addMileage, deleteExpense, deleteMileage, refresh } = useData();
+  const { profile, updateProfile, session } = useAuth();
+  const { mileage, expenses, visits, stores, today, addMileage, deleteExpense, deleteMileage, refresh } = useData();
+  const params = useLocalSearchParams<{ month?: string }>();
   const u = useUnits();
   const { compact, expanded } = useLayout();
   // Matches GlassCard's inner padding.
   const cardPad = compact ? 16 : 20;
-  const month = monthKey(new Date());
+  const month = today.slice(0, 7);
   const scrollRef = useRef<ScrollViewInstance>(null);
 
   const budgets = useMemo(() => budgetsFor(profile), [profile]);
@@ -75,6 +73,15 @@ export default function Finances() {
   // Report
   const [reportMonth, setReportMonth] = useState(month);
   const [report, setReport] = useState<string | null>(null);
+  // "Export report" on Home opens here on the month the dashboard was showing.
+  const [paramMonth, setParamMonth] = useState<string | undefined>(undefined);
+  if (params.month !== paramMonth) {
+    setParamMonth(params.month);
+    if (params.month && /^\d{4}-\d{2}$/.test(params.month)) {
+      setReportMonth(params.month);
+      setReport(null);
+    }
+  }
   const [copied, setCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -115,6 +122,23 @@ export default function Finances() {
   };
 
   const visitTimes = useMemo(() => summariseVisitTimes(visits, reportMonth, stores), [visits, reportMonth, stores]);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const runExport = async (format: ExportFormat) => {
+    const userId = session?.user.id;
+    if (!userId || exporting) return;
+    setExporting(format);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    try {
+      await exportMonthlyReport({ userId, month: reportMonth, name: profile?.name, visits, stores, mileage, expenses, visitTimes }, format, setExportStatus);
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setExporting(null);
+      setExportStatus(null);
+    }
+  };
+
   const generate = () => {
     setReport(buildMonthlyReport({ month: reportMonth, name: profile?.name, mileage, expenses, budgets, visitTimes }));
     setCopied(false);
@@ -277,7 +301,7 @@ export default function Finances() {
           style={{ marginHorizontal: -cardPad, marginBottom: 14 }}
           contentContainerStyle={{ gap: 8, paddingHorizontal: cardPad }}
         >
-          {recentMonths(12).map((m) => (
+          {recentMonths(12, new Date(`${today}T12:00:00`)).map((m) => (
             <Chip
               key={m}
               label={monthTitle(m)}
@@ -299,6 +323,15 @@ export default function Finances() {
           />
         </View>
         <NeonButton label="Generate Report" icon="document-text" onPress={generate} size="lg" full />
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          <NeonButton label="Export PDF" icon="document-attach" variant="gold" onPress={() => runExport('pdf')} loading={exporting === 'pdf'} disabled={!!exporting} style={{ flex: 1 }} accessibilityHint={`Tables and visit photos for ${monthTitle(reportMonth)}, ready to email or print`} />
+          <NeonButton label="Export HTML" icon="globe-outline" variant="outline" onPress={() => runExport('html')} loading={exporting === 'html'} disabled={!!exporting} style={{ flex: 1 }} accessibilityHint="Open on a computer and copy the tables straight into a portal" />
+        </View>
+        {exportStatus ? (
+          <Txt variant="caption" tone="dim" align="center" style={{ marginTop: 8 }} accessibilityLiveRegion="polite">
+            {exportStatus}
+          </Txt>
+        ) : null}
         {report && (
           <Animated.View entering={FadeInDown.springify().damping(18)} style={{ marginTop: 14 }}>
             <ScrollView horizontal showsHorizontalScrollIndicator style={{ borderRadius: radius.md, backgroundColor: palette.inputBg, borderWidth: 1, borderColor: palette.border }}>

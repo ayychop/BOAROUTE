@@ -22,6 +22,14 @@ export function isVisitLimitError(e: unknown): boolean {
 }
 
 /** Visits allowed per store per week, or null for no weekly limit. */
+/**
+ * Grade sets an OM's weekly limit (D doubles it), so OMs cannot regrade
+ * stores themselves. Matches update_store_settings in the All-In-One SQL.
+ */
+export function canChangeGrade(role: UserRole | null | undefined, isAdmin: boolean): boolean {
+  return isAdmin || role !== 'OM';
+}
+
 export function weeklyVisitLimit(role: UserRole | null | undefined, grade: Grade): number | null {
   if (role !== 'OM') return null;
   return grade === 'D' ? OM_D_GRADE_WEEKLY_LIMIT : OM_WEEKLY_LIMIT;

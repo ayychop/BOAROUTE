@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, withSpring } from 'react-native-reanimated';
-import type { RouteOption } from '../../supabase/functions/_shared/route-analysis';
+import { routeKindLabel, type RouteKind, type RouteOption } from '../../supabase/functions/_shared/route-analysis';
 import { useUnits } from '@/hooks/useUnits';
 import { formatMinutes } from '@/lib/format';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -18,13 +18,30 @@ interface Props {
   index: number;
 }
 
+const TITLES: Record<RouteKind, string> = {
+  recommended: 'Best Route (Avoids Country Roads)',
+  standard: 'Fastest Route',
+  motorway: 'Fastest Route (Motorway Preferred)',
+  shortest: 'Shortest Distance',
+  alternative: 'Alternative Route',
+};
+
+const ICONS: Record<RouteKind, keyof typeof MaterialCommunityIcons.glyphMap> = {
+  recommended: 'shield-star-outline',
+  standard: 'road-variant',
+  motorway: 'highway',
+  shortest: 'map-marker-distance',
+  alternative: 'call-split',
+};
+
 export function RouteOptionCard({ option, selected, onSelect, live, note, index }: Props) {
   const { palette } = useTheme();
   const units = useUnits();
-  const motorway = option.kind === 'motorway';
-  const accent = motorway ? palette.gold : palette.primary;
+  const golden = option.kind === 'motorway' || option.kind === 'recommended';
+  const accent = golden ? palette.gold : palette.primary;
   const delayMin = Math.round((option.durationS - option.typicalDurationS) / 60);
-  const title = motorway ? 'Fastest Route (Motorway Preferred)' : 'Standard Route';
+  const title = TITLES[option.kind] ?? 'Route';
+  const ruralKm = (option.ruralM ?? 0) / 1000;
   const scale = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(selected ? 1 : 0.98, { damping: 16 }) }] }));
 
   return (
@@ -55,12 +72,12 @@ export function RouteOptionCard({ option, selected, onSelect, live, note, index 
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: motorway ? palette.goldGlow : palette.glow }}>
-              <MaterialCommunityIcons name={motorway ? 'highway' : 'road-variant'} size={22} color={palette.text} />
+            <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: golden ? palette.goldGlow : palette.glow }}>
+              <MaterialCommunityIcons name={ICONS[option.kind] ?? 'road-variant'} size={22} color={palette.text} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Txt variant="label" style={{ color: accent }} numberOfLines={1}>
-                {motorway ? 'Motorway Route' : 'Standard Route'}
+                {routeKindLabel(option.kind)}
               </Txt>
               <Txt variant="strong" numberOfLines={2}>
                 {title}
@@ -83,7 +100,8 @@ export function RouteOptionCard({ option, selected, onSelect, live, note, index 
               <Tag icon="traffic-light" text={delayMin > 1 ? `+${delayMin} min traffic` : 'Traffic flowing'} color={delayMin > 5 ? palette.warning : palette.success} />
             )}
             {live && option.fastRoadShare > 0 && <Tag icon="speedometer" text={`${Math.round(option.fastRoadShare * 100)}% motorway / dual`} color={palette.textDim} />}
-            {live && option.minorShare > 0.05 && <Tag icon="pine-tree" text={`${Math.round(option.minorShare * 100)}% lanes`} color={palette.textDim} />}
+            {live && ruralKm >= 1 && <Tag icon="pine-tree" text={`${units.distance(ruralKm)} country roads`} color={ruralKm >= 3 ? palette.warning : palette.textDim} />}
+            {live && ruralKm < 1 && option.minorShare > 0.05 && <Tag icon="pine-tree" text={`${Math.round(option.minorShare * 100)}% lanes`} color={palette.textDim} />}
             {!live && <Tag icon="wifi-off" text="Estimate, no live traffic" color={palette.warning} />}
           </View>
 

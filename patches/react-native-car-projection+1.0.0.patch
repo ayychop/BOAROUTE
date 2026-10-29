@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-car-projection/android/src/main/java/expo/modules/androidauto/AndroidAutoSession.kt b/node_modules/react-native-car-projection/android/src/main/java/expo/modules/androidauto/AndroidAutoSession.kt
-index 82dd474..e3b01f1 100644
+index 82dd474..86b0b5f 100644
 --- a/node_modules/react-native-car-projection/android/src/main/java/expo/modules/androidauto/AndroidAutoSession.kt
 +++ b/node_modules/react-native-car-projection/android/src/main/java/expo/modules/androidauto/AndroidAutoSession.kt
 @@ -475,8 +475,16 @@ class AndroidAutoScreen(
@@ -11,12 +11,12 @@ index 82dd474..e3b01f1 100644
 +        // Shown until the phone app registers its screen (it then replaces this one).
 +        // Never a media player: with no route data the driver sees "No active route".
 +        val text = if (message == "No screens registered") {
-+            "No active route\nOpen BOAROUTE on your phone to load your stores."
++            "No active route\nOpen BOA ROUTE on your phone to load your stores."
 +        } else {
 +            message
 +        }
 +        return MessageTemplate.Builder(text)
-+            .setTitle("BOAROUTE")
++            .setTitle("BOA ROUTE")
 +            .setHeaderAction(Action.APP_ICON)
              .build()
      }

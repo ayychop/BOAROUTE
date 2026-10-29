@@ -208,6 +208,8 @@ export default function Me() {
         <LinkRow icon="wallet" label="Budgets" hint={`Standard ${formatPence(budgets.standard)} · Sales Day / OOH ${formatPence(budgets.special)}`} href="/budget-settings" />
         <LinkRow icon="options" label="Route Settings" hint="Your monthly visit targets per grade" href="/route-settings" />
         <LinkRow icon="car-sport" label="Your vehicle" hint={look.car_make_model ?? vehicle?.plate ?? 'Make, model and registration'} href="/vehicle" />
+        <LinkRow icon="volume-high" label="Voice alerts" hint="Speed camera and police voice notes: volume and a test" href="/voice-settings" />
+        <LinkRow icon="game-controller" label="Game Hub" hint="Your HTML5 games, and free ones to discover" href="/games" tone="gold" />
         <LinkRow icon="color-palette" label="Map & car style" hint={`${carIconFor(look.car_icon).label} indicator · ${routeColorFor(look.route_color).label} route trail`} href="/personalise" tone="gold" />
         <LinkRow icon="flame" label="Premium Motivation" hint="Longer reads for your break" href="/motivation" tone="gold" />
         {isAdmin && <LinkRow icon="shield-checkmark" label="Store Management" hint="The full master list: assign stores to Jo, Pete, Marcia, Jermaine, Kishan or Raphael" href="/admin/stores" tone="gold" />}

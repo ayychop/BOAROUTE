@@ -92,10 +92,10 @@ function startVisit(storeId: string | undefined, ctx: CarContext): CarAction[] |
 function idleTemplate(ctx: CarContext): CarListTemplate {
   const header = { headerAction: { title: 'app_icon' as const } };
   if (ctx.visiting) {
-    return { type: 'ListTemplate', title: 'BOAROUTE', items: [{ title: clip(`Visiting ${ctx.visiting}`), texts: ['Complete the visit on your phone.'] }], ...header };
+    return { type: 'ListTemplate', title: 'BOA ROUTE', items: [{ title: clip(`Visiting ${ctx.visiting}`), texts: ['Complete the visit on your phone.'] }], ...header };
   }
   if (ctx.upcoming.length === 0) {
-    return { type: 'ListTemplate', title: 'BOAROUTE', items: [{ title: 'No active route', texts: ['Start navigation on your phone and your route appears here.'] }], ...header };
+    return { type: 'ListTemplate', title: 'BOA ROUTE', items: [{ title: 'No active route', texts: ['Start navigation on your phone and your route appears here.'] }], ...header };
   }
   const items = ctx.upcoming.slice(0, MAX_CAR_ROWS).map((s, i) => ({ title: clip(s.name), texts: [i === 0 ? `Next · ${s.detail}` : s.detail] }));
   return { type: 'ListTemplate', title: 'No active route', items, ...header, actionStrip: startVisit(ctx.upcoming[0].id, ctx) };

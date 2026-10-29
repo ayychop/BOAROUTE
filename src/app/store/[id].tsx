@@ -29,8 +29,11 @@ import { isVisitLimitError } from '@/lib/visit-limits';
 import { MIN_VISIT_MINUTES, VISIT_ALARM_MINUTES, formatCountdown, formatDuration, lockRemainingMs } from '@/lib/visit-timer';
 import { supabase } from '@/lib/supabaseClient';
 import type { Task } from '@/lib/types';
+import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
-import { deleteMedia, signMedia } from '@/services/media';
+import { navigateWithWaze } from '@/services/drive';
+import { captureWithCamera, deleteMedia, pickFromLibrary, signMedia } from '@/services/media';
+import { uploadVisitPhotos } from '@/services/visit-photos';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export default function StoreDetail() {
@@ -55,6 +58,17 @@ export default function StoreDetail() {
   const [pastOpen, setPastOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
   const [cheer, setCheer] = useState<{ text: string; done: boolean } | null>(null);
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
+  const [photoBusy, setPhotoBusy] = useState(false);
+  // Photos saved during the visit running now (they link to it when it is completed).
+  const [visitPhotos, setVisitPhotos] = useState(0);
+  const visitKey = visitHere ? activeVisit.startedAt : null;
+  const [photosFor, setPhotosFor] = useState(visitKey);
+  if (photosFor !== visitKey) {
+    setPhotosFor(visitKey);
+    setVisitPhotos(0);
+  }
 
   // The encouragement after a visit fades after a few seconds.
   useEffect(() => {
@@ -104,18 +118,46 @@ export default function StoreDetail() {
     );
   }
 
-  // In-app navigation from where the phone is. Stores without a map pin are looked up by address first.
-  const onNavigate = async () => {
-    let point = hasCoords(store) ? toLatLng(store) : null;
-    if (!point) {
-      if (!store.address?.trim()) return Alert.alert('No address yet', 'Tap Edit Address to add one, then you can navigate here.');
-      setLocating(true);
-      point = await geocode(`${store.name}, ${store.address}`).catch(() => null);
-      if (!point) point = await geocode(store.address).catch(() => null);
-      setLocating(false);
-      if (!point) return Alert.alert('Address not found', 'We could not place this address on the map. Adding a postcode usually fixes it.');
+  // Stores without a map pin are looked up by address first.
+  const locate = async () => {
+    if (hasCoords(store)) return toLatLng(store);
+    if (!store.address?.trim()) {
+      Alert.alert('No address yet', 'Tap Edit Address to add one, then you can navigate here.');
+      return null;
     }
-    router.push({ pathname: '/navigate', params: { req: encodeNavRequest({ from: 'here', to: [{ ...point, label: store.name }], prefer: 'motorway', title: store.name }) } });
+    setLocating(true);
+    let point = await geocode(`${store.name}, ${store.address}`).catch(() => null);
+    if (!point) point = await geocode(store.address).catch(() => null);
+    setLocating(false);
+    if (!point) Alert.alert('Address not found', 'We could not place this address on the map. Adding a postcode usually fixes it.');
+    return point;
+  };
+
+  // In-app navigation from where the phone is.
+  const onNavigate = async () => {
+    const point = await locate();
+    if (point) router.push({ pathname: '/navigate', params: { req: encodeNavRequest({ from: 'here', to: [{ ...point, label: store.name }], prefer: 'recommended', title: store.name }) } });
+  };
+
+  const onWaze = async () => {
+    const point = await locate();
+    if (point) navigateWithWaze(point, { storeId: store.id }).catch(() => {});
+  };
+
+  const onAddPhoto = async (source: 'camera' | 'library') => {
+    if (!userId || photoBusy) return;
+    try {
+      const picked = source === 'camera' ? await captureWithCamera(['images']) : await pickFromLibrary(6, ['images']);
+      if (!picked.length) return;
+      setPhotoBusy(true);
+      const saved = await uploadVisitPhotos(userId, store.id, picked);
+      setVisitPhotos((n) => n + saved.length);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e) {
+      Alert.alert('Photo not saved', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
   const saveAddress = async () => {
@@ -304,6 +346,15 @@ export default function StoreDetail() {
               Aim for {MIN_VISIT_MINUTES} minutes to an hour. The clock-out alarm sounds at {VISIT_ALARM_MINUTES} minutes.
             </Txt>
           )}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+            <NeonButton label="Visit photo" icon="camera-outline" variant="outline" onPress={() => onAddPhoto('camera')} loading={photoBusy} style={{ flex: 1 }} accessibilityHint="Saved to this visit and included in your monthly export" />
+            <NeonButton label="From gallery" icon="images-outline" variant="subtle" onPress={() => onAddPhoto('library')} disabled={photoBusy} style={{ flex: 1 }} />
+          </View>
+          {visitPhotos > 0 ? (
+            <Txt variant="caption" tone="success" align="center" style={{ marginTop: 6 }}>
+              {visitPhotos} photo{visitPhotos === 1 ? '' : 's'} saved to this visit
+            </Txt>
+          ) : null}
           <View style={{ alignItems: 'center', marginTop: 6 }}>
             <NeonButton label="Cancel visit" icon="close" variant="ghost" size="sm" onPress={onCancelVisit} disabled={visitBusy} />
           </View>
@@ -389,6 +440,7 @@ export default function StoreDetail() {
             ) : null}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
               <NeonButton size="sm" variant="gold" icon="navigate" label="Navigate" onPress={onNavigate} loading={locating} />
+              <NeonButton size="sm" variant="outline" icon="car-sport" label="Navigate with Waze" onPress={onWaze} disabled={locating} accessibilityHint="Opens Waze and leaves BOAROUTE's drive screen with Clock In underneath" />
             </View>
           </>
         )}

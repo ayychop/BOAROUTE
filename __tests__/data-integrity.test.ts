@@ -26,7 +26,17 @@ describe('seed data', () => {
     expect(migration.match(/'Joseph', 'fun and lively'/g)).toHaveLength(78);
     expect(migration.match(/'David', 'reserved'/g)).toHaveLength(65);
     expect(migration).toContain("'HP13 6BU'");
-    expect(fs.readdirSync(path.join(root, 'supabase/migrations'))).toEqual(['20261025000000_boaroute_init.sql']);
+    // The init migration holds all the seed data; later migrations are additive and never reseed.
+    expect(fs.readdirSync(path.join(root, 'supabase/migrations'))).toEqual(['20261025000000_boaroute_init.sql', '20261029000000_all_in_one.sql']);
+  });
+
+  it('keeps the all-in-one migration additive: no seed data, no dropped tables, RLS on the new table', () => {
+    const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261029000000_all_in_one.sql'), 'utf8');
+    expect(sql).not.toMatch(/insert into public\.stores/i);
+    expect(sql).not.toMatch(/drop table/i);
+    expect(sql).toContain('alter table public.visit_photos enable row level security');
+    // OMs cannot regrade stores, which would double their weekly limit.
+    expect(sql).toContain('Only your admin can change a store');
   });
 
   it('enables RLS on every table', () => {

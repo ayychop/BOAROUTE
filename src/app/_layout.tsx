@@ -112,6 +112,10 @@ function RootNavigator() {
           <Stack.Screen name="navigate" options={{ animation: 'fade', gestureEnabled: false }} />
           <Stack.Screen name="motivation" options={{ animation: PUSH }} />
           <Stack.Screen name="personalise" options={{ animation: PUSH }} />
+          <Stack.Screen name="drive-mode" options={{ animation: 'fade', presentation: 'fullScreenModal', gestureEnabled: false, contentStyle: { backgroundColor: '#000' } }} />
+          <Stack.Screen name="voice-settings" options={{ animation: PUSH }} />
+          <Stack.Screen name="games/index" options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }} />
+          <Stack.Screen name="games/play" options={{ animation: 'fade', presentation: 'fullScreenModal', gestureEnabled: false, contentStyle: { backgroundColor: '#000' } }} />
         </Stack.Protected>
       </Stack>
       {/* The one-hour clock-out alarm rings over any screen. */}

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
-import type { RouteOptionsResult } from '../../../supabase/functions/_shared/route-analysis';
+import { routeChoices, type RouteKind, type RouteOptionsResult } from '../../../supabase/functions/_shared/route-analysis';
 import { GradeBadge, ManagerBadge } from '@/components/badges';
 import { Chip, ToggleRow } from '@/components/controls';
 import { GlassCard } from '@/components/GlassCard';
@@ -12,9 +12,9 @@ import { StoreListSkeleton } from '@/components/Skeleton';
 import { IconButton, NeonButton } from '@/components/NeonButton';
 import { RouteOptionCard } from '@/components/RouteOptionCard';
 import { Screen, SectionHeader } from '@/components/Screen';
-import { StartPointPicker } from '@/components/StartPointPicker';
 import { Txt } from '@/components/Txt';
 import { useHomePoint } from '@/hooks/useHomePoint';
+import { useCurrentPoint, useStartPoint } from '@/hooks/useStartPoint';
 import { useLayout } from '@/hooks/useLayout';
 import { useUnits } from '@/hooks/useUnits';
 import { localDateString } from '@/lib/budget';
@@ -23,9 +23,11 @@ import { storeTarget } from '@/lib/frequency';
 import { encodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { getPref, setPref } from '@/lib/prefs';
 import { DEFAULT_MAX_STOPS, MAX_STOPS_LIMIT, hasCoords, planDayRoute, planWaypoints, toLatLng } from '@/lib/route-engine';
+import { resolveStartPoint, startPointLabel } from '@/lib/start-point';
 import { isWorkingDate } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
+import { navigateWithWaze } from '@/services/drive';
 import { fetchRouteOptions } from '@/services/functions';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -45,20 +47,21 @@ export default function RouteScreen() {
   const { point: home, error: homeError } = useHomePoint(profile?.starting_location);
   const [maxStops, setMaxStops] = useState(readStops);
   const [returnHome, setReturnHome] = useState(getPref('route.returnHome') !== 'false');
-  // "Start route from": home by default, or a store on the patch.
-  const [startStoreId, setStartStoreId] = useState<string | null>(() => getPref('route.startStore'));
-  const startStore = useMemo(() => myStores.find((s) => s.id === startStoreId && hasCoords(s)) ?? null, [myStores, startStoreId]);
-  const start = useMemo(() => (startStore ? toLatLng(startStore) : home), [startStore, home]);
+  // Where the day starts is set in Go Anywhere: home by default, current location, a store or an address.
+  const startPoint = useStartPoint();
+  const here = useCurrentPoint(startPoint.kind === 'here');
+  const startStore = useMemo(() => (startPoint.kind === 'store' ? myStores.find((s) => s.id === startPoint.storeId && hasCoords(s)) ?? null : null), [myStores, startPoint]);
+  const start = useMemo(
+    () => resolveStartPoint(startPoint, { home, here: here.point, store: startStore ? toLatLng(startStore) : null }),
+    [startPoint, home, here.point, startStore],
+  );
+  const startLabel = startPointLabel(startPoint, { homeLabel: profile?.starting_location, storeName: startStore?.name });
   const end = returnHome ? home : null;
-  // A missing home only blocks routing when the route starts there.
-  const startError = startStore ? null : homeError;
-  const chooseStart = (id: string | null) => {
-    setStartStoreId(id);
-    setPref('route.startStore', id);
-  };
+  // A missing home only blocks routing when the route starts there (or a picked store has gone).
+  const startError = startPoint.kind === 'here' ? here.error : startPoint.kind === 'custom' || startStore ? null : homeError;
   // Live options are stored with the stop list they were computed for.
   const [routeState, setRouteState] = useState<{ key: string; result: RouteOptionsResult; liveError: string | null } | null>(null);
-  const [selected, setSelected] = useState<'motorway' | 'standard'>('motorway');
+  const [selected, setSelected] = useState<{ kind: RouteKind; n: number }>({ kind: 'recommended', n: 0 });
 
   const plan = useMemo(
     () =>
@@ -87,7 +90,8 @@ export default function RouteScreen() {
     fetchRouteOptions(points).then(({ result, liveError: err }) => {
       if (!alive) return;
       setRouteState({ key: pointsKey, result, liveError: err });
-      setSelected(result.motorway.available ? 'motorway' : 'standard');
+      const first = routeChoices(result)[0];
+      setSelected({ kind: first?.kind ?? 'standard', n: 0 });
     });
     return () => {
       alive = false;
@@ -102,8 +106,8 @@ export default function RouteScreen() {
   const fetching = points.length >= 2 && !current;
 
   const live = !!options && options.source !== 'estimate';
-  const motorwayAvailable = !!options?.motorway.available;
-  const activeOption = options ? (selected === 'motorway' && motorwayAvailable ? options.motorway : options.standard) : null;
+  const choices = useMemo(() => (options ? routeChoices(options) : []), [options]);
+  const activeOption = choices.filter((o) => o.kind === selected.kind)[selected.n] ?? choices[0] ?? null;
 
   // In-app navigation from wherever the phone is; the navigator reroutes if that is not the planned start.
   const startNavigation = () => {
@@ -112,14 +116,14 @@ export default function RouteScreen() {
     if (plan.end) to.push({ ...plan.end, label: 'Home' });
     router.push({
       pathname: '/navigate',
-      params: { req: encodeNavRequest({ from: 'here', to, prefer: selected === 'motorway' && motorwayAvailable ? 'motorway' : 'standard', title: `Today's route · ${plan.stops.length} stops` }) },
+      params: { req: encodeNavRequest({ from: 'here', to, prefer: activeOption?.kind ?? 'recommended', optionIndex: selected.n, title: `Today's route · ${plan.stops.length} stops` }) },
     });
   };
 
   const navigateTo = (store: { name: string; latitude: number | null; longitude: number | null }) =>
     router.push({
       pathname: '/navigate',
-      params: { req: encodeNavRequest({ from: 'here', to: [{ lat: store.latitude as number, lng: store.longitude as number, label: store.name }], prefer: 'motorway', title: store.name }) },
+      params: { req: encodeNavRequest({ from: 'here', to: [{ lat: store.latitude as number, lng: store.longitude as number, label: store.name }], prefer: 'recommended', title: store.name }) },
     });
 
   // Visits are timed (25 minutes minimum), so they start on the store page.
@@ -143,7 +147,25 @@ export default function RouteScreen() {
   // A fixed-height preview map; the full map lives on the navigation screen.
   const mapH = compact ? 200 : 250;
 
-  const startPicker = <StartPointPicker stores={myStores} selectedId={startStore?.id ?? null} homeLabel={profile?.starting_location ?? 'not set'} onChange={chooseStart} />;
+  const startPicker = (
+    <GlassCard animateIn={false} onPress={() => router.push('/go-anywhere')} accessibilityLabel={`Starting from ${startLabel}. Change it in Go Anywhere`}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Ionicons name={startPoint.kind === 'here' ? 'locate' : startPoint.kind === 'store' ? 'storefront' : startPoint.kind === 'custom' ? 'location' : 'home'} size={20} color={palette.gold} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="label" tone="dim">
+            Starting from
+          </Txt>
+          <Txt variant="strong" numberOfLines={1}>
+            {startLabel}
+          </Txt>
+        </View>
+        <Txt variant="caption" tone="faint">
+          Change in Go Anywhere
+        </Txt>
+        <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+      </View>
+    </GlassCard>
+  );
 
   const goAnywhere = (
     <GlassCard glow="gold" onPress={() => router.push('/go-anywhere')} accessibilityLabel="Go Anywhere" animateIn={false}>
@@ -201,7 +223,7 @@ export default function RouteScreen() {
       <Screen inTabs title="Today's route" kicker="Route engine">
         {startPicker}
         <View style={{ height: 12 }} />
-        <EmptyState icon="home-outline" title="Where do you start?" body={`${startError} Or start from a store above.`} action={<NeonButton label="Open settings" size="sm" onPress={() => router.navigate('/profile')} />} />
+        <EmptyState icon="home-outline" title="Where do you start?" body={`${startError} Or pick another starting point in Go Anywhere.`} action={<NeonButton label="Choose starting point" size="sm" onPress={() => router.push('/go-anywhere')} />} />
       </Screen>
     );
   }
@@ -215,7 +237,7 @@ export default function RouteScreen() {
     );
   }
 
-  if (!plan || !start) return <Screen inTabs title="Today's route" kicker="Route engine">{startPicker}<LoadingBlock label="Locating home" /></Screen>;
+  if (!plan || !start) return <Screen inTabs title="Today's route" kicker="Route engine">{startPicker}<LoadingBlock label={startPoint.kind === 'here' ? 'Finding your location' : 'Locating your start'} /></Screen>;
 
   if (plan.stops.length === 0) {
     return (
@@ -249,25 +271,29 @@ export default function RouteScreen() {
         <LoadingBlock label="Checking live traffic" />
       ) : options ? (
         <>
+          {options.countryRoadWarning ? (
+            <GlassCard animateIn={false}>
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                <Ionicons name="warning" size={20} color={palette.warning} />
+                <Txt variant="caption" tone="warning" style={{ flex: 1 }}>
+                  No main-road way through right now, so even the best route uses about {units.distance(options.countryRoadWarning.ruralKm)} of country roads.
+                  {options.countryRoadWarning.warnings.length ? ` ${options.countryRoadWarning.warnings[0]}` : ''}
+                </Txt>
+              </View>
+            </GlassCard>
+          ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: 12 }}>
-            {motorwayAvailable && (
+            {choices.map((o, i) => (
               <RouteOptionCard
-                index={0}
-                option={options.motorway}
-                selected={selected === 'motorway'}
-                onSelect={() => setSelected('motorway')}
+                key={`${o.kind}-${i}`}
+                index={i}
+                option={o}
+                selected={o === activeOption}
+                onSelect={() => setSelected({ kind: o.kind, n: choices.filter((c) => c.kind === o.kind).indexOf(o) })}
                 live={live}
-                note={options.identical ? 'The fastest route already uses motorways, so both options match.' : null}
+                note={i === 0 && choices.length === 1 && live ? 'Only one sensible route today; the others drive the same roads.' : null}
               />
-            )}
-            <RouteOptionCard
-              index={1}
-              option={options.standard}
-              selected={selected === 'standard' || !motorwayAvailable}
-              onSelect={() => setSelected('standard')}
-              live={live}
-              note={!motorwayAvailable ? (live ? 'No motorway route exists for today. This is the standard fastest route.' : null) : null}
-            />
+            ))}
           </View>
           {liveError ? (
             <Txt variant="caption" tone="warning">
@@ -275,9 +301,9 @@ export default function RouteScreen() {
             </Txt>
           ) : null}
           <NeonButton
-            label={selected === 'motorway' && motorwayAvailable ? 'Start motorway route' : 'Start standard route'}
+            label={activeOption?.kind === 'recommended' ? 'Start recommended route' : activeOption?.kind === 'motorway' ? 'Start motorway route' : 'Start this route'}
             icon="navigate"
-            variant={selected === 'motorway' && motorwayAvailable ? 'gold' : 'primary'}
+            variant={activeOption === choices[0] ? 'gold' : 'primary'}
             onPress={startNavigation}
             size="lg"
             full
@@ -297,7 +323,7 @@ export default function RouteScreen() {
         {dayOffNotice}
         {goAnywhere}
         {startPicker}
-        <HudMap width={contentWidth} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={motorwayAvailable ? options?.motorway.geometry ?? null : null} standard={options?.standard.geometry ?? points.map((p) => [p.lng, p.lat])} selected={motorwayAvailable ? selected : 'standard'} />
+        <HudMap width={contentWidth} height={mapH} start={start} end={plan.end} stops={plan.stops.map((s) => toLatLng(s.store))} motorway={null} standard={activeOption?.geometry ?? points.map((p) => [p.lng, p.lat])} selected="standard" />
         {optionsBlock}
         {settings}
       </View>
@@ -338,6 +364,7 @@ export default function RouteScreen() {
                 </View>
                 <View style={{ gap: 8 }}>
                   <IconButton icon="navigate" label={`Navigate to ${stop.store.name}`} tone="primary" onPress={() => navigateTo(stop.store)} />
+                  <IconButton icon="car-sport" label={`Navigate to ${stop.store.name} with Waze`} onPress={() => navigateWithWaze(toLatLng(stop.store), { storeId: stop.store.id }).catch(() => {})} />
                   <IconButton icon={inProgress ? 'timer' : doneToday ? 'checkmark-done' : 'timer-outline'} label={inProgress ? `Visit in progress at ${stop.store.name}` : `Start a visit at ${stop.store.name}`} tone={inProgress || doneToday ? 'gold' : 'default'} onPress={() => openVisit(stop.store.id)} />
                 </View>
               </View>

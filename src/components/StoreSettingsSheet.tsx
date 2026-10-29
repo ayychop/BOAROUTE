@@ -6,6 +6,8 @@ import { NeonButton } from '@/components/NeonButton';
 import { Txt } from '@/components/Txt';
 import { GRADES, MAX_MONTHLY_TARGET } from '@/lib/frequency';
 import type { Grade, GradeTargets, Store } from '@/lib/types';
+import { canChangeGrade } from '@/lib/visit-limits';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface Props {
   store: Store;
@@ -17,6 +19,9 @@ interface Props {
 
 /** Store > Edit: grade and monthly frequency. Remounted per opening so it always starts from the saved values. */
 export function StoreSettingsSheet({ store, targets, open, onClose, onSave }: Props) {
+  const { userRole, isAdmin } = useAuth();
+  // D grade doubles an OM's weekly visits, so only the admin regrades for OMs (the database enforces it too).
+  const gradeLocked = !canChangeGrade(userRole, isAdmin);
   const [grade, setGrade] = useState<Grade>(store.grade);
   const [custom, setCustom] = useState(store.frequency_custom === true);
   const [frequency, setFrequency] = useState(store.frequency_custom ? store.required_frequency : targets[store.grade]);
@@ -48,19 +53,29 @@ export function StoreSettingsSheet({ store, targets, open, onClose, onSave }: Pr
       <Txt variant="label" tone="dim" style={{ marginBottom: 8 }}>
         Grade
       </Txt>
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {GRADES.map((g) => (
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: gradeLocked ? 8 : 16 }}>
+        {(gradeLocked ? [store.grade] : GRADES).map((g) => (
           <Chip
             key={g}
+            icon={gradeLocked ? 'lock-closed' : undefined}
             label={`Grade ${g}`}
             active={grade === g}
-            onPress={() => {
-              setGrade(g);
-              if (!custom) setFrequency(targets[g]);
-            }}
+            onPress={
+              gradeLocked
+                ? undefined
+                : () => {
+                    setGrade(g);
+                    if (!custom) setFrequency(targets[g]);
+                  }
+            }
           />
         ))}
       </View>
+      {gradeLocked ? (
+        <Txt variant="caption" tone="faint" style={{ marginBottom: 16 }}>
+          Only your admin can change a store&apos;s grade, because it sets your weekly visit limit.
+        </Txt>
+      ) : null}
 
       <ToggleRow
         label="Custom visit frequency"

@@ -10,9 +10,14 @@
    Anyone who signed in before this version goes through the new four-step onboarding once.
    Each person also gets `profiles.standard_budget` (default £60) and `profiles.sales_day_budget`
    (default £150, shared by Sales Day and OOH expenses). They can change both under Me > Budgets.
-2. Authentication > Providers > Email: enabled (email + password).
+2. SQL Editor > New query > paste `supabase/migrations/20261029000000_all_in_one.sql` > Run.
+   It adds `visit_photos` (photos taken during a visit, stored under `<user id>/visits/` in `task-media`
+   and linked to the visit when it is completed) and stops OMs changing a store's grade, since moving a
+   store to D grade would double their weekly visit limit. Admins and OTMs can still regrade.
+   Then redeploy the route function: `supabase functions deploy route-options`.
+3. Authentication > Providers > Email: enabled (email + password).
    If "Confirm email" is on, new users must tap the email link before signing in.
-3. Access is decided by the signed-in email, never by the name typed at signup.
+4. Access is decided by the signed-in email, never by the name typed at signup.
    Only emails in `public.team_members` get into the app. It is seeded with the
    owner's address as the one and only admin (Joseph's stores, `HP13 6BU` start).
    Anyone else who signs up is held on the sign-in screen as a pending request

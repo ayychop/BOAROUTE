@@ -16,9 +16,9 @@ export interface HazardReport {
 export const HAZARD_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 export const HAZARD_TYPES: { type: HazardType; label: string; icon: keyof typeof Ionicons.glyphMap; color: string }[] = [
-  { type: 'police', label: 'Police', icon: 'shield', color: '#5B7BD5' },
+  { type: 'police', label: 'Police', icon: 'shield', color: '#E5363B' },
   { type: 'speed_camera', label: 'Speed Camera', icon: 'camera', color: '#E3B565' },
-  { type: 'accident', label: 'Accident', icon: 'car', color: '#E4806F' },
+  { type: 'accident', label: 'Accident', icon: 'car', color: '#F07F4F' },
   { type: 'hazard', label: 'Hazard', icon: 'warning', color: '#F0A35C' },
 ];
 

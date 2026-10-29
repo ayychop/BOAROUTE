@@ -14,7 +14,7 @@ import { Txt } from '@/components/Txt';
 import { useLayout } from '@/hooks/useLayout';
 import { useNow } from '@/hooks/useNow';
 import { monthKey } from '@/lib/budget';
-import { GRADES, managerShort, storeTarget } from '@/lib/frequency';
+import { distinctOwners, GRADES, managerShort, storeTarget } from '@/lib/frequency';
 import { getPref, setPref } from '@/lib/prefs';
 import { ownerTabs } from '@/lib/store-selection';
 import type { Grade, Store, StoreOwner } from '@/lib/types';
@@ -37,7 +37,12 @@ function gridColumns(width: number): number {
 
 export default function Stores() {
   const { isAdmin } = useAuth();
-  const { myStores, patchStores, managers, tallies, targets, visitsLeftThisWeek, loading, refresh } = useData();
+  const { myStores: ownStores, patchStores, stores: allStores, managers, tallies: ownTallies, teamTallies, targets, visitsLeftThisWeek, loading, refresh } = useData();
+  // Admin can flip between their own patch and every store on the team, with everyone's visits counted.
+  const [scope, setScope] = useState<'mine' | 'team'>('mine');
+  const team = isAdmin && scope === 'team';
+  const myStores = team ? allStores : ownStores;
+  const tallies = team ? teamTallies : ownTallies;
   const { palette } = useTheme();
   const { width } = useLayout();
   const columns = gridColumns(width);
@@ -75,7 +80,10 @@ export default function Stores() {
     setManager(m);
   };
 
-  const owners = useMemo(() => ownerTabs(managers, patchStores), [managers, patchStores]);
+  const owners = useMemo(
+    () => (team ? distinctOwners(allStores).map((o) => o.owner) : ownerTabs(managers, patchStores)),
+    [team, allStores, managers, patchStores],
+  );
   const showOwner = owners.length > 1;
 
   const filtered = useMemo(() => {
@@ -104,11 +112,11 @@ export default function Stores() {
           exiting={focused && split.exiting.has(item.id)}
           onExited={onExited}
           showOwner={showOwner}
-          weekLocked={visitsLeftThisWeek(item.id) <= 0}
+          weekLocked={!team && visitsLeftThisWeek(item.id) <= 0}
         />
       </View>
     ),
-    [columns, tallies, targets, visitsLeftThisWeek, now, touched, focused, split.exiting, onExited, showOwner],
+    [columns, tallies, targets, visitsLeftThisWeek, now, touched, focused, split.exiting, onExited, showOwner, team],
   );
 
   const winsSection =
@@ -175,6 +183,12 @@ export default function Stores() {
   const filters = (
     <View>
       <DataErrorBanner />
+      {isAdmin && (
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }} accessibilityRole="radiogroup">
+          <Chip label="My patch" icon="person-circle" active={!team} onPress={() => { setTouched(true); setScope('mine'); setManager('all'); }} />
+          <Chip label={`Whole team · ${allStores.length}`} icon="people" tone="gold" active={team} onPress={() => { setTouched(true); setScope('team'); setManager('all'); }} />
+        </View>
+      )}
       <Field label="Search" icon="search" value={query} onChangeText={setQuery} placeholder="Store name, town or street" returnKeyType="search" autoCorrect={false} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, paddingBottom: 4 }} style={{ marginBottom: 14 }}>
         {showOwner && (
@@ -197,7 +211,7 @@ export default function Stores() {
   return (
     <Screen
       inTabs
-      kicker={`${myStores.length} stores in your patch`}
+      kicker={team ? `${myStores.length} stores across the team` : `${myStores.length} stores in your patch`}
       title="Stores"
       right={
         isAdmin ? (

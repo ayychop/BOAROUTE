@@ -47,6 +47,7 @@
         }
       ],
       "expo-video",
+      "expo-sharing",
       [
         "expo-audio",
         {
@@ -61,7 +62,8 @@
           "defaultChannel": "reminders",
           "enableRemoteNotifications": false,
           "sounds": [
-            "./assets/sounds/clock_out.wav"
+            "./assets/sounds/clock_out.wav",
+            "./assets/sounds/clock_out_alarm.wav"
           ]
         }
       ],

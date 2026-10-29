@@ -3,8 +3,9 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { EventTypeBadge } from '@/components/badges';
+import { Chip } from '@/components/controls';
 import { BRLogo } from '@/components/BRLogo';
 import { BudgetRings } from '@/components/BudgetRings';
 import { CoverageCard } from '@/components/CoverageCard';
@@ -21,8 +22,10 @@ import { useLayout } from '@/hooks/useLayout';
 import { useUnits } from '@/hooks/useUnits';
 import { useNow } from '@/hooks/useNow';
 import { patchCoverage } from '@/lib/coverage';
-import { budgetsFor, monthKey, summariseBudget, summariseMileage } from '@/lib/budget';
+import { budgetsFor, summariseBudget, summariseMileage } from '@/lib/budget';
 import { firstName, formatDateTime, relativeDay } from '@/lib/format';
+import { recentMonths, talliesForMonth } from '@/lib/history';
+import { monthTitle } from '@/lib/report';
 import { odometerValue } from '@/lib/odometer';
 import { computeDue, monthProgress } from '@/lib/route-engine';
 import { displayPlate, prefsFor } from '@/lib/preferences';
@@ -73,18 +76,24 @@ function TileGrid({ children }: { children: ReactNode[] }) {
 export default function Hub() {
   const { palette, phase } = useTheme();
   const { profile, isAdmin } = useAuth();
-  const { myStores, patchStores, tallies, targets, events, expenses, mileage, refresh } = useData();
+  const { myStores, patchStores, tallies, targets, events, expenses, mileage, visits, today, refresh } = useData();
   const { compact, expanded } = useLayout();
   const units = useUnits();
   const [refreshing, setRefreshing] = useState(false);
 
   const nowMs = useNow();
   const now = new Date(nowMs);
-  const month = monthKey(new Date(nowMs));
+  // The dashboard is always this month (it resets on the 1st); the chips look back at earlier ones.
+  const currentMonth = today.slice(0, 7);
+  const [picked, setPicked] = useState<string | null>(null);
+  const month = picked && picked !== currentMonth ? picked : currentMonth;
+  const viewingPast = month !== currentMonth;
+  const months = useMemo(() => recentMonths(13, new Date(`${today}T12:00:00`)), [today]);
+  const viewTallies = useMemo(() => (viewingPast ? talliesForMonth(visits, month) : tallies), [viewingPast, visits, month, tallies]);
   const progress = useMemo(() => monthProgress(myStores, tallies, targets), [myStores, tallies, targets]);
   const due = useMemo(() => computeDue(myStores, tallies, targets), [myStores, tallies, targets]);
   // Coverage counts the whole patch they are meant to cover, not just the stores they picked to route.
-  const coverage = useMemo(() => patchCoverage(patchStores, tallies, targets), [patchStores, tallies, targets]);
+  const coverage = useMemo(() => patchCoverage(patchStores, viewTallies, targets), [patchStores, viewTallies, targets]);
   const budgets = useMemo(() => budgetsFor(profile), [profile]);
   const budget = useMemo(() => summariseBudget(expenses, month, budgets), [expenses, month, budgets]);
   const miles = useMemo(() => summariseMileage(mileage, month), [mileage, month]);
@@ -114,6 +123,21 @@ export default function Hub() {
           {greetingFor(phase, now.getHours())}, {firstName(profile?.name, profile?.email)}
         </Txt>
       </View>
+    </View>
+  );
+
+  const monthPicker = (
+    <View style={{ marginBottom: 14 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
+        {months.map((m) => (
+          <Chip key={m} label={m === currentMonth ? `This month · ${monthTitle(m)}` : monthTitle(m)} active={month === m} tone="gold" onPress={() => setPicked(m === currentMonth ? null : m)} />
+        ))}
+      </ScrollView>
+      {viewingPast ? (
+        <Txt variant="caption" tone="gold" style={{ marginTop: 8 }} onPress={() => setPicked(null)} accessibilityRole="button">
+          Viewing {monthTitle(month)} as it closed. Tap to go back to this month.
+        </Txt>
+      ) : null}
     </View>
   );
 
@@ -166,7 +190,7 @@ export default function Hub() {
   const budgetCard = (
     <GlassCard index={1} onPress={() => router.navigate('/finances')} accessibilityLabel="Budgets">
       <Txt variant="label" tone="dim" numberOfLines={1} style={{ marginBottom: 14 }}>
-        Budgets this month
+        {viewingPast ? `Budgets · ${monthTitle(month)}` : 'Budgets this month'}
       </Txt>
       <BudgetRings budget={budget} />
     </GlassCard>
@@ -230,7 +254,9 @@ export default function Hub() {
           <ActionTile key="route" index={5} icon="navigate" label="Today's route" sub={owed ? `${progress.done} of ${progress.target} visits · ${owed} owed` : 'Every store on target'} onPress={() => router.navigate('/route')} />,
           <ActionTile key="miles" index={6} icon="speedometer" label="Log a trip" sub="Work or personal" onPress={() => router.navigate('/finances')} />,
           <ActionTile key="event" index={7} icon="calendar" label="Log event" sub="Sales Day, OOH, meetings" onPress={() => router.push('/event-new')} />,
+          <ActionTile key="export" index={8} icon="document-text" tone="gold" label="Export report" sub={`${monthTitle(month)} · PDF or HTML`} onPress={() => router.navigate({ pathname: '/finances', params: { month } })} />,
           <ActionTile key="ai" index={8} icon="sparkles" label="Draft a message" sub="Notes and emails" onPress={() => router.push('/ai-writer')} />,
+          <ActionTile key="games" index={9} icon="game-controller" tone="gold" label="Game Hub" sub="Break-time games" onPress={() => router.push('/games')} />,
           isAdmin ? <ActionTile key="admin" index={9} icon="shield-checkmark" tone="gold" label="Store management" sub="Assign and move stores" onPress={() => router.push('/admin/stores')} /> : null,
           <ActionTile key="stores" index={10} icon="storefront" label="My stores" sub={`${myStores.length} on your patch`} onPress={() => router.push('/my-stores')} />,
         ].filter(Boolean) as ReactNode[]}
@@ -241,6 +267,7 @@ export default function Hub() {
   return (
     <Screen inTabs onRefresh={onRefresh} refreshing={refreshing}>
       {header}
+      {monthPicker}
       <DataErrorBanner />
       {expanded ? (
         <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>

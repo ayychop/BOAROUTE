@@ -3,14 +3,16 @@ import { Platform } from 'react-native';
 import { alarmAt } from '@/lib/visit-timer';
 import { configureNotifications } from './notifications';
 
-export const VISIT_ALARM_CHANNEL = 'visit-alarm';
+/** Android fixes a channel's sound when it is created, so the voice clip needs a new channel id. */
+export const VISIT_ALARM_CHANNEL = 'visit-alarm-v2';
+const OLD_CHANNELS = ['visit-alarm'];
 export const VISIT_ALARM_KIND = 'visit-alarm';
 /** Notification category with the two buttons. No ':' or '-' allowed in the id. */
 export const VISIT_ALARM_CATEGORY = 'visitalarm';
 export const ACTION_CONTINUE = 'continue_visit';
 export const ACTION_CLOCK_OUT = 'clock_out';
-/** Bundled through the expo-notifications plugin (app.json > sounds). */
-export const VISIT_ALARM_SOUND = 'clock_out.wav';
+/** The chime, then a voice: "Time's up! You've hit one hour in store. Clock out now!" Bundled through app.json > sounds. */
+export const VISIT_ALARM_SOUND = 'clock_out_alarm.wav';
 /** Long, insistent buzzes: impossible to miss in a pocket. */
 export const ALARM_VIBRATION = [0, 900, 400, 900, 400, 900];
 
@@ -22,6 +24,7 @@ async function configureVisitAlarm(): Promise<void> {
   ready = true;
   await configureNotifications();
   if (Platform.OS === 'android') {
+    await Promise.all(OLD_CHANNELS.map((id) => Notifications.deleteNotificationChannelAsync(id).catch(() => {})));
     await Notifications.setNotificationChannelAsync(VISIT_ALARM_CHANNEL, {
       name: 'Visit clock-out alarm',
       description: 'Sounds when a store visit reaches one hour',

@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { localDateString } from '@/lib/budget';
 import { isMember, managersFor, targetsFor } from '@/lib/frequency';
 import { geocode } from '@/lib/geo';
+import { dayKey, msUntilMidnight, talliesForMonth } from '@/lib/history';
 import { getPref, setPref } from '@/lib/prefs';
 import type { VisitTally } from '@/lib/route-engine';
 import { storesForPerson } from '@/lib/store-selection';
@@ -65,8 +66,12 @@ interface DataValue {
   visitsLeftThisWeek: (storeId: string) => number;
   /** Stores an OM has used up this week's visits at. The route planner and Android Auto leave them out until Monday. */
   weekLocked: Set<string>;
-  /** This person's visits from the last six months, newest first. */
+  /** This person's visits from this month and the twelve before it, newest first. */
   visits: Visit[];
+  /** Admin only: everyone's visits per store this month (the All stores view). Empty for everyone else. */
+  teamTallies: Record<string, VisitTally>;
+  /** Today's local date ("2026-10-29"). Changes at midnight, so month and week views roll over while the app is open. */
+  today: string;
   /** The visit in progress on this device, if any. */
   activeVisit: ActiveVisit | null;
   /** Starts the visit clock for a store and schedules the one-hour clock-out alarm. */
@@ -119,6 +124,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
   const [assignees, setAssignees] = useState<StoreAssignee[]>([]);
+  const [teamVisits, setTeamVisits] = useState<Pick<Visit, 'store_id' | 'visited_at' | 'is_manual'>[]>([]);
+  const [today, setToday] = useState(() => dayKey());
+  const isAdmin = profile?.role === 'admin';
   const lastLoad = useRef(0);
   const retried = useRef<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
@@ -136,9 +144,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!userId || !accessKey) return;
-    const sinceDate = localDateString(new Date(monthStart().getFullYear(), monthStart().getMonth() - 6, 1));
+    // This month and the twelve before it, so every month in the history picker has its data.
+    const sinceDate = localDateString(new Date(monthStart().getFullYear(), monthStart().getMonth() - 12, 1));
     const since = new Date(`${sinceDate}T00:00:00`).toISOString();
-    const [s, v, e, m, x, u, a] = await Promise.all([
+    const [s, v, e, m, x, u, a, t] = await Promise.all([
       supabase.from('stores').select(STORE_COLUMNS).order('name'),
       // '*' so visits load before and after the visit-time columns exist.
       supabase.from('visits').select('*').eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false }).limit(5000),
@@ -147,6 +156,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('expenses').select('*').eq('user_id', userId).gte('date', sinceDate).order('date', { ascending: false }),
       supabase.from('user_stores').select('store_id').eq('user_id', userId),
       supabase.from('store_assignees').select('store_id,user_id'),
+      // RLS returns every person's visits to the admin and only their own to anyone else.
+      isAdmin
+        ? supabase.from('visits').select('store_id,visited_at,is_manual').gte('visited_at', monthStart().toISOString()).limit(20000)
+        : Promise.resolve({ data: [], error: null }),
     ]);
     const firstError = s.error ?? v.error ?? e.error ?? m.error ?? x.error ?? u.error;
     setError(firstError ? firstError.message : null);
@@ -162,6 +175,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!u.error) setChosen((u.data ?? []).map((r: { store_id: string }) => r.store_id));
     // Left out of the error banner: before the SQL update there is no table, and the patch still works.
     setAssignees(a.error ? [] : ((a.data ?? []) as StoreAssignee[]));
+    setTeamVisits(t.error ? [] : ((t.data ?? []) as Pick<Visit, 'store_id' | 'visited_at' | 'is_manual'>[]));
     lastLoad.current = Date.now();
     setLoadedFor(accessKey);
     // A brand-new approval can reach the app a moment before the database
@@ -170,7 +184,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
       retried.current = accessKey;
       setTimeout(() => setRetryTick((t) => t + 1), 2000);
     }
-  }, [userId, accessKey]);
+  }, [userId, accessKey, isAdmin]);
+
+  // Midnight rolls the day over: the dashboard resets on the 1st and OM
+  // weekly limits reopen on Monday even if the app was left open overnight.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      timer = setTimeout(() => {
+        setToday(dayKey());
+        arm();
+      }, msUntilMidnight());
+    };
+    arm();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      // Timers do not run while the phone sleeps; re-check on wake.
+      setToday(dayKey());
+      clearTimeout(timer);
+      arm();
+    });
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, []);
+
+  const rolledFor = useRef(today);
+  useEffect(() => {
+    if (rolledFor.current === today) return;
+    rolledFor.current = today;
+    // A new month needs this month's team visits; a new day picks up other devices' visits.
+    refresh().catch(() => {});
+  }, [today, refresh]);
 
   useEffect(() => {
     if (!accessKey) return;
@@ -200,20 +246,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const vChosen = mine ? chosen : EMPTY;
   const vAssignees = mine ? assignees : EMPTY;
 
-  const tallies = useMemo(() => {
-    const start = monthStart().getTime();
-    const out: Record<string, VisitTally> = {};
-    for (const v of vVisits as Visit[]) {
-      const t = (out[v.store_id] ??= { count: 0, last: null });
-      if (new Date(v.visited_at).getTime() >= start) t.count++;
-      // Past visits logged by hand are stamped when logged, not when they happened, so they don't set "last visited".
-      if (!v.is_manual && (!t.last || v.visited_at > t.last)) t.last = v.visited_at;
-    }
-    return out;
-  }, [vVisits]);
+  // Past visits logged by hand are stamped when logged, not when they happened, so they don't set "last visited".
+  const tallies = useMemo(() => talliesForMonth(vVisits as Visit[], today.slice(0, 7)), [vVisits, today]);
+  const teamTallies = useMemo(() => (mine && isAdmin ? talliesForMonth(teamVisits, today.slice(0, 7)) : {}), [mine, isAdmin, teamVisits, today]);
 
-  // Recomputed with the visits; coming back to the app after a while reloads them, which rolls the week over.
-  const weekCounts = useMemo(() => weeklyVisitCounts(vVisits as Visit[]), [vVisits]);
+  // Keyed on today so Monday reopens OM limits without a reload.
+  const weekCounts = useMemo(() => weeklyVisitCounts(vVisits as Visit[], new Date(`${today}T12:00:00`).getTime()), [vVisits, today]);
   const leftThisWeek = useCallback(
     (storeId: string) => {
       const store = stores.find((s) => s.id === storeId);
@@ -505,6 +543,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       visitsLeftThisWeek: leftThisWeek,
       weekLocked,
       visits: vVisits as Visit[],
+      teamTallies,
+      today,
       activeVisit,
       startVisit,
       completeVisit,
@@ -526,7 +566,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExpense,
       deleteExpense,
     }),
-    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, weekCounts, leftThisWeek, weekLocked, vVisits, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, logPastVisits, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
+    [loading, mine, error, vStores, myStores, patchStores, vAssignees, setStoreAssignee, vChosen, saveChosenStores, managers, targets, tallies, weekCounts, leftThisWeek, weekLocked, vVisits, teamTallies, today, activeVisit, startVisit, completeVisit, cancelVisit, silenceVisitAlarm, vEvents, vMileage, vExpenses, refresh, updateStoreSettings, undoLastVisit, logPastVisits, updateStoreAddress, assignStores, addEvent, deleteEvent, addMileage, deleteMileage, addExpense, deleteExpense],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

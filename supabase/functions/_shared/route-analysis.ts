@@ -22,6 +22,8 @@ export interface MapboxRoute {
   duration_typical?: number;
   geometry?: { coordinates: LngLat[] };
   legs: { steps: MapboxStep[] }[];
+  /** Provider warnings for this route, e.g. "This route has restricted usage roads". */
+  warnings?: string[];
 }
 
 export type RoadClass = 'motorway' | 'dual' | 'primary' | 'secondary' | 'minor';
@@ -37,6 +39,8 @@ export interface RouteStats {
   fastRoadShare: number;
   /** Share of distance on lanes and minor roads (0..1). */
   minorShare: number;
+  /** Distance on long unnumbered lanes and long B-road stretches: the country roads to avoid. */
+  ruralM: number;
   /** Midpoint of the longest motorway / dual carriageway stretch. */
   anchor: LngLat | null;
   /** Road numbers used, e.g. ["M4", "A404(M)"]. */
@@ -46,8 +50,12 @@ export interface RouteStats {
 export interface LegChoice {
   standardIndex: number;
   motorwayIndex: number;
+  /** Lowest score once country roads are penalised: the default pick. */
+  recommendedIndex: number;
+  shortestIndex: number;
   standard: RouteStats;
   motorway: RouteStats;
+  stats: RouteStats[];
   /** True when the leg is long enough for road choice to matter. */
   significant: boolean;
 }
@@ -59,6 +67,19 @@ export const MOTORWAY_TIME_TOLERANCE = 1.3;
 export const MOTORWAY_TIME_SLACK_S = 300;
 /** Below this fast-road distance a day has no meaningful motorway option. */
 export const MIN_MOTORWAY_KM = 5;
+/**
+ * Country-road heuristics. Town streets come in short steps between junctions;
+ * a single unnumbered step this long is a lane between villages, and a B road
+ * this long is a rural B road.
+ */
+export const RURAL_LANE_STEP_M = 800;
+export const RURAL_B_ROAD_STEP_M = 1500;
+/** Score penalty per km of country road: 2 minutes, so main roads win unless they are much slower. */
+export const COUNTRY_PENALTY_S_PER_KM = 120;
+/** When even the recommended route needs this much country road, the driver is warned. */
+export const FORCED_RURAL_KM = 3;
+/** Most options shown for one trip. */
+export const MAX_ROUTE_OPTIONS = 4;
 
 const MOTORWAY_CLASSES = new Set(['motorway', 'motorway_link']);
 // OSM "trunk" roads are the UK's primary A roads, overwhelmingly dual carriageway.
@@ -98,6 +119,7 @@ export function analyseRoute(route: MapboxRoute): RouteStats {
   let motorwayM = 0;
   let dualM = 0;
   let minorM = 0;
+  let ruralM = 0;
   let longestFast: MapboxStep | null = null;
   const roads: string[] = [];
 
@@ -107,6 +129,7 @@ export function analyseRoute(route: MapboxRoute): RouteStats {
       if (cls === 'motorway') motorwayM += step.distance;
       else if (cls === 'dual') dualM += step.distance;
       else if (cls === 'minor') minorM += step.distance;
+      if ((cls === 'minor' && step.distance >= RURAL_LANE_STEP_M) || (cls === 'secondary' && step.distance >= RURAL_B_ROAD_STEP_M)) ruralM += step.distance;
 
       if ((cls === 'motorway' || cls === 'dual') && (!longestFast || step.distance > longestFast.distance)) {
         longestFast = step;
@@ -127,6 +150,7 @@ export function analyseRoute(route: MapboxRoute): RouteStats {
     minorM,
     fastRoadShare: (motorwayM + dualM) / distanceM,
     minorShare: minorM / distanceM,
+    ruralM,
     anchor: longestFast ? midpoint(longestFast.geometry?.coordinates) : null,
     roads,
   };
@@ -159,13 +183,28 @@ export function chooseLeg(routes: MapboxRoute[]): LegChoice {
     }
   });
 
+  let recommendedIndex = 0;
+  let shortestIndex = 0;
+  stats.forEach((s, i) => {
+    if (routeScore(s) < routeScore(stats[recommendedIndex])) recommendedIndex = i;
+    if (s.distanceM < stats[shortestIndex].distanceM) shortestIndex = i;
+  });
+
   return {
     standardIndex,
     motorwayIndex,
+    recommendedIndex,
+    shortestIndex,
     standard,
     motorway: stats[motorwayIndex],
+    stats,
     significant: standard.distanceM >= SIGNIFICANT_LEG_M,
   };
+}
+
+/** Drive time plus the country-road penalty; lower is better. */
+export function routeScore(s: Pick<RouteStats, 'durationS' | 'ruralM'>): number {
+  return s.durationS + (s.ruralM / 1000) * COUNTRY_PENALTY_S_PER_KM;
 }
 
 export interface OptionLeg {
@@ -185,14 +224,23 @@ export interface NavStep {
   location: LngLat;
 }
 
+/**
+ * recommended: lowest score with country roads penalised (the default).
+ * standard: fastest. motorway: most motorway within the time tolerance.
+ * shortest: fewest miles. alternative: another distinct route the provider offered.
+ */
+export type RouteKind = 'recommended' | 'standard' | 'motorway' | 'shortest' | 'alternative';
+
 export interface RouteOption {
-  kind: 'motorway' | 'standard';
+  kind: RouteKind;
   available: boolean;
   durationS: number;
   typicalDurationS: number;
   distanceM: number;
   fastRoadShare: number;
   minorShare: number;
+  /** Country-road distance (see RouteStats.ruralM); 0 for estimates. */
+  ruralM?: number;
   roads: string[];
   legs: OptionLeg[];
   geometry: LngLat[];
@@ -206,15 +254,23 @@ export interface RouteOptionsResult {
   standard: RouteOption;
   /** Both options follow exactly the same roads. */
   identical: boolean;
+  /**
+   * Every distinct whole-trip option, recommended first, at most
+   * MAX_ROUTE_OPTIONS. Missing from estimates and older function deployments.
+   */
+  alternatives?: RouteOption[];
+  /** Set when even the recommended route needs country roads, e.g. a main road is closed. */
+  countryRoadWarning?: { ruralKm: number; warnings: string[] } | null;
   generatedAt: string;
 }
 
-function sumOption(kind: RouteOption['kind'], picks: { stats: RouteStats; route: MapboxRoute; via: LngLat | null }[]): RouteOption {
+function sumOption(kind: RouteKind, picks: { stats: RouteStats; route: MapboxRoute; via: LngLat | null }[]): RouteOption {
   const durationS = picks.reduce((a, p) => a + p.stats.durationS, 0);
   const typicalDurationS = picks.reduce((a, p) => a + p.stats.typicalDurationS, 0);
   const distanceM = picks.reduce((a, p) => a + p.stats.distanceM, 0);
   const fastM = picks.reduce((a, p) => a + p.stats.motorwayM + p.stats.dualM, 0);
   const minorM = picks.reduce((a, p) => a + p.stats.minorM, 0);
+  const ruralM = picks.reduce((a, p) => a + p.stats.ruralM, 0);
   const roads: string[] = [];
   for (const p of picks) for (const r of p.stats.roads) if (!roads.includes(r)) roads.push(r);
   return {
@@ -225,6 +281,7 @@ function sumOption(kind: RouteOption['kind'], picks: { stats: RouteStats; route:
     distanceM,
     fastRoadShare: distanceM ? fastM / distanceM : 0,
     minorShare: distanceM ? minorM / distanceM : 0,
+    ruralM,
     roads,
     legs: picks.map((p) => ({
       durationS: p.stats.durationS,
@@ -272,7 +329,52 @@ export function buildRouteOptions(legsAlternatives: MapboxRoute[][], now = new D
   motorway.available = fastKm >= MIN_MOTORWAY_KM;
   const identical = choices.every((c) => !c.significant || c.motorwayIndex === c.standardIndex);
 
-  return { source, motorway, standard, identical, generatedAt: now.toISOString() };
+  // Whole-trip options from each leg's pick. Two options with the same pick on
+  // every leg drive the same roads, so only the first (higher-priority) one stays.
+  const picksFor = (index: (c: LegChoice) => number) => choices.map((c, i) => ({ stats: c.stats[index(c)], route: legsAlternatives[i][index(c)], via: null }));
+  const candidates: { kind: RouteKind; key: string; build: () => RouteOption }[] = [
+    { kind: 'recommended', key: choices.map((c) => c.recommendedIndex).join(','), build: () => sumOption('recommended', picksFor((c) => c.recommendedIndex)) },
+    { kind: 'standard', key: choices.map((c) => c.standardIndex).join(','), build: () => standard },
+    { kind: 'motorway', key: choices.map((c) => (c.significant ? c.motorwayIndex : c.standardIndex)).join(','), build: () => motorway },
+    { kind: 'shortest', key: choices.map((c) => c.shortestIndex).join(','), build: () => sumOption('shortest', picksFor((c) => c.shortestIndex)) },
+  ];
+  const seen = new Set<string>();
+  const alternatives: RouteOption[] = [];
+  for (const c of candidates) {
+    if (seen.has(c.key) || alternatives.length >= MAX_ROUTE_OPTIONS) continue;
+    if (c.kind === 'motorway' && !motorway.available) continue;
+    seen.add(c.key);
+    alternatives.push(c.build());
+  }
+  // One leg (Go Anywhere, a single store): offer the provider's other distinct
+  // routes too, best score first. Across several legs the combinations explode.
+  if (choices.length === 1) {
+    const order = choices[0].stats.map((s, i) => ({ s, i })).sort((a, b) => routeScore(a.s) - routeScore(b.s));
+    for (const { i } of order) {
+      if (alternatives.length >= MAX_ROUTE_OPTIONS) break;
+      if (seen.has(String(i))) continue;
+      seen.add(String(i));
+      alternatives.push(sumOption('alternative', [{ stats: choices[0].stats[i], route: legsAlternatives[0][i], via: null }]));
+    }
+  }
+
+  const recommended = alternatives[0];
+  const ruralKm = (recommended.ruralM ?? 0) / 1000;
+  const warnings = [...new Set(choices.flatMap((c, i) => legsAlternatives[i][c.recommendedIndex].warnings ?? []))];
+  const countryRoadWarning = ruralKm >= FORCED_RURAL_KM ? { ruralKm: Math.round(ruralKm * 10) / 10, warnings } : null;
+
+  return { source, motorway, standard, identical, alternatives, countryRoadWarning, generatedAt: now.toISOString() };
+}
+
+/** Short name for an option in pickers and on the car screen. */
+export function routeKindLabel(kind: RouteKind): string {
+  return kind === 'recommended' ? 'Recommended' : kind === 'motorway' ? 'Motorway' : kind === 'shortest' ? 'Shortest' : kind === 'alternative' ? 'Alternative' : 'Fastest';
+}
+
+/** Options to offer, recommended first; falls back to the motorway / standard pair from older deployments and estimates. */
+export function routeChoices(r: RouteOptionsResult): RouteOption[] {
+  if (r.alternatives?.length) return r.alternatives;
+  return [r.motorway.available ? r.motorway : null, r.identical && r.motorway.available ? null : r.standard].filter((o): o is RouteOption => !!o);
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +396,7 @@ export interface GoogleRoute {
       start_location: { lat: number; lng: number };
     }[];
   }[];
+  warnings?: string[];
 }
 
 /** Decodes a Google encoded polyline into [lng, lat] pairs. */
@@ -374,7 +477,7 @@ export function googleRouteToMapbox(route: GoogleRoute): MapboxRoute {
     });
     return { steps };
   });
-  return { distance, duration, duration_typical: typical, geometry: { coordinates }, legs };
+  return { distance, duration, duration_typical: typical, geometry: { coordinates }, legs, ...(route.warnings?.length ? { warnings: route.warnings } : null) };
 }
 
 // ---------------------------------------------------------------------------
@@ -399,10 +502,15 @@ export interface RoutesApiRoute {
       navigationInstruction?: { instructions?: string };
     }[];
   }[];
+  /** e.g. ["DEFAULT_ROUTE"], ["DEFAULT_ROUTE_ALTERNATE"], ["FUEL_EFFICIENT"]. */
+  routeLabels?: string[];
+  warnings?: string[];
 }
 
 /** The Routes API field mask matching RoutesApiRoute. */
 export const ROUTES_API_FIELD_MASK = [
+  'routes.routeLabels',
+  'routes.warnings',
   'routes.legs.distanceMeters',
   'routes.legs.duration',
   'routes.legs.staticDuration',
@@ -421,6 +529,7 @@ export function parseRoutesDuration(value: string | undefined): number {
 
 export function routesApiToGoogle(route: RoutesApiRoute): GoogleRoute {
   return {
+    ...(route.warnings?.length ? { warnings: route.warnings } : null),
     legs: (route.legs ?? []).map((leg) => {
       const typical = parseRoutesDuration(leg.staticDuration);
       const live = parseRoutesDuration(leg.duration) || typical;

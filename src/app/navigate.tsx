@@ -4,13 +4,13 @@ import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeIn, FadeInDown, FadeOutUp, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import type { LngLat, RouteOption, RouteOptionsResult } from '../../supabase/functions/_shared/route-analysis';
+import Animated, { FadeIn, FadeInDown, FadeOutUp, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
+import { routeChoices, routeKindLabel, type LngLat, type RouteKind, type RouteOption, type RouteOptionsResult } from '../../supabase/functions/_shared/route-analysis';
 import { HudMap } from '@/components/HudMap';
 import { HazardPin, HazardSheet, NAV, NavGlass, ReportSheet, Toast } from '@/components/NavOverlays';
 import { IconButton, NeonButton } from '@/components/NeonButton';
@@ -28,11 +28,15 @@ import { HAZARD_ALERT_M, nextHazardAhead, type HazardAhead } from '@/lib/hazard-
 import { PREWARN_M, prepareRoute, progressAt, remainingWaypoints, type NavProgress } from '@/lib/nav-progress';
 import { carIconFor, prefsFor, routeColorFor, type CarIconOption } from '@/lib/preferences';
 import { getPref, setPref } from '@/lib/prefs';
+import { isSpeeding, mpsToMph } from '@/lib/speed-limit';
 import type { LatLng } from '@/lib/types';
+import { isVoiceAlertType } from '@/lib/voice-alerts';
+import { navigateWithWaze } from '@/services/drive';
 import { fetchRouteOptions } from '@/services/functions';
 import { useAuth } from '@/providers/AuthProvider';
 import { clearHazard, fetchLiveHazards, reportHazard } from '@/services/hazards';
-import { markHazardWarned, startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
+import { announceHazardAhead, setRouteAwareAlerts, startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
+import { useSpeedLimit } from '@/services/speed-limit';
 import { COCKPIT_MAP_STYLE } from '@/theme/map-style';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, springs } from '@/theme/typography';
@@ -216,6 +220,46 @@ function HazardCountdown({ ahead, label }: { ahead: HazardAhead; label: string }
   );
 }
 
+/**
+ * UK speed limit roundel: red ring, black number. Over the limit it flashes
+ * red with the driver's speed underneath, so a glance is enough.
+ */
+function SpeedLimitSign({ limit, speedMph }: { limit: number | null; speedMph: number | null }) {
+  const over = isSpeeding(speedMph, limit);
+  const flash = useSharedValue(0);
+  useEffect(() => {
+    if (!over) {
+      cancelAnimation(flash);
+      flash.set(withTiming(0, { duration: 150 }));
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    flash.set(withRepeat(withTiming(1, { duration: 420 }), -1, true));
+    return () => cancelAnimation(flash);
+  }, [over, flash]);
+  const pulse = useAnimatedStyle(() => ({ opacity: flash.get() }));
+  if (limit == null && speedMph == null) return null;
+  return (
+    <View accessibilityRole="text" accessibilityLabel={`${limit != null ? `Speed limit ${limit}` : 'Speed limit unknown'}${speedMph != null ? `, you are doing ${Math.round(speedMph)}` : ''}`} style={{ alignItems: 'center', gap: 6 }}>
+      {limit != null && (
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFFFFF', borderWidth: 7, borderColor: '#D7262B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', elevation: 8, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }}>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#D7262B' }, pulse]} />
+          <Txt maxFontSizeMultiplier={1} style={{ color: over ? '#FFFFFF' : '#0B0B0C', fontSize: limit >= 100 ? 20 : 25, fontWeight: '900', letterSpacing: -0.5 }}>
+            {limit}
+          </Txt>
+        </View>
+      )}
+      {speedMph != null && (
+        <NavGlass style={{ paddingHorizontal: 10, paddingVertical: 4, borderColor: over ? '#D7262B' : undefined }}>
+          <Txt variant="strong" maxFontSizeMultiplier={1} style={{ color: over ? '#FF6B6E' : NAV.text, fontVariant: ['tabular-nums'] }}>
+            {Math.round(speedMph)} mph
+          </Txt>
+        </NavGlass>
+      )}
+    </View>
+  );
+}
+
 export default function Navigate() {
   const { req: rawReq } = useLocalSearchParams<{ req: string }>();
   const req = useMemo(() => decodeNavRequest(rawReq), [rawReq]);
@@ -235,7 +279,7 @@ export default function Navigate() {
   const [locPerm, setLocPerm] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [options, setOptions] = useState<RouteOptionsResult | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
-  const [choice, setChoice] = useState<'motorway' | 'standard'>(req?.prefer ?? 'motorway');
+  const [choice, setChoice] = useState<{ kind: RouteKind; n: number }>({ kind: req?.prefer ?? 'recommended', n: req?.optionIndex ?? 0 });
   const [navigating, setNavigating] = useState(false);
   const [following, setFollowing] = useState(true);
   const [position, setPosition] = useState<Location.LocationObject | null>(null);
@@ -263,9 +307,41 @@ export default function Navigate() {
   const spoken = useRef<{ step: number; prewarned: boolean }>({ step: -1, prewarned: false });
   const announced = useRef(new Set<string>());
 
-  const option: RouteOption | null = options ? (choice === 'motorway' && options.motorway.available ? options.motorway : options.standard) : null;
-  const other: RouteOption | null = options && options.motorway.available && !options.identical ? (option === options.motorway ? options.standard : options.motorway) : null;
+  const choices = useMemo(() => (options ? routeChoices(options) : []), [options]);
+  // The picked kind (the nth of it for alternatives); after a reroute the same kind is kept, else the recommended route.
+  const option: RouteOption | null = choices.filter((o) => o.kind === choice.kind)[choice.n] ?? choices[0] ?? null;
+  const others = choices.filter((o) => o !== option);
   const prepared = useMemo(() => (option ? prepareRoute(option.geometry, option.steps) : null), [option]);
+  const pickOption = (o: RouteOption) => setChoice({ kind: o.kind, n: choices.filter((c) => c.kind === o.kind).indexOf(o) });
+
+  // Main roads closed (or no sensible way round): say so before the driver commits to lanes.
+  const warnedRural = useRef<string | null>(null);
+  useEffect(() => {
+    const w = options?.countryRoadWarning;
+    if (!w || warnedRural.current === options.generatedAt) return;
+    warnedRural.current = options.generatedAt;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    const reason = w.warnings.length ? `\n\n${w.warnings.slice(0, 2).join('\n')}` : '';
+    Alert.alert(
+      'Country roads on this route',
+      `There is no main-road way through right now (a closure or heavy traffic), so the best route uses about ${units.distance(w.ruralKm)} of country roads. Take care on narrow lanes.${reason}`,
+      [{ text: 'OK' }],
+    );
+  }, [options, units]);
+
+  const fixHere = position ? { lat: position.coords.latitude, lng: position.coords.longitude } : null;
+  const heading = position?.coords.heading != null && position.coords.heading >= 0 ? position.coords.heading : null;
+  const speedLimit = useSpeedLimit(fixHere, heading, navigating);
+  const speedMph = navigating ? mpsToMph(position?.coords.speed) : null;
+
+  // While this screen is in front and navigating it owns the voice notes (measured along the route);
+  // anywhere else (Waze, Screen Saver, lock screen) the background watcher does.
+  useFocusEffect(
+    useCallback(() => {
+      setRouteAwareAlerts(navigating);
+      return () => setRouteAwareAlerts(false);
+    }, [navigating]),
+  );
 
   // 0. Location permission, before the map renders.
   useEffect(() => {
@@ -394,12 +470,14 @@ export default function Navigate() {
       );
     }
 
-    // Reports on the road ahead: a countdown banner, plus one spoken warning per report.
+    // Reports on the road ahead: a countdown banner. Cameras and police get the two voice notes
+    // (500 m, then 100 m); accidents and hazards one spoken warning.
     const next = nextHazardAhead(prepared, p.vertex, here, hazards.filter((h) => isLiveHazard(h)));
     setAhead(next);
-    if (next && !warned.current.has(next.hazard.id)) {
+    if (next && isVoiceAlertType(next.hazard.hazard_type)) {
+      if (announceHazardAhead(next, position.coords.speed ?? null)) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    } else if (next && !warned.current.has(next.hazard.id)) {
       warned.current.add(next.hazard.id);
-      markHazardWarned(next.hazard.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       say(`${hazardMeta(next.hazard.hazard_type).label} reported in ${spokenDistance(units.nav(next.distanceM))}`);
     }
@@ -601,7 +679,8 @@ export default function Navigate() {
           .catch(() => {});
       }}
     >
-      {other && <Polyline coordinates={other.geometry.map(toCoord)} strokeColor="rgba(201,205,212,0.45)" strokeWidth={4} tappable onPress={() => setChoice(other.kind)} />}
+      {!navigating &&
+        others.map((o, i) => <Polyline key={`${o.kind}-${i}`} coordinates={o.geometry.map(toCoord)} strokeColor="rgba(201,205,212,0.45)" strokeWidth={4} tappable onPress={() => pickOption(o)} />)}
       {option && (
         <>
           {/* Route trail in the driver's chosen colour, with a soft glow underneath. */}
@@ -629,9 +708,9 @@ export default function Navigate() {
         start={origin}
         end={null}
         stops={waypoints}
-        motorway={option.kind === 'motorway' ? option.geometry : null}
-        standard={options?.standard.geometry ?? option.geometry}
-        selected={option.kind}
+        motorway={null}
+        standard={option.geometry}
+        selected="standard"
         routeColor={routeColor}
       />
     </View>
@@ -699,6 +778,11 @@ export default function Navigate() {
           native SafeAreaView), so the ETA panel always sits above the Android navigation or gesture bar. */}
       <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: Math.max(insets.bottom, 8) + EDGE, paddingLeft: insets.left, paddingRight: insets.right }}>
         <View pointerEvents="box-none" style={{ paddingHorizontal: EDGE + 4, width: '100%', maxWidth: 680, alignSelf: 'center' }}>
+          {navigating && (
+            <View pointerEvents="none" style={{ position: 'absolute', left: EDGE + 4, top: 0 }}>
+              <SpeedLimitSign limit={speedLimit} speedMph={speedMph} />
+            </View>
+          )}
           {/* One column, centred on the Report button and flush with the panel's right edge, in the right thumb's reach. */}
           <View pointerEvents="box-none" style={{ alignSelf: 'flex-end', alignItems: 'center', justifyContent: 'flex-end', gap: 14, marginBottom: 14, width: REPORT_FAB }}>
             {navigating && !following && MAPS_READY && <IconButton icon="locate" label="Recentre on me" tone="gold" onPress={recentre} size={FAB} onDark />}
@@ -739,16 +823,18 @@ export default function Navigate() {
               </View>
             ) : (
               <View style={{ gap: 10 }}>
-                {[options.motorway.available ? options.motorway : null, options.identical ? null : options.standard]
-                  .filter((o): o is RouteOption => !!o)
-                  .map((o) => {
+                {choices.map((o, i) => {
                     const active = o === option;
+                    const ruralKm = (o.ruralM ?? 0) / 1000;
                     return (
                       <Pressable
-                        key={o.kind}
+                        key={`${o.kind}-${i}`}
                         accessibilityRole="radio"
                         accessibilityState={{ selected: active }}
-                        onPress={() => setChoice(o.kind)}
+                        onPress={() => {
+                          Haptics.selectionAsync().catch(() => {});
+                          pickOption(o);
+                        }}
                         style={({ pressed }) => ({
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -762,13 +848,14 @@ export default function Navigate() {
                           transform: [{ scale: pressed ? 0.985 : 1 }],
                         })}
                       >
-                        <Ionicons name={o.kind === 'motorway' ? 'speedometer' : 'git-branch'} size={20} color={active ? NAV.gold : NAV.faint} />
+                        <Ionicons name={o.kind === 'motorway' ? 'speedometer' : o.kind === 'recommended' ? 'shield-checkmark' : o.kind === 'shortest' ? 'resize' : 'git-branch'} size={20} color={active ? NAV.gold : NAV.faint} />
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Txt variant="strong" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ color: NAV.text }}>
-                            {o.kind === 'motorway' ? 'Fastest (motorway)' : 'Standard route'}
+                            {routeKindLabel(o.kind)}
+                            {ruralKm >= 1 ? <Txt variant="caption" style={{ color: ruralKm >= 3 ? NAV.warning : NAV.faint }}>{`  · ${units.distance(ruralKm)} country roads`}</Txt> : null}
                           </Txt>
                           <Txt variant="caption" numberOfLines={1} maxFontSizeMultiplier={1.15} style={{ color: NAV.faint }}>
-                            {o.roads.length ? `Via ${o.roads.slice(0, 3).join(', ')}` : o.kind === 'motorway' ? 'Main roads first' : 'Shortest drive time'}
+                            {o.roads.length ? `Via ${o.roads.slice(0, 3).join(', ')}` : o.kind === 'motorway' ? 'Main roads first' : o.kind === 'recommended' ? 'Main roads, country lanes avoided' : 'Shortest drive time'}
                           </Txt>
                         </View>
                         <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
@@ -790,6 +877,20 @@ export default function Navigate() {
                   </Txt>
                 </View>
                 <NeonButton label="Start Navigation" icon="navigate" variant="gold" size="lg" onDark onPress={start} full />
+                {waypoints[0] && (
+                  <NeonButton
+                    label={waypoints.length > 1 ? `Navigate with Waze · ${waypoints[0].label}` : 'Navigate with Waze'}
+                    icon="car-sport"
+                    variant="outline"
+                    onDark
+                    full
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                      navigateWithWaze(waypoints[0]).catch(() => {});
+                    }}
+                    accessibilityHint="Opens Waze to your next stop and leaves BOAROUTE's screen saver underneath, with voice alerts still on"
+                  />
+                )}
               </View>
             )}
           </NavGlass>
