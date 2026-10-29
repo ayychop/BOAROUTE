@@ -28,6 +28,8 @@ export function estimateRouteOptions(points: LatLng[], now = new Date()): RouteO
     motorway: { ...base, kind: 'motorway', available: false },
     standard: { ...base, kind: 'standard', available: true },
     identical: true,
+    // Estimates carry no road mix, so they never flag a closure.
+    forcedMinorRoads: false,
     generatedAt: now.toISOString(),
   };
 }

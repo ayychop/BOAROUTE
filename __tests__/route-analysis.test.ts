@@ -3,8 +3,10 @@ import {
   buildRouteOptions,
   chooseLeg,
   classifyStep,
+  detectForcedMinorRoads,
   type MapboxRoute,
   type MapboxStep,
+  type RouteOption,
 } from '../supabase/functions/_shared/route-analysis';
 import { estimateRouteOptions } from '../src/lib/route-estimate';
 
@@ -104,6 +106,28 @@ describe('buildRouteOptions', () => {
     const r = buildRouteOptions([[motorway, lanes]].map((l) => [l[0], { ...l[1], duration: 9999 }]));
     expect(r.identical).toBe(true);
     expect(r.motorway.available).toBe(true);
+  });
+});
+
+describe('detectForcedMinorRoads', () => {
+  const opt = (distanceM: number, minorShare: number): RouteOption =>
+    ({ distanceM, minorShare } as RouteOption);
+
+  it('warns when a long trip is forced onto country lanes', () => {
+    expect(detectForcedMinorRoads(opt(20000, 0.5))).toBe(true);
+  });
+  it('stays quiet on a mostly-fast long trip', () => {
+    expect(detectForcedMinorRoads(opt(20000, 0.1))).toBe(false);
+  });
+  it('ignores short trips where lanes are normal', () => {
+    expect(detectForcedMinorRoads(opt(3000, 0.9))).toBe(false);
+  });
+
+  it('sets the flag on the whole-day result', () => {
+    // A long leg almost entirely on country lanes: the main road is blocked.
+    const lanes = route(1800, [step('tertiary', 20000, { name: 'Country Lane' })]);
+    const r = buildRouteOptions([[lanes]]);
+    expect(r.forcedMinorRoads).toBe(true);
   });
 });
 

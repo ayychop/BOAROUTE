@@ -10,7 +10,10 @@
     "backgroundColor": "#060606",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.boanets.boaroute"
+      "bundleIdentifier": "com.boanets.boaroute",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["waze", "comgooglemaps"]
+      }
     },
     "android": {
       "package": "com.boanets.boaroute",

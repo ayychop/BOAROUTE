@@ -59,6 +59,10 @@ export const MOTORWAY_TIME_TOLERANCE = 1.3;
 export const MOTORWAY_TIME_SLACK_S = 300;
 /** Below this fast-road distance a day has no meaningful motorway option. */
 export const MIN_MOTORWAY_KM = 5;
+/** Below this a trip is too short for its road mix to signal a closure. */
+export const FORCED_MINOR_MIN_KM = 8;
+/** Share of country lanes on the motorway-preferred route that warns of a closure. */
+export const FORCED_MINOR_SHARE = 0.4;
 
 const MOTORWAY_CLASSES = new Set(['motorway', 'motorway_link']);
 // OSM "trunk" roads are the UK's primary A roads, overwhelmingly dual carriageway.
@@ -206,7 +210,23 @@ export interface RouteOptionsResult {
   standard: RouteOption;
   /** Both options follow exactly the same roads. */
   identical: boolean;
+  /**
+   * The motorway-preferred route is still forced onto country lanes, so a
+   * major road is likely closed. Inferred from the road mix; the Routes API gives no
+   * explicit closure flag. The navigator warns the driver when this is true.
+   */
+  forcedMinorRoads: boolean;
   generatedAt: string;
+}
+
+/**
+ * True when the motorway-preferred option runs a high share on country lanes
+ * despite the trip being long enough to normally use major roads: the
+ * signature of a closed or blocked main road forcing the detour.
+ */
+export function detectForcedMinorRoads(motorway: RouteOption): boolean {
+  if (motorway.distanceM / 1000 < FORCED_MINOR_MIN_KM) return false;
+  return motorway.minorShare >= FORCED_MINOR_SHARE;
 }
 
 function sumOption(kind: RouteOption['kind'], picks: { stats: RouteStats; route: MapboxRoute; via: LngLat | null }[]): RouteOption {
@@ -272,7 +292,7 @@ export function buildRouteOptions(legsAlternatives: MapboxRoute[][], now = new D
   motorway.available = fastKm >= MIN_MOTORWAY_KM;
   const identical = choices.every((c) => !c.significant || c.motorwayIndex === c.standardIndex);
 
-  return { source, motorway, standard, identical, generatedAt: now.toISOString() };
+  return { source, motorway, standard, identical, forcedMinorRoads: detectForcedMinorRoads(motorway), generatedAt: now.toISOString() };
 }
 
 // ---------------------------------------------------------------------------

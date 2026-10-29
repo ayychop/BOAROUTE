@@ -68,6 +68,15 @@ function withCarManifest(config) {
       if (!perms.some((p) => p.$['android:name'] === name)) perms.push({ $: { 'android:name': name } });
     }
 
+    // Let the "Navigate with Waze" hand-off (and its Google Maps fallback)
+    // resolve their packages under Android 11+ package visibility.
+    const queries = (manifest.queries ??= [{}]);
+    const q = (queries[0] ??= {});
+    q.package = q.package ?? [];
+    for (const name of ['com.waze', 'com.google.android.apps.maps']) {
+      if (!q.package.some((p) => p.$['android:name'] === name)) q.package.push({ $: { 'android:name': name } });
+    }
+
     upsertMeta(app, 'com.google.android.gms.car.application', { 'android:resource': '@xml/automotive_app_desc' });
     upsertMeta(app, 'androidx.car.app.minCarApiLevel', { 'android:value': String(MIN_CAR_API_LEVEL) });
 

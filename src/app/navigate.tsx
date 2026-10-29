@@ -21,6 +21,7 @@ import { useUnits } from '@/hooks/useUnits';
 import { spokenDistance } from '@/lib/units';
 import { CarAppService } from '@/car/CarAppService';
 import { carHazards } from '@/car/car-state';
+import { openWaze } from '@/lib/external';
 import { formatMinutes, formatTime } from '@/lib/format';
 import { haversineKm } from '@/lib/geo';
 import { hazardMeta, isLiveHazard, type HazardReport, type HazardType } from '@/lib/hazards';
@@ -262,6 +263,8 @@ export default function Navigate() {
   const lastReroute = useRef(0);
   const spoken = useRef<{ step: number; prewarned: boolean }>({ step: -1, prewarned: false });
   const announced = useRef(new Set<string>());
+  // The closure warning shows once per planned result, not on every re-render.
+  const warnedClosure = useRef<string | null>(null);
 
   const option: RouteOption | null = options ? (choice === 'motorway' && options.motorway.available ? options.motorway : options.standard) : null;
   const other: RouteOption | null = options && options.motorway.available && !options.identical ? (option === options.motorway ? options.standard : options.motorway) : null;
@@ -320,6 +323,19 @@ export default function Navigate() {
       alive = false;
     };
   }, [origin, req]);
+
+  // Warn when the fast roads are blocked and the route is forced onto country
+  // lanes. Once per plan, so switching options or re-rendering won't repeat it.
+  useEffect(() => {
+    if (!options?.forcedMinorRoads || options.source === 'estimate') return;
+    if (warnedClosure.current === options.generatedAt) return;
+    warnedClosure.current = options.generatedAt;
+    Alert.alert(
+      'Country roads ahead',
+      'A major road looks closed or blocked, so this route uses country lanes. Drive with extra care.',
+      [{ text: 'OK' }],
+    );
+  }, [options]);
 
   // Frame the whole route while previewing.
   useEffect(() => {
@@ -492,6 +508,21 @@ export default function Navigate() {
     setNavigating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (option?.steps[0]) say(option.steps[0].instruction);
+  };
+
+  // Hand the drive to Waze (it is natively on the car screen) while BOAROUTE
+  // stays in the background as the co-pilot: the foreground-service location
+  // task keeps firing the speed-camera and police voice notes with audio
+  // ducking. Waze takes one destination, so we send the final stop.
+  const handoffToWaze = async () => {
+    const dest = waypoints[waypoints.length - 1];
+    if (!dest) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    // Start the co-pilot first so alerts carry on once Waze is in front. It
+    // runs until stopped from its notification; failing here (e.g. background
+    // location refused) still hands off, with alerts only while on screen.
+    await startHazardWatch('waze').catch(() => {});
+    await openWaze(dest.lat, dest.lng);
   };
 
   /** Back to following at the driver's own zoom, straight away rather than on the next fix. */
@@ -798,6 +829,7 @@ export default function Navigate() {
                   </Txt>
                 </View>
                 <NeonButton label="Start Navigation" icon="navigate" variant="gold" size="lg" onDark onPress={start} full />
+                <NeonButton label="Navigate with Waze" icon="car-sport" variant="outline" size="lg" onDark onPress={handoffToWaze} full />
               </View>
             )}
           </NavGlass>

@@ -2,6 +2,26 @@ import type { LatLng } from './types';
 
 const EARTH_RADIUS_KM = 6371;
 
+export interface BBox {
+  minLat: number;
+  minLng: number;
+  maxLat: number;
+  maxLng: number;
+}
+
+/** A lat/lng box roughly `radiusKm` around a point, for "near me" queries. */
+export function bboxAround(center: LatLng, radiusKm: number): BBox {
+  const dLat = radiusKm / 111.32;
+  // A degree of longitude narrows towards the poles; guard the cos at ±90°.
+  const dLng = radiusKm / Math.max(111.32 * Math.cos((center.lat * Math.PI) / 180), 1e-6);
+  return {
+    minLat: center.lat - dLat,
+    minLng: center.lng - dLng,
+    maxLat: center.lat + dLat,
+    maxLng: center.lng + dLng,
+  };
+}
+
 export function haversineKm(a: LatLng, b: LatLng): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);

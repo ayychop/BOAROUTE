@@ -26,7 +26,11 @@ describe('seed data', () => {
     expect(migration.match(/'Joseph', 'fun and lively'/g)).toHaveLength(78);
     expect(migration.match(/'David', 'reserved'/g)).toHaveLength(65);
     expect(migration).toContain("'HP13 6BU'");
-    expect(fs.readdirSync(path.join(root, 'supabase/migrations')).sort()).toEqual(['20261025000000_boaroute_init.sql', '20261027120000_team_features.sql']);
+    expect(fs.readdirSync(path.join(root, 'supabase/migrations')).sort()).toEqual([
+      '20261025000000_boaroute_init.sql',
+      '20261027120000_team_features.sql',
+      '20261029120000_speed_cameras.sql',
+    ]);
   });
 
   it('enables RLS on the team-feature tables', () => {

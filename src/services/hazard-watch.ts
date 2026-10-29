@@ -3,9 +3,11 @@ import * as TaskManager from 'expo-task-manager';
 import { AppState, Platform } from 'react-native';
 import { CarAppService } from '@/car/CarAppService';
 import { carHazards } from '@/car/car-state';
+import { haversineKm } from '@/lib/geo';
 import { cameraCue, nearestHazardWithin, proximityPhrase, type CameraCue } from '@/lib/hazard-alerts';
 import { hazardMeta, isLiveHazard, type HazardReport } from '@/lib/hazards';
 import { getPref } from '@/lib/prefs';
+import { fetchCamerasNear } from '@/services/cameras';
 import { checkInAt } from '@/services/checkin-watch';
 import { fetchLiveHazards } from '@/services/hazards';
 import { playCameraCue, speakWarning } from '@/services/copilot-audio';
@@ -27,11 +29,19 @@ import { playCameraCue, speakWarning } from '@/services/copilot-audio';
 export const HAZARD_WATCH_TASK = 'boaroute-hazard-watch';
 const REFRESH_MS = 60_000;
 
-export type WatchReason = 'navigate' | 'car';
+export type WatchReason = 'navigate' | 'car' | 'waze';
 
 let hazards: HazardReport[] = [];
 let fetchedAt = 0;
 let fetching = false;
+/** OSM speed cameras near the driver, refreshed as they move (see refreshCameras). */
+let cameras: HazardReport[] = [];
+let camerasCenter: { lat: number; lng: number } | null = null;
+let camerasAt = 0;
+let fetchingCameras = false;
+const CAMERA_REFRESH_MS = 5 * 60_000;
+/** Re-pull the camera set once the driver has left the loaded box by a margin. */
+const CAMERA_REFRESH_MOVE_KM = 10;
 /** What each report has had: a camera's last voice note, or 'spoken' for the one-off warnings. */
 const announced = new Map<string, CameraCue | 'spoken'>();
 /** Crowd-sourced reports already flashed on the car screen, so each shows once. */
@@ -81,11 +91,34 @@ function refresh() {
     });
 }
 
+/** Keeps a box of OSM cameras loaded around the driver, re-pulling on the move. */
+function refreshCameras(here: { lat: number; lng: number }) {
+  if (fetchingCameras) return;
+  const stale = Date.now() - camerasAt > CAMERA_REFRESH_MS;
+  const moved = !camerasCenter || haversineKm(camerasCenter, here) > CAMERA_REFRESH_MOVE_KM;
+  if (!stale && !moved) return;
+  fetchingCameras = true;
+  fetchCamerasNear(here.lat, here.lng)
+    .then((list) => {
+      cameras = list;
+      camerasCenter = here;
+      camerasAt = Date.now();
+    })
+    .catch(() => {
+      // Offline or cameras not synced yet: keep going on crowd reports alone.
+    })
+    .finally(() => {
+      fetchingCameras = false;
+    });
+}
+
 function onFix(fix: Location.LocationObject) {
   refresh();
   const here = { lat: fix.coords.latitude, lng: fix.coords.longitude };
+  refreshCameras(here);
   const heading = fix.coords.heading ?? null;
-  const live = hazards.filter((h) => isLiveHazard(h));
+  // Synced cameras ride alongside crowd reports; both get the same voice cues.
+  const live = hazards.filter((h) => isLiveHazard(h)).concat(cameras);
   // Keeps the car map moving when the phone is not on the navigate screen.
   CarAppService.setPosition({ ...here, heading });
   CarAppService.setHazards(carHazards(live, here));
@@ -166,4 +199,7 @@ export async function stopHazardWatch(reason: WatchReason): Promise<void> {
   }
   announced.clear();
   toasted.clear();
+  cameras = [];
+  camerasCenter = null;
+  camerasAt = 0;
 }
