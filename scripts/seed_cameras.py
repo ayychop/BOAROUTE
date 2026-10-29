@@ -12,7 +12,14 @@ Setup:
     export SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"   # NOT the anon key
 
 Examples:
-    # Small area first, to prove the pipeline end to end (default box = High Wycombe):
+    # Just the areas you cover: a box around all your stores (reads the stores
+    # table). This is the recommended mode when the UK query is too heavy:
+    python scripts/seed_cameras.py --from-stores
+
+    # ...limited to one user's assigned stores, with a wider margin:
+    python scripts/seed_cameras.py --from-stores --assignee <user-uuid> --margin-km 10
+
+    # Small fixed area, to prove the pipeline end to end (default = High Wycombe):
     python scripts/seed_cameras.py
 
     # The whole UK once the small area works:
@@ -144,25 +151,77 @@ def fetch_elements(query, mirrors):
     raise SystemExit(f"Overpass unreachable after {FETCH_ATTEMPTS} attempts. Last: {last}")
 
 
-def load_elements(args):
-    if args.from_file:
-        import json
-        with open(args.from_file, encoding="utf-8") as f:
-            return json.load(f).get("elements", [])
-    bbox = UK_BBOX if args.uk else (args.bbox or HIGH_WYCOMBE_BBOX)
-    mirrors = [args.mirror] if args.mirror else OVERPASS_MIRRORS
-    print(f"Fetching cameras for bbox {bbox} ...", file=sys.stderr)
-    return fetch_elements(build_query(bbox), mirrors)
-
-
-def upsert_rows(rows):
+def get_client():
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         raise SystemExit("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the environment.")
     from supabase import create_client
 
-    client = create_client(url, key)
+    return create_client(url, key)
+
+
+def pad_bbox(s, w, n, e, margin_km):
+    """Grow a box by a margin so cameras just outside the stores are included."""
+    import math
+
+    d_lat = margin_km / 111.32
+    mid = math.radians((s + n) / 2)
+    d_lng = margin_km / max(111.32 * math.cos(mid), 1e-6)
+    return (s - d_lat, w - d_lng, n + d_lat, e + d_lng)
+
+
+def fetch_store_bbox(client, margin_km, assignee=None):
+    """A bounding box covering the stores' coordinates, padded by margin_km.
+
+    By default every store with coordinates counts; pass an assignee UUID to
+    limit it to the stores assigned to one user (via store_assignees).
+    """
+    if assignee:
+        links = client.table("store_assignees").select("store_id").eq("user_id", assignee).execute().data or []
+        ids = [r["store_id"] for r in links]
+        if not ids:
+            raise SystemExit(f"No stores assigned to {assignee}.")
+        rows = client.table("stores").select("latitude,longitude").in_("id", ids).execute().data or []
+    else:
+        rows = client.table("stores").select("latitude,longitude").execute().data or []
+
+    pts = [
+        (float(r["latitude"]), float(r["longitude"]))
+        for r in rows
+        if r.get("latitude") is not None and r.get("longitude") is not None
+    ]
+    if not pts:
+        raise SystemExit("No stores have coordinates yet; cannot build a box.")
+    lats = [p[0] for p in pts]
+    lngs = [p[1] for p in pts]
+    box = pad_bbox(min(lats), min(lngs), max(lats), max(lngs), margin_km)
+    print(f"Store box from {len(pts)} stores (+{margin_km}km): {tuple(round(x, 4) for x in box)}", file=sys.stderr)
+    return box
+
+
+def choose_bbox(args, client):
+    if args.uk:
+        return UK_BBOX
+    if args.bbox:
+        return args.bbox
+    if args.from_stores:
+        return fetch_store_bbox(client, args.margin_km, args.assignee)
+    return HIGH_WYCOMBE_BBOX
+
+
+def load_elements(args, client):
+    if args.from_file:
+        import json
+        with open(args.from_file, encoding="utf-8") as f:
+            return json.load(f).get("elements", [])
+    bbox = choose_bbox(args, client)
+    mirrors = [args.mirror] if args.mirror else OVERPASS_MIRRORS
+    print(f"Fetching cameras for bbox {tuple(round(x, 4) for x in bbox)} ...", file=sys.stderr)
+    return fetch_elements(build_query(bbox), mirrors)
+
+
+def upsert_rows(client, rows):
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     written = 0
     for i in range(0, len(rows), UPSERT_CHUNK):
@@ -184,14 +243,20 @@ def parse_bbox_arg(value):
 
 def main():
     ap = argparse.ArgumentParser(description="Seed speed_cameras from OpenStreetMap.")
-    ap.add_argument("--uk", action="store_true", help="fetch the whole UK (default: High Wycombe test box)")
+    ap.add_argument("--uk", action="store_true", help="fetch the whole UK")
+    ap.add_argument("--from-stores", action="store_true", help="box covering your stores' coordinates (reads the stores table)")
+    ap.add_argument("--assignee", help="with --from-stores, limit to one user's assigned stores (UUID)")
+    ap.add_argument("--margin-km", type=float, default=5.0, help="padding around the store box (default 5)")
     ap.add_argument("--bbox", type=parse_bbox_arg, help="custom box: south,west,north,east")
     ap.add_argument("--mirror", help="force a single Overpass endpoint URL")
     ap.add_argument("--from-file", help="seed from an Overpass JSON export instead of the API")
     ap.add_argument("--dry-run", action="store_true", help="fetch and parse only; no database writes")
     args = ap.parse_args()
 
-    elements = load_elements(args)
+    # A client is needed to read the store box and to write; not for a file dry-run.
+    client = get_client() if (args.from_stores or not args.dry_run) else None
+
+    elements = load_elements(args, client)
     rows = elements_to_rows(elements)
     print(f"Parsed {len(rows)} cameras from {len(elements)} elements.", file=sys.stderr)
 
@@ -203,7 +268,7 @@ def main():
 
     if not rows:
         raise SystemExit("No cameras parsed; refusing to write an empty set.")
-    written = upsert_rows(rows)
+    written = upsert_rows(client, rows)
     print(f"Done: {written} cameras upserted into speed_cameras.", file=sys.stderr)
 
 
