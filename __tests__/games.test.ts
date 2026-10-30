@@ -133,7 +133,8 @@ describe('game enhancer script', () => {
 
 describe('messages from the game page', () => {
   it('parses known messages', () => {
-    expect(parseGameMessage('{"t":"beat","fps":59.6,"enh":true}')).toEqual({ t: 'beat', fps: 60, enh: true });
+    expect(parseGameMessage('{"t":"beat","fps":59.6,"enh":true}')).toEqual({ t: 'beat', fps: 60, enh: true, game: false });
+    expect(parseGameMessage('{"t":"beat","fps":30,"enh":false,"game":true}')).toEqual({ t: 'beat', fps: 30, enh: false, game: true });
     expect(parseGameMessage('{"t":"error","msg":"boom"}')).toEqual({ t: 'error', msg: 'boom' });
     expect(parseGameMessage('{"t":"pad","id":"DualSense","on":true}')).toEqual({ t: 'pad', id: 'DualSense', on: true });
     expect(parseGameMessage('{"t":"enh","on":false,"why":"WebGL unavailable"}')).toEqual({ t: 'enh', on: false, why: 'WebGL unavailable' });

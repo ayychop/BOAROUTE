@@ -61,6 +61,7 @@ export default function PlayGame() {
 
   const webRef = useRef<WebViewHandle>(null);
   const lastBeat = useRef(0);
+  const sawGameFrame = useRef(false);
   const [session, setSession] = useState(0);
   const [loading, setLoading] = useState(true);
   const [crash, setCrash] = useState<Crash | null>(null);
@@ -117,6 +118,7 @@ export default function PlayGame() {
     setMenu(false);
     setLoading(true);
     setEnhanced(false);
+    sawGameFrame.current = false;
     // A fresh key throws the old WebView (and any dead render process) away.
     setSession((s) => s + 1);
   }, []);
@@ -126,8 +128,12 @@ export default function PlayGame() {
     if (!m) return;
     lastBeat.current = Date.now();
     if (m.t === 'beat') {
-      setFps(m.fps);
-      setEnhanced(m.enh);
+      // With the game in an iframe, the page itself also beats: once the game frame has reported, only it counts.
+      if (m.game) sawGameFrame.current = true;
+      if (m.game || !sawGameFrame.current) {
+        setFps(m.fps);
+        setEnhanced(m.enh);
+      }
     } else if (m.t === 'enh') {
       setEnhanced(m.on);
       if (!m.on && m.why) setEnhanceNote(m.why);
@@ -167,7 +173,8 @@ export default function PlayGame() {
             containerStyle={styles.fill}
             originWhitelist={local ? ['file://*'] : ['https://*']}
             injectedJavaScriptBeforeContentLoaded={script}
-            injectedJavaScriptBeforeContentLoadedForMainFrameOnly
+            // Online games often run inside an iframe, so the upscaler goes into every frame; uploads are one page.
+            injectedJavaScriptBeforeContentLoadedForMainFrameOnly={local}
             onShouldStartLoadWithRequest={onShouldStart}
             setSupportMultipleWindows={false}
             javaScriptEnabled

@@ -15,6 +15,9 @@
    and linked to the visit when it is completed) and stops OMs changing a store's grade, since moving a
    store to D grade would double their weekly visit limit. Admins and OTMs can still regrade.
    Then redeploy the route function: `supabase functions deploy route-options`.
+   Then run `supabase/migrations/20261030000000_game_hub.sql` the same way. It adds `game_library`, the
+   links people add with the + button in the Game Hub (cover images go under `<user id>/games/` in
+   `task-media`). Until it runs, added games still work but only live on that phone.
 3. Authentication > Providers > Email: enabled (email + password).
    If "Confirm email" is on, new users must tap the email link before signing in.
 4. Access is decided by the signed-in email, never by the name typed at signup.

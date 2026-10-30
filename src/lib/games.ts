@@ -12,7 +12,49 @@ export interface Game {
   source: GameSource;
   orientation: GameOrientation;
   addedAt?: string;
+  /** Cover art saved in Supabase storage (private bucket); `thumb` is a signed link to it. */
+  coverPath?: string;
 }
+
+/** Category given to games added with the + button. */
+export const USER_GAME_CATEGORY = 'Added by you';
+
+/** Games the person added themselves (uploaded or pasted), which they can remove. */
+export function isUserGame(g: Pick<Game, 'source' | 'category'>): boolean {
+  return g.source === 'local' || g.category === USER_GAME_CATEGORY;
+}
+
+const featured = (slug: string, title: string, url: string, category: string, description: string): Game => ({
+  id: `featured-${slug}`,
+  title,
+  url,
+  thumb: null,
+  description,
+  category,
+  source: 'web',
+  orientation: 'landscape',
+});
+
+/**
+ * Pre-loaded on the Discover tab, ahead of the online feed. Cover art is
+ * scraped from each site's og:image the first time Discover opens.
+ *
+ * Left out because their domains do not exist (checked against DNS on
+ * 30 Oct 2026), so they could only show a broken tile: London Street Football
+ * (londonstreetfootball.com), San Andreas: Street Legends
+ * (sanandreasstreetlegends.com) and Dude Theft Auto (dudetheftauto.com).
+ * Paste a working link with the + button to add them.
+ */
+export const FEATURED_GAMES: Game[] = [
+  featured('rim-republic', 'Rim Republic', 'https://rimrepublic.com', 'Street Sports', 'Modern arcade basketball.'),
+  featured('basket-bros', 'Basket Bros', 'https://basketbros.io', 'Street Sports', 'Fast-paced 1v1 basketball.'),
+  featured('polytrack', 'PolyTrack', 'https://polytrack.org', 'Racing', 'Low-poly neon racing.'),
+  featured('dta6', 'DTA 6', 'https://dta6.com', 'Open World', 'Blocky GTA clone.'),
+  featured('cod-webports', 'COD Webports', 'https://cod-webports.pages.dev/', 'Shooter', 'Browser COD Zombies and multiplayer.'),
+  featured('krunker', 'Krunker.io', 'https://krunker.io', 'Shooter', 'Fast-paced blocky FPS.'),
+  featured('venge', 'Venge.io', 'https://venge.io', 'Shooter', 'Slick modern FPS.'),
+  featured('shell-shockers', 'Shell Shockers', 'https://shellshock.io', 'Shooter', 'Egg-based team FPS.'),
+];
 
 /** Open-source HTML5 games that are always offered, so Discover is never empty offline. */
 export const CURATED_GAMES: Game[] = [
@@ -142,10 +184,20 @@ export function titleFromFileName(name: string): string {
   return base ? base.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 60) : 'My game';
 }
 
+const siteOf = (host: string) => host.toLowerCase().replace(/^www\./, '');
+
+/** Same site: identical, with or without www, or one is a subdomain of the other (play.example.com on example.com). */
+export function sameSite(a: string, b: string): boolean {
+  const x = siteOf(a);
+  const y = siteOf(b);
+  return x === y || x.endsWith(`.${y}`) || y.endsWith(`.${x}`);
+}
+
 /**
- * Whether the game frame may follow a navigation. The game stays on its own site;
- * redirects and pop-unders to other sites (ads, mostly) are blocked at the top
- * frame, while ads and assets inside iframes still load so games keep working.
+ * Whether the game frame may follow a navigation. The game stays on its own site
+ * (a redirect to www. or a subdomain is fine); redirects and pop-unders to other
+ * sites (ads, mostly) are blocked at the top frame, while ads and assets inside
+ * iframes still load so games keep working.
  */
 export function allowGameNavigation(gameUrl: string, requestUrl: string, isTopFrame = true): boolean {
   if (!isTopFrame) return true;
@@ -154,7 +206,7 @@ export function allowGameNavigation(gameUrl: string, requestUrl: string, isTopFr
     const game = new URL(gameUrl);
     const next = new URL(requestUrl);
     if (game.protocol === 'file:') return next.protocol === 'file:' && next.pathname === game.pathname;
-    return next.protocol === 'https:' && next.host === game.host;
+    return next.protocol === 'https:' && sameSite(next.hostname, game.hostname);
   } catch {
     return false;
   }
@@ -171,7 +223,7 @@ export interface EnhancerOptions {
 
 /** Messages the injected script posts back to the app. */
 export type GameMessage =
-  | { t: 'beat'; fps: number; enh: boolean }
+  | { t: 'beat'; fps: number; enh: boolean; game: boolean }
   | { t: 'error'; msg: string }
   | { t: 'pad'; id: string; on: boolean }
   | { t: 'enh'; on: boolean; why?: string };
@@ -181,7 +233,7 @@ export function parseGameMessage(data: string): GameMessage | null {
     const m = JSON.parse(data) as Partial<GameMessage> & Record<string, unknown>;
     switch (m.t) {
       case 'beat':
-        return { t: 'beat', fps: Math.max(0, Math.round(Number(m.fps) || 0)), enh: m.enh === true };
+        return { t: 'beat', fps: Math.max(0, Math.round(Number(m.fps) || 0)), enh: m.enh === true, game: m.game === true };
       case 'error':
         return { t: 'error', msg: str(m.msg).slice(0, 300) || 'Script error' };
       case 'pad':
@@ -280,6 +332,10 @@ export function buildEnhancerScript(opts: EnhancerOptions): string {
 var CFG=${config};
 var RN=window.ReactNativeWebView;
 function post(m){try{RN&&RN.postMessage(JSON.stringify(m));}catch(e){}}
+var isTop=false;try{isTop=window.top===window;}catch(e){}
+// Many sites run the real game in an iframe; only the frame that holds the big canvas (or the page itself) reports.
+function hasBigCanvas(){var l=document.getElementsByTagName('canvas'),vw=innerWidth*innerHeight;for(var i=0;i<l.length;i++){var r=l[i].getBoundingClientRect();if(r.width*r.height>vw*0.35)return true;}return false;}
+function postEnh(m){if(isTop||hasBigCanvas())post(m);}
 var errs=0;
 window.addEventListener('error',function(e){if(errs++<3)post({t:'error',msg:String((e&&e.message)||'Script error')});});
 window.addEventListener('unhandledrejection',function(e){if(errs++<3)post({t:'error',msg:String((e&&e.reason&&e.reason.message)||e.reason||'Promise rejected')});});
@@ -345,9 +401,9 @@ function Enhancer(){
   };
   this.stop=function(){if(attached)cv.remove();attached=false;src=null;};
 }
-function disable(why){if(enh){enh.stop();enh=null;post({t:'enh',on:false,why:why});}}
+function disable(why){if(enh){enh.stop();enh=null;postEnh({t:'enh',on:false,why:why});}}
 if(CFG.upscale){
-  var boot=function(){try{enh=new Enhancer();if(!enh){post({t:'enh',on:false,why:'WebGL unavailable'});return;}enh.pick();setInterval(function(){if(enh)enh.pick();},1500);addEventListener('resize',function(){if(enh)enh.pick();});post({t:'enh',on:true});}catch(e){enh=null;post({t:'enh',on:false,why:String(e&&e.message||e)});}};
+  var boot=function(){try{enh=new Enhancer();if(!enh){postEnh({t:'enh',on:false,why:'WebGL unavailable'});return;}enh.pick();setInterval(function(){if(enh)enh.pick();},1500);addEventListener('resize',function(){if(enh)enh.pick();});}catch(e){enh=null;postEnh({t:'enh',on:false,why:String(e&&e.message||e)});}};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }
 var held={};
@@ -378,6 +434,6 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-setInterval(function(){post({t:'beat',fps:document.hidden?0:fps,enh:!!(enh&&enh.on())});},2000);
+setInterval(function(){var g=hasBigCanvas();if(isTop||g)post({t:'beat',fps:document.hidden?0:fps,enh:!!(enh&&enh.on()),game:g});},2000);
 }catch(e){try{window.ReactNativeWebView.postMessage(JSON.stringify({t:'error',msg:'Enhancer: '+String(e&&e.message||e)}));}catch(_){}}})();true;`;
 }

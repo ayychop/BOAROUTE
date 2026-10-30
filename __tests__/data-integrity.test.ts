@@ -27,7 +27,20 @@ describe('seed data', () => {
     expect(migration.match(/'David', 'reserved'/g)).toHaveLength(65);
     expect(migration).toContain("'HP13 6BU'");
     // The init migration holds all the seed data; later migrations are additive and never reseed.
-    expect(fs.readdirSync(path.join(root, 'supabase/migrations'))).toEqual(['20261025000000_boaroute_init.sql', '20261029000000_all_in_one.sql']);
+    expect(fs.readdirSync(path.join(root, 'supabase/migrations'))).toEqual(['20261025000000_boaroute_init.sql', '20261029000000_all_in_one.sql', '20261030000000_game_hub.sql']);
+  });
+
+  it('keeps the game hub migration additive, private to each user, and tied to their own folder', () => {
+    const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261030000000_game_hub.sql'), 'utf8');
+    expect(sql).not.toMatch(/drop table|drop column|insert into public\.stores/i);
+    expect(sql).toContain('create table if not exists public.game_library');
+    expect(sql).toContain('alter table public.game_library enable row level security');
+    expect(sql).toContain('unique (user_id, url)');
+    // Upserting a link that is already saved needs update rights, and every policy is scoped to the owner.
+    for (const op of ['select', 'insert', 'update', 'delete']) expect(sql).toContain(`create policy game_library_${op}_own`);
+    expect(sql).not.toMatch(/to anon|using \(true\)/i);
+    // A cover path must sit in the person's own folder, so it cannot point at someone else's files.
+    expect(sql).toContain("split_part(cover_path, '/', 1) = (select auth.uid())::text");
   });
 
   it('keeps the all-in-one migration additive: no seed data, no dropped tables, RLS on the new table', () => {

@@ -89,6 +89,16 @@ export function cuePhrase(clip: VoiceClip): string {
   }
 }
 
+/**
+ * Clips that are recorded files in assets/sounds (your own voice). Police
+ * alerts are not: they are spoken by the phone's default text-to-speech voice.
+ */
+export const RECORDED_CLIPS: readonly VoiceClip[] = ['camera_approaching', 'camera_passing'];
+
+export function isRecordedClip(clip: VoiceClip): boolean {
+  return RECORDED_CLIPS.includes(clip);
+}
+
 /** Voice note volume pref, 0 to 1. Default 0.9 so notes sit just above Waze/Spotify. */
 export function parseVolume(raw: string | null | undefined): number {
   const v = raw == null ? NaN : Number(raw);

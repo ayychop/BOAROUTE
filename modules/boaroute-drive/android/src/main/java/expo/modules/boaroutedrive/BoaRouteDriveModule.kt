@@ -10,6 +10,8 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Queues
@@ -17,6 +19,9 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 private const val WAZE = "com.waze"
+
+/** Pause between taking audio focus and the first sound, so other apps finish lowering their volume. */
+private const val DUCK_LEAD_MS = 150L
 
 /**
  * Driving helpers for BOAROUTE:
@@ -30,6 +35,12 @@ class BoaRouteDriveModule : Module() {
   private var player: MediaPlayer? = null
   private var pending: Promise? = null
   private var focusRequest: AudioFocusRequest? = null
+  private val mainHandler = Handler(Looper.getMainLooper())
+
+  // Separate focus request for spoken (text-to-speech) alerts: duck only, no player of our own.
+  private var duckRequest: AudioFocusRequest? = null
+  private val duckListener = AudioManager.OnAudioFocusChangeListener { }
+
   private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
     // A phone call or another nav prompt takes over: drop this note rather than talk over it.
     if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) finish(false)
@@ -69,11 +80,10 @@ class BoaRouteDriveModule : Module() {
     // Resolves true when the note finished, false when it was replaced or interrupted.
     AsyncFunction("playVoiceNote") { uri: String, volume: Double, promise: Promise ->
       finish(false)
-      val attrs = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-        .build()
-      if (!requestFocus(attrs)) {
+      val attrs = navigationAttributes()
+      // A phone call refuses focus and must not be talked over. Anything else: a hazard
+      // warning matters more than another app's volume, so it plays even if focus is refused.
+      if (!requestFocus(attrs) && inCall()) {
         promise.resolve(false)
         return@AsyncFunction
       }
@@ -83,9 +93,14 @@ class BoaRouteDriveModule : Module() {
       pending = promise
       try {
         mp.setAudioAttributes(attrs)
-        mp.setDataSource(context, Uri.parse(uri))
+        setSource(mp, uri)
         mp.setVolume(level, level)
-        mp.setOnPreparedListener { if (player === it) it.start() }
+        mp.setOnPreparedListener { prepared ->
+          // Short lead-in so Waze, Maps and Spotify have already dipped when the note begins.
+          mainHandler.postDelayed({
+            if (player === prepared) prepared.start()
+          }, DUCK_LEAD_MS)
+        }
         mp.setOnCompletionListener { if (player === it) finish(true) }
         mp.setOnErrorListener { p, what, extra ->
           if (player === p) fail("E_VOICE_NOTE", "Playback failed ($what/$extra)")
@@ -99,7 +114,76 @@ class BoaRouteDriveModule : Module() {
 
     AsyncFunction("stopVoiceNote") { finish(false) }.runOnQueue(Queues.MAIN)
 
-    OnDestroy { finish(false) }
+    // Lowers every other app (Waze, Maps, Spotify) while a spoken alert plays; restoreOthers hands it back.
+    AsyncFunction("duckOthers") {
+      releaseDuck()
+      requestDuck()
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("restoreOthers") { releaseDuck() }.runOnQueue(Queues.MAIN)
+
+    OnDestroy {
+      finish(false)
+      releaseDuck()
+    }
+  }
+
+  private fun navigationAttributes(): AudioAttributes = AudioAttributes.Builder()
+    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+    .build()
+
+  private fun inCall(): Boolean {
+    val mode = audioManager.mode
+    return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
+  }
+
+  /**
+   * Metro assets in a release build are raw resources addressed as file:///android_res/raw/name.ext,
+   * which MediaPlayer cannot open as a URI. Read those through the resource; everything else directly.
+   */
+  private fun setSource(mp: MediaPlayer, raw: String) {
+    val uri = Uri.parse(raw)
+    val path = uri.path.orEmpty()
+    if (uri.scheme == "file" && path.startsWith("/android_res/raw/")) {
+      val name = path.removePrefix("/android_res/raw/").substringBeforeLast('.')
+      val id = context.resources.getIdentifier(name, "raw", context.packageName)
+      if (id != 0) {
+        context.resources.openRawResourceFd(id).use { afd ->
+          mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+        }
+        return
+      }
+    }
+    mp.setDataSource(context, uri)
+  }
+
+  private fun requestDuck(): Boolean {
+    val am = audioManager
+    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        .setAudioAttributes(navigationAttributes())
+        .setWillPauseWhenDucked(false)
+        .setOnAudioFocusChangeListener(duckListener)
+        .build()
+      duckRequest = req
+      am.requestAudioFocus(req)
+    } else {
+      @Suppress("DEPRECATION")
+      am.requestAudioFocus(duckListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+    }
+    return granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+  }
+
+  private fun releaseDuck() {
+    val am = appContext.reactContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      duckRequest?.let { am.abandonAudioFocusRequest(it) }
+      duckRequest = null
+    } else {
+      @Suppress("DEPRECATION")
+      am.abandonAudioFocus(duckListener)
+    }
   }
 
   private fun isInstalled(packageName: String): Boolean = try {
@@ -135,6 +219,7 @@ class BoaRouteDriveModule : Module() {
     val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         .setAudioAttributes(attrs)
+        .setWillPauseWhenDucked(false)
         .setOnAudioFocusChangeListener(focusListener)
         .build()
       focusRequest = req
@@ -158,6 +243,7 @@ class BoaRouteDriveModule : Module() {
   }
 
   private fun release() {
+    mainHandler.removeCallbacksAndMessages(null)
     player?.let {
       it.setOnCompletionListener(null)
       it.setOnErrorListener(null)

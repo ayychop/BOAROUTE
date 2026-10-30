@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Extrapolation,
   FadeIn,
@@ -23,10 +23,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRLogo } from '@/components/BRLogo';
 import { NeonButton } from '@/components/NeonButton';
+import { AddGameSheet } from '@/components/AddGameSheet';
 import { Txt } from '@/components/Txt';
-import { CURATED_GAMES, type Game } from '@/lib/games';
+import { urlKey } from '@/lib/game-link';
+import { CURATED_GAMES, FEATURED_GAMES, isUserGame, type Game } from '@/lib/games';
 import { getPref, setPref } from '@/lib/prefs';
+import { useAuth } from '@/providers/AuthProvider';
 import { fetchDiscover, importGame, loadLibrary, loadRecent, removeGame, type DiscoverPage } from '@/services/game-library';
+import { addGameFromUrl, cachedCovers, fetchMissingCovers, removeCloudGame, syncUserGames } from '@/services/game-links';
 import { isHazardWatchRunning, stopHazardWatch } from '@/services/hazard-watch';
 
 const GOLD = '#E8CF94';
@@ -50,6 +54,19 @@ function accentFor(id: string): string {
 function dedupe(list: Game[]): Game[] {
   const seen = new Set<string>();
   return list.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
+}
+
+/** Like dedupe, but a game that points at the same site as an earlier one is dropped too. */
+function dedupeByLink(list: Game[]): Game[] {
+  const ids = new Set<string>();
+  const links = new Set<string>();
+  return list.filter((g) => {
+    const key = urlKey(g.url);
+    if (ids.has(g.id) || links.has(key)) return false;
+    ids.add(g.id);
+    links.add(key);
+    return true;
+  });
 }
 
 const GameTile = memo(function GameTile({
@@ -81,6 +98,8 @@ const GameTile = memo(function GameTile({
   const art = useAnimatedStyle(() => ({
     transform: [{ translateX: interpolate(scrollX.get(), [(index - 1) * step, (index + 1) * step], [size * 0.12, -size * 0.12], Extrapolation.CLAMP) }, { scale: 1.3 }],
   }));
+  // A site can refuse to share its cover; the tile then falls back to its name instead of an empty square.
+  const [failedArt, setFailedArt] = useState<string | null>(null);
   const isGame = 'url' in tile;
   const label = isGame ? tile.title : tile.id === UPLOAD_ID ? 'Upload a game' : 'Load more';
   return (
@@ -100,9 +119,9 @@ const GameTile = memo(function GameTile({
           style,
         ]}
       >
-        {isGame && tile.thumb ? (
+        {isGame && tile.thumb && tile.thumb !== failedArt ? (
           <Animated.View style={[StyleSheet.absoluteFill, art]}>
-            <Image source={tile.thumb} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} cachePolicy="memory-disk" recyclingKey={tile.id} />
+            <Image source={tile.thumb} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} cachePolicy="memory-disk" recyclingKey={tile.id} onError={() => setFailedArt(tile.thumb)} />
           </Animated.View>
         ) : (
           <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 12 }]}>
@@ -140,6 +159,13 @@ export default function GameHub() {
   const [focus, setFocus] = useState(0);
   const [upscale, setUpscale] = useState(getPref(UPSCALE_PREF) !== '0');
   const [importing, setImporting] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [featuredCovers, setFeaturedCovers] = useState<Record<string, string>>(cachedCovers);
+  // A new object per request, so asking for the same card twice scrolls to it twice.
+  const [reveal, setReveal] = useState<{ id: string } | null>(null);
+  const revealed = useRef<{ id: string } | null>(null);
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const listRef = useRef<Animated.FlatList<Tile>>(null);
   const blurTarget = useRef<ComponentRef<typeof View>>(null);
   const scrollX = useSharedValue(0);
@@ -149,8 +175,25 @@ export default function GameHub() {
     useCallback(() => {
       setLibrary(loadLibrary());
       setRecent(loadRecent());
-    }, []),
+      // Brings back links saved from another phone and refreshes the cover links, which expire.
+      if (!userId) return;
+      let live = true;
+      syncUserGames(userId).then((merged) => {
+        if (live) setLibrary(merged);
+      });
+      return () => {
+        live = false;
+      };
+    }, [userId]),
   );
+
+  // The built-in games get cover art from each site's own og:image, filled in as it is found.
+  useEffect(() => {
+    if (tab !== 'discover') return;
+    const ctrl = new AbortController();
+    fetchMissingCovers(FEATURED_GAMES, (id, url) => setFeaturedCovers((prev) => (prev[id] === url ? prev : { ...prev, [id]: url })), ctrl.signal);
+    return () => ctrl.abort();
+  }, [tab]);
 
   useEffect(() => {
     if (tab !== 'discover' || discover) return;
@@ -163,9 +206,21 @@ export default function GameHub() {
 
   const tiles = useMemo<Tile[]>(() => {
     if (tab === 'library') return [{ id: UPLOAD_ID }, ...dedupe([...recent, ...library, ...CURATED_GAMES])];
-    if (!discover) return [];
-    return discover.offline ? discover.games : [...discover.games, { id: MORE_ID }];
-  }, [tab, recent, library, discover]);
+    // The built-in games and anything you added show at once; the online feed joins them when it arrives.
+    const featured = FEATURED_GAMES.map((g) => (featuredCovers[g.id] ? { ...g, thumb: featuredCovers[g.id] } : g));
+    const added = library.filter((g) => g.source === 'web' && isUserGame(g));
+    const games = dedupeByLink([...featured, ...added, ...(discover?.games ?? [])]);
+    return discover && !discover.offline ? [...games, { id: MORE_ID }] : games;
+  }, [tab, recent, library, discover, featuredCovers]);
+
+  // After adding a game, bring its card into view once the list has it.
+  useEffect(() => {
+    if (!reveal || revealed.current === reveal) return;
+    const i = tiles.findIndex((t) => t.id === reveal.id);
+    if (i < 0) return;
+    revealed.current = reveal;
+    requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: i * step, animated: !reduceMotion }));
+  }, [reveal, tiles, step, reduceMotion]);
 
   const focused = tiles[Math.min(focus, Math.max(0, tiles.length - 1))];
   const focusedGame = focused && 'url' in focused ? focused : null;
@@ -188,6 +243,7 @@ export default function GameHub() {
     if (t === tab) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setTab(t);
+    setReveal(null);
     setFocus(0);
     lastFocus.set(0);
     scrollX.set(0);
@@ -226,6 +282,22 @@ export default function GameHub() {
             : (res.message ?? 'Please try again.'),
       );
     }
+  };
+
+  /** The + button: resolves null on success, or the message to show under the link box. */
+  const addFromLink = async (input: string, onStep: (label: string) => void): Promise<string | null> => {
+    const res = await addGameFromUrl(userId, input, [...FEATURED_GAMES, ...library], onStep);
+    if (!res.ok) return res.message;
+    setLibrary(loadLibrary());
+    switchTab('discover');
+    setReveal({ id: res.game.id });
+    return null;
+  };
+
+  const removeAdded = (game: Game) => {
+    setLibrary(removeGame(game.id));
+    setRecent(loadRecent());
+    if (userId && game.source === 'web') removeCloudGame(userId, game);
   };
 
   const loadMore = async () => {
@@ -271,34 +343,25 @@ export default function GameHub() {
         <LinearGradient colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)', '#000']} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} pointerEvents="none" />
 
         <View style={{ flex: 1, paddingTop: insets.top + 76, paddingBottom: insets.bottom + 12 }}>
-          {tab === 'discover' && !discover ? (
-            <View style={{ height: size + 40, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={GOLD} size="large" />
-              <Txt variant="caption" style={{ color: DIM, marginTop: 10 }}>
-                Finding games
-              </Txt>
-            </View>
-          ) : (
-            <Animated.FlatList
-              ref={listRef}
-              data={tiles}
-              horizontal
-              keyExtractor={(t) => t.id}
-              renderItem={({ item, index }) => <GameTile tile={item} index={index} size={size} step={step} scrollX={scrollX} focused={index === focus} onPress={onTilePress} />}
-              extraData={focus}
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={step}
-              decelerationRate="fast"
-              onScroll={onScroll}
-              scrollEventThrottle={16}
-              contentContainerStyle={{ paddingHorizontal: side, height: size + 40, alignItems: 'center' }}
-              getItemLayout={(_, i) => ({ length: step, offset: step * i, index: i })}
-              initialNumToRender={8}
-              windowSize={7}
-              removeClippedSubviews={Platform.OS === 'android'}
-              style={{ flexGrow: 0 }}
-            />
-          )}
+          <Animated.FlatList
+            ref={listRef}
+            data={tiles}
+            horizontal
+            keyExtractor={(t) => t.id}
+            renderItem={({ item, index }) => <GameTile tile={item} index={index} size={size} step={step} scrollX={scrollX} focused={index === focus} onPress={onTilePress} />}
+            extraData={focus}
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={step}
+            decelerationRate="fast"
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ paddingHorizontal: side, height: size + 40, alignItems: 'center' }}
+            getItemLayout={(_, i) => ({ length: step, offset: step * i, index: i })}
+            initialNumToRender={8}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS === 'android'}
+            style={{ flexGrow: 0 }}
+          />
 
           <Animated.View key={`info-${focused?.id ?? 'none'}`} entering={FadeIn.duration(220)} style={{ paddingHorizontal: 28, marginTop: 8, maxWidth: 720 }}>
             {tab === 'discover' && discover?.offline ? (
@@ -321,16 +384,16 @@ export default function GameHub() {
                 ) : null}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
                   <NeonButton label="Play" icon="play" size="lg" onPress={() => play(focusedGame)} onDark style={{ minWidth: 160 }} />
-                  {focusedGame.source === 'local' && (
+                  {(focusedGame.source === 'local' || isUserGame(focusedGame)) && (
                     <NeonButton
                       label="Remove"
                       icon="trash-outline"
                       variant="subtle"
                       onDark
                       onPress={() =>
-                        Alert.alert('Remove game?', `${focusedGame.title} will be deleted from this phone.`, [
+                        Alert.alert('Remove game?', focusedGame.source === 'local' ? `${focusedGame.title} will be deleted from this phone.` : `${focusedGame.title} will be removed from your library.`, [
                           { text: 'Cancel', style: 'cancel' },
-                          { text: 'Remove', style: 'destructive', onPress: () => setLibrary(removeGame(focusedGame.id)) },
+                          { text: 'Remove', style: 'destructive', onPress: () => removeAdded(focusedGame) },
                         ])
                       }
                     />
@@ -394,10 +457,26 @@ export default function GameHub() {
             </Pressable>
           ))}
         </View>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            setAdding(true);
+          }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Add a game from a link"
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 8, paddingRight: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(232,207,148,0.16)' }}
+        >
+          <Ionicons name="add" size={22} color={GOLD} />
+          <Txt variant="strong" style={{ color: GOLD }}>
+            Add
+          </Txt>
+        </Pressable>
         <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close Game Hub" style={{ padding: 6 }}>
           <Ionicons name="close" size={26} color={INK} />
         </Pressable>
       </BlurView>
+      {adding ? <AddGameSheet onAdd={addFromLink} onClose={() => setAdding(false)} /> : null}
     </View>
   );
 }

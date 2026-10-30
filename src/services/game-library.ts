@@ -21,8 +21,15 @@ export function loadLibrary(): Game[] {
   return parseGameList(getPref(LIBRARY_PREF)).filter((g) => g.source !== 'local' || new File(g.url).exists);
 }
 
-function saveLibrary(list: Game[]) {
+export function saveLibrary(list: Game[]) {
   setPref(LIBRARY_PREF, JSON.stringify(list));
+}
+
+/** Puts a game at the front of the library (newest first), replacing an older copy of it. */
+export function addToLibrary(game: Game): Game[] {
+  const next = [game, ...loadLibrary().filter((g) => g.id !== game.id)];
+  saveLibrary(next);
+  return next;
 }
 
 export function loadRecent(): Game[] {
