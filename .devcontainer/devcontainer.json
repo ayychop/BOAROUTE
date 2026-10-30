@@ -1,0 +1,10 @@
+{
+    "name": "Node.js & TypeScript",
+    "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+    "runArgs": ["--memory=8g", "--cpus=4"],
+    "customizations": {
+      "vscode": {
+        "extensions": []
+      }
+    }
+  }
