@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Dashboard-paste copy of the route-options function; _shared files are the source of truth
+supabase/functions/route-options/route-options-flattened.ts
