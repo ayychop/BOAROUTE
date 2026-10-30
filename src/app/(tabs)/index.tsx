@@ -14,7 +14,7 @@ import { GlassCard } from '@/components/GlassCard';
 import { DataErrorBanner, EmptyState } from '@/components/misc';
 import { NeonButton } from '@/components/NeonButton';
 import { MotivationCard } from '@/components/MotivationCard';
-import { NumberPlate } from '@/components/NumberPlate';
+import { DashboardPlate } from '@/components/NumberPlate';
 import { Odometer } from '@/components/Odometer';
 import { Screen, SectionHeader } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
@@ -28,7 +28,7 @@ import { recentMonths, talliesForMonth } from '@/lib/history';
 import { monthTitle } from '@/lib/report';
 import { odometerValue } from '@/lib/odometer';
 import { computeDue, monthProgress } from '@/lib/route-engine';
-import { displayPlate, prefsFor } from '@/lib/preferences';
+import { prefsFor } from '@/lib/preferences';
 import { vehicleFor } from '@/lib/vehicles';
 import { isWorkingDate, workingDatesLeft } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
@@ -148,10 +148,7 @@ export default function Hub() {
         <View style={{ aspectRatio: compact ? 2.1 : 2.3 }}>
           <Image source={vehicle.image} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
           <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0)', palette.surfaceStrong]} locations={[0, 0.35, 1]} style={StyleSheet.absoluteFill} />
-          <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <View style={{ flexShrink: 1 }}>
-              <NumberPlate text={displayPlate(profile)} height={compact ? 24 : 28} sheen />
-            </View>
+          <View style={{ position: 'absolute', top: 14, left: 16, right: 16, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
             <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: workingToday ? palette.success : palette.textFaint }} />
               <Txt variant="label" numberOfLines={1} style={{ color: COCKPIT_INK.text, fontSize: 9.5 }}>
@@ -167,6 +164,7 @@ export default function Hub() {
         </View>
       )}
       <View style={{ padding: compact ? 16 : 20, paddingTop: vehicle ? 10 : undefined, gap: 14 }}>
+        <DashboardPlate />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <Odometer value={odometerValue(profile?.current_mileage)} size={compact ? 'sm' : 'md'} maxWidth={expanded ? 420 : undefined} />
           <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />

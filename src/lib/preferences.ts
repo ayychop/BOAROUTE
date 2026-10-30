@@ -96,3 +96,18 @@ export function plateName(name: string | null | undefined, email?: string | null
   const first = (name ?? '').trim().split(/\s+/)[0] || (email ?? '').split('@')[0] || 'BOA';
   return first.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'BOA';
 }
+
+/** The Home car's registration. Fixed on purpose: it never reads the profile or the database. */
+export const DASHBOARD_PLATE = 'KM26 MLL';
+/** Real UK rear plate proportions: width is this many times the height. */
+export const PLATE_ASPECT = 4.4;
+export const DASHBOARD_PLATE_MIN_H = 48;
+export const DASHBOARD_PLATE_MAX_H = 96;
+/** Share of the card's width the Home plate takes, so it fills the space without touching the edges. */
+export const DASHBOARD_PLATE_FILL = 0.86;
+
+/** Home plate height that fills `width` at real proportions, within sensible limits. */
+export function dashboardPlateHeight(width: number): number {
+  if (!Number.isFinite(width) || width <= 0) return 60;
+  return Math.max(DASHBOARD_PLATE_MIN_H, Math.min(DASHBOARD_PLATE_MAX_H, (width * DASHBOARD_PLATE_FILL) / PLATE_ASPECT));
+}

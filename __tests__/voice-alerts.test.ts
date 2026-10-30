@@ -1,13 +1,16 @@
 import {
   ALERT_LEAD_S,
+  ALL_ALERTS_ON,
   APPROACH_ALERT_M,
-  PASSING_ALERT_M,
+  CAMERA_CLIP_VOLUME,
+  alertAllowed,
   clipFor,
   cuePhrase,
   finishedIds,
   isVoiceAlertType,
   leadMetres,
   nextVoiceCue,
+  parseToggle,
   parseVolume,
   recordCue,
   type AlertLedger,
@@ -16,54 +19,52 @@ import {
 const camera = (id: string, distanceM: number) => ({ hazard: { id, hazard_type: 'speed_camera' as const }, distanceM });
 const police = (id: string, distanceM: number) => ({ hazard: { id, hazard_type: 'police' as const }, distanceM });
 
-describe('two-stage voice alerts', () => {
-  it('uses 500 m and 100 m', () => {
-    expect(APPROACH_ALERT_M).toBe(500);
-    expect(PASSING_ALERT_M).toBe(100);
+describe('single approaching camera alert', () => {
+  it('triggers at 800 m: about half a mile, well short of a mile', () => {
+    expect(APPROACH_ALERT_M).toBe(800);
+    expect(APPROACH_ALERT_M).toBeGreaterThanOrEqual(0.49 * 1609.344);
+    expect(APPROACH_ALERT_M).toBeLessThanOrEqual(1609.344);
   });
 
-  it('plays approaching inside 500 m, then passing inside 100 m, once each', () => {
-    const ledger: AlertLedger = new Map();
-    expect(nextVoiceCue(camera('c', 620), ledger, 0)).toBeNull();
+  it('plays camera_approaching once inside 800 m and never again', () => {
+    const ledger: AlertLedger = new Set();
+    expect(nextVoiceCue(camera('c', 950), ledger, 0)).toBeNull();
 
-    const first = nextVoiceCue(camera('c', 480), ledger, 0);
-    expect(first).toEqual({ hazardId: 'c', stage: 'approaching', clip: 'camera_approaching' });
-    recordCue(ledger, first!);
-    expect(nextVoiceCue(camera('c', 300), ledger, 0)).toBeNull();
+    const cue = nextVoiceCue(camera('c', 790), ledger, 0);
+    expect(cue).toEqual({ hazardId: 'c', clip: 'camera_approaching' });
+    recordCue(ledger, cue!);
 
-    const second = nextVoiceCue(camera('c', 95), ledger, 0);
-    expect(second).toEqual({ hazardId: 'c', stage: 'passing', clip: 'camera_passing' });
-    recordCue(ledger, second!);
-    expect(nextVoiceCue(camera('c', 20), ledger, 0)).toBeNull();
+    // Closer, level with it, nothing more: there is no passing note.
+    for (const d of [500, 100, 20]) expect(nextVoiceCue(camera('c', d), ledger, 0)).toBeNull();
     expect(finishedIds(ledger)).toEqual(new Set(['c']));
   });
 
-  it('plays only the passing note for a report first seen inside 100 m', () => {
-    const ledger: AlertLedger = new Map();
-    const cue = nextVoiceCue(camera('late', 60), ledger, 0);
-    expect(cue?.stage).toBe('passing');
-    recordCue(ledger, cue!);
-    // Passing implies approaching: the earlier note never plays afterwards.
-    expect(nextVoiceCue(camera('late', 450), ledger, 0)).toBeNull();
+  it('plays the approaching note even for a report first seen up close', () => {
+    expect(nextVoiceCue(camera('late', 60), new Set(), 0)?.clip).toBe('camera_approaching');
   });
 
-  it('uses the police clips for police reports', () => {
-    expect(nextVoiceCue(police('p', 400), new Map(), 0)?.clip).toBe('police_approaching');
-    expect(nextVoiceCue(police('p', 50), new Map(), 0)?.clip).toBe('police_passing');
-    expect(clipFor('police', 'passing')).toBe('police_passing');
+  it('has no passing clip anywhere', () => {
+    expect(clipFor('speed_camera')).toBe('camera_approaching');
+    expect(clipFor('police')).toBe('police_approaching');
+    expect(cuePhrase('camera_approaching')).not.toMatch(/passing/i);
+    expect(cuePhrase('police_approaching')).not.toMatch(/passing/i);
+  });
+
+  it('uses the police clip for police reports', () => {
+    expect(nextVoiceCue(police('p', 700), new Set(), 0)?.clip).toBe('police_approaching');
   });
 
   it('ignores other hazard types and nothing ahead', () => {
-    expect(nextVoiceCue({ hazard: { id: 'a', hazard_type: 'accident' }, distanceM: 100 }, new Map(), 0)).toBeNull();
-    expect(nextVoiceCue(null, new Map(), 10)).toBeNull();
+    expect(nextVoiceCue({ hazard: { id: 'a', hazard_type: 'accident' }, distanceM: 100 }, new Set(), 0)).toBeNull();
+    expect(nextVoiceCue(null, new Set(), 10)).toBeNull();
     expect(isVoiceAlertType('accident')).toBe(false);
     expect(isVoiceAlertType('police')).toBe(true);
   });
 
-  it('brings the thresholds forward with speed so the note lands on the mark', () => {
-    // 30 m/s (about 67 mph) gives 18 m of lead: 515 m is already inside the window.
-    expect(nextVoiceCue(camera('c', 515), new Map(), 30)?.stage).toBe('approaching');
-    expect(nextVoiceCue(camera('c', 515), new Map(), 0)).toBeNull();
+  it('brings the threshold forward with speed so the note lands on the mark', () => {
+    // 30 m/s (about 67 mph) gives 18 m of lead: 815 m is already inside the window.
+    expect(nextVoiceCue(camera('c', 815), new Set(), 30)?.clip).toBe('camera_approaching');
+    expect(nextVoiceCue(camera('c', 815), new Set(), 0)).toBeNull();
     expect(leadMetres(30)).toBeCloseTo(30 * ALERT_LEAD_S);
   });
 
@@ -75,22 +76,46 @@ describe('two-stage voice alerts', () => {
   });
 
   it('keeps a separate history per report', () => {
-    const ledger: AlertLedger = new Map();
+    const ledger: AlertLedger = new Set();
     recordCue(ledger, nextVoiceCue(camera('one', 400), ledger, 0)!);
     expect(nextVoiceCue(camera('two', 400), ledger, 0)?.hazardId).toBe('two');
   });
+});
 
-  it('has a spoken fallback for every clip', () => {
-    for (const clip of ['camera_approaching', 'camera_passing', 'police_approaching', 'police_passing'] as const) {
-      expect(cuePhrase(clip).length).toBeGreaterThan(5);
-    }
+describe('camera alerts toggle', () => {
+  it('is on unless explicitly switched off', () => {
+    expect(parseToggle(null)).toBe(true);
+    expect(parseToggle('nonsense')).toBe(true);
+    expect(parseToggle('true')).toBe(true);
+    expect(parseToggle('false')).toBe(false);
+    expect(parseToggle(undefined, false)).toBe(false);
+  });
+
+  it('plays nothing for a camera when cameras are off, and does not use up the report', () => {
+    const ledger: AlertLedger = new Set();
+    const off = { ...ALL_ALERTS_ON, cameras: false };
+    expect(nextVoiceCue(camera('c', 300), ledger, 0, off)).toBeNull();
+    expect(ledger.size).toBe(0);
+    // Switching it back on mid-trip still warns.
+    expect(nextVoiceCue(camera('c', 300), ledger, 0, ALL_ALERTS_ON)?.clip).toBe('camera_approaching');
+  });
+
+  it('leaves police alone when only cameras are off, and the other way round', () => {
+    expect(nextVoiceCue(police('p', 300), new Set(), 0, { cameras: false, police: true })?.clip).toBe('police_approaching');
+    expect(nextVoiceCue(police('p', 300), new Set(), 0, { cameras: true, police: false })).toBeNull();
+    expect(alertAllowed('speed_camera', { cameras: false, police: true })).toBe(false);
+    expect(alertAllowed('police', { cameras: false, police: true })).toBe(true);
   });
 });
 
 describe('voice volume', () => {
-  it('defaults to 0.9 and clamps to 0 to 1', () => {
-    expect(parseVolume(null)).toBe(0.9);
-    expect(parseVolume('nonsense')).toBe(0.9);
+  it('plays the recorded camera note at full gain', () => {
+    expect(CAMERA_CLIP_VOLUME).toBe(1);
+  });
+
+  it('defaults spoken alerts to full and clamps to 0 to 1', () => {
+    expect(parseVolume(null)).toBe(1);
+    expect(parseVolume('nonsense')).toBe(1);
     expect(parseVolume('0.4')).toBe(0.4);
     expect(parseVolume('7')).toBe(1);
     expect(parseVolume('-2')).toBe(0);

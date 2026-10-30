@@ -16,13 +16,13 @@ export function wazeUrl(to: LatLng): string {
  *
  * The hazard foreground service starts first, while BOAROUTE is still in
  * front: Android 12+ refuses to start one from the background, and without
- * it the voice notes would stop the moment Waze opens. It never prompts here
- * (that would open Settings instead of Waze); without background location
- * the Screen Saver says alerts are off and how to turn them on.
+ * it the camera alerts would stop the moment Waze opens. It needs only normal
+ * location permission (not "Allow all the time"), so a normal install always
+ * gets it. Waze opens right after, or after 1.5 seconds at the latest.
  */
 export async function navigateWithWaze(to: LatLng, { storeId }: { storeId?: string } = {}): Promise<void> {
   setRouteAwareAlerts(false);
-  const watching = startHazardWatch({ prompt: false }).catch(() => false);
+  const watching = startHazardWatch({ prompt: true }).catch(() => false);
   router.push({ pathname: '/drive-mode', params: storeId ? { storeId } : {} });
   // Usually ready in well under 200 ms; the cap keeps a stuck permission check from holding Waze back.
   await Promise.race([watching, new Promise((r) => setTimeout(r, 1500))]);

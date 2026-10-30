@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
-import { plateFontSize } from '@/lib/preferences';
+import { DASHBOARD_PLATE, dashboardPlateHeight, plateFontSize } from '@/lib/preferences';
 import { fonts } from '@/theme/typography';
 import { Txt } from './Txt';
 
@@ -102,6 +102,16 @@ export function NumberPlate({ text, height = 30, sheen = false }: { text: string
         </Txt>
         {sheen && <Sheen height={height} />}
       </View>
+    </View>
+  );
+}
+
+/** A large, centred 26-plate that stretches to the width it is given. Sits above the mileage counter. */
+export function DashboardPlate() {
+  const [width, setWidth] = useState(0);
+  return (
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ alignItems: 'center', width: '100%' }}>
+      <NumberPlate text={DASHBOARD_PLATE} height={dashboardPlateHeight(width)} sheen />
     </View>
   );
 }

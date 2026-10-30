@@ -76,24 +76,23 @@ describe('alert audio sources', () => {
   const root = path.join(__dirname, '..');
 
   it('uses the recorded files for cameras and spoken TTS for police', () => {
-    expect([...RECORDED_CLIPS].sort()).toEqual(['camera_approaching', 'camera_passing']);
+    expect([...RECORDED_CLIPS]).toEqual(['camera_approaching']);
     expect(isRecordedClip('camera_approaching')).toBe(true);
-    expect(isRecordedClip('camera_passing')).toBe(true);
     expect(isRecordedClip('police_approaching')).toBe(false);
-    expect(isRecordedClip('police_passing')).toBe(false);
   });
 
-  it('points the camera clips at the files in assets/sounds, with no police recordings left behind', () => {
+  it('points the camera clip at the file in assets/sounds, with no passing or police recordings left behind', () => {
     const source = fs.readFileSync(path.join(root, 'src/services/voice-notes.ts'), 'utf8');
     expect(source).toContain("require('../../assets/sounds/camera_approaching.mp3')");
-    expect(source).toContain("require('../../assets/sounds/camera_passing.mp3')");
+    expect(source).not.toMatch(/camera_passing/);
+    expect(fs.existsSync(path.join(root, 'assets/sounds/camera_passing.mp3'))).toBe(false);
     expect(source).not.toMatch(/police_(approaching|passing)\.mp3/);
     expect(fs.existsSync(path.join(root, 'assets/sounds/police_approaching.mp3'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'assets/sounds/police_passing.mp3'))).toBe(false);
   });
 
-  it('has real audio data in both camera files', () => {
-    for (const name of ['camera_approaching.mp3', 'camera_passing.mp3']) {
+  it('has real audio data in the camera file', () => {
+    for (const name of ['camera_approaching.mp3']) {
       const bytes = fs.readFileSync(path.join(root, 'assets/sounds', name));
       expect(bytes.length).toBeGreaterThan(1000);
       // MP3 (tagged or raw frames), or an MP4/3GPP audio container that voice recorders

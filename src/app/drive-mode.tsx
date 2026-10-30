@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, FadeIn, cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRLogo } from '@/components/BRLogo';
@@ -121,7 +121,10 @@ export default function DriveMode() {
     const ok = await startHazardWatch({ prompt: true });
     setAlertsOn(ok);
     if (!ok && !(await hasBackgroundAlertsPermission())) {
-      Alert.alert('Allow location all the time', 'Speed camera and police voice notes need location set to "Allow all the time" for BOAROUTE, so they keep playing while Waze is open.');
+      Alert.alert('Allow location', 'Speed camera alerts need location allowed for BOAROUTE ("While using the app" is enough), so they keep playing while Waze is open.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open settings', onPress: () => Linking.openSettings().catch(() => {}) },
+      ]);
     }
   };
 

@@ -4,27 +4,29 @@ import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 import { BoaRouteDrive } from '../../modules/boaroute-drive';
 import { getPref, setPref } from '@/lib/prefs';
-import { cuePhrase, isRecordedClip, parseVolume, type VoiceClip } from '@/lib/voice-alerts';
+import { ALL_ALERTS_ON, CAMERA_CLIP_VOLUME, cuePhrase, isRecordedClip, parseToggle, parseVolume, type AlertToggles, type VoiceClip } from '@/lib/voice-alerts';
 
 /**
- * Plays the speed camera and police voice notes.
+ * Plays the speed camera and police voice notes, and speaks turn-by-turn
+ * directions.
  *
- * Speed camera alerts are always the recorded files below. To change the
- * voice, replace these two files (keep the names), nothing else:
- *   assets/sounds/camera_approaching.mp3  ("500 metres")
- *   assets/sounds/camera_passing.mp3      (as you go past)
- * Police alerts use the phone's default text-to-speech voice.
+ * The speed camera alert is always the recorded file below, played once as
+ * the camera comes within about half a mile. To change the voice, replace this
+ * one file (keep the name), nothing else:
+ *   assets/sounds/camera_approaching.mp3
+ * Police alerts and turn-by-turn directions use the phone's default
+ * text-to-speech voice.
  *
- * Every note ducks other apps (Waze, Google Maps, Spotify and the rest): on
- * Android the BoaRouteDrive module asks for transient "may duck" audio focus
- * as navigation guidance, plays, then gives focus back so they return to full
+ * Everything here ducks other apps (Waze, Google Maps, Spotify and the rest):
+ * on Android the BoaRouteDrive module asks for transient "may duck" audio focus
+ * as navigation guidance (USAGE_ASSISTANCE_NAVIGATION_GUIDANCE, the same stream
+ * a car's own prompts use), plays, then gives focus back so they return to full
  * volume. That works while another app is in front because the hazard
  * foreground service keeps this process running.
  */
 
 const CLIPS: Partial<Record<VoiceClip, number>> = {
   camera_approaching: require('../../assets/sounds/camera_approaching.mp3'),
-  camera_passing: require('../../assets/sounds/camera_passing.mp3'),
 };
 
 export const VOICE_VOLUME_PREF = 'voice.volume';
@@ -37,8 +39,34 @@ export function setVoiceVolume(v: number) {
   setPref(VOICE_VOLUME_PREF, String(Math.round(Math.max(0, Math.min(1, v)) * 100) / 100));
 }
 
-export function voiceMuted(): boolean {
-  return getPref('nav.muted') === 'true';
+export const CAMERA_ALERTS_PREF = 'alerts.camera';
+export const POLICE_ALERTS_PREF = 'alerts.police';
+export const VOICE_NAV_PREF = 'nav.voice';
+
+/** Settings > Voice alerts > "Speed camera alerts". On unless switched off. */
+export function cameraAlertsOn(): boolean {
+  return parseToggle(getPref(CAMERA_ALERTS_PREF), true);
+}
+
+export function policeAlertsOn(): boolean {
+  return parseToggle(getPref(POLICE_ALERTS_PREF), true);
+}
+
+/** Both switches together, read fresh each time so a change applies to the very next fix. */
+export function alertToggles(): AlertToggles {
+  return { ...ALL_ALERTS_ON, cameras: cameraAlertsOn(), police: policeAlertsOn() };
+}
+
+/**
+ * Spoken turn-by-turn directions. On unless switched off. The old single mute
+ * ("nav.muted") is honoured until the new switch is first used.
+ */
+export function voiceNavOn(): boolean {
+  return parseToggle(getPref(VOICE_NAV_PREF), getPref('nav.muted') !== 'true');
+}
+
+export function setVoiceNav(on: boolean) {
+  setPref(VOICE_NAV_PREF, String(on));
 }
 
 const localUris = new Map<VoiceClip, string>();
@@ -121,17 +149,19 @@ async function speakDucked(text: string, volume: number): Promise<void> {
 }
 
 /**
- * Plays one voice note at the user's volume. `force` plays even when muted
- * (the Voice alerts test buttons). Resolves once the note has started (or
- * finished, natively); never throws.
+ * Plays one voice note. `force` plays even when the alert type is switched off
+ * (the Voice alerts test buttons). The recorded camera note always plays at full
+ * gain; spoken notes use the saved volume. Resolves once the note has started
+ * (or finished, natively); never throws.
  */
 export async function playVoiceNote(clip: VoiceClip, { force = false }: { force?: boolean } = {}): Promise<boolean> {
-  if (!force && voiceMuted()) return false;
-  const volume = voiceVolume();
+  const recorded = isRecordedClip(clip);
+  if (!force && !(clip === 'camera_approaching' ? cameraAlertsOn() : policeAlertsOn())) return false;
+  const volume = recorded ? CAMERA_CLIP_VOLUME : voiceVolume();
   if (volume <= 0) return false;
 
   // Police: the phone's own voice.
-  if (!isRecordedClip(clip)) {
+  if (!recorded) {
     speakDucked(cuePhrase(clip), volume);
     return true;
   }
@@ -168,6 +198,21 @@ async function playRecordingAnotherWay(clip: VoiceClip, volume: number): Promise
   }
   speakDucked(cuePhrase(clip), volume);
   return true;
+}
+
+/**
+ * Speaks one turn-by-turn direction ("In 200 yards, turn left") with the phone's
+ * text-to-speech voice, ducking Waze, Maps and music while it talks. A new
+ * direction replaces one still being spoken. Does nothing when voice navigation
+ * is switched off.
+ */
+export function speakGuidance(text: string) {
+  if (!text || !voiceNavOn()) return;
+  const volume = voiceVolume();
+  if (volume <= 0) return;
+  // The speech engine queues by default; a stale direction is worse than a missed one.
+  Speech.stop().catch(() => {});
+  speakDucked(text, volume);
 }
 
 export function stopVoiceNotes() {

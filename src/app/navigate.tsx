@@ -25,6 +25,7 @@ import { haversineKm } from '@/lib/geo';
 import { hazardMeta, isLiveHazard, type HazardReport, type HazardType } from '@/lib/hazards';
 import { decodeNavRequest, type NavDestination } from '@/lib/nav-request';
 import { HAZARD_ALERT_M, nextHazardAhead, type HazardAhead } from '@/lib/hazard-alerts';
+import { assessTraffic, TRAFFIC_REFRESH_MS } from '@/lib/traffic-refresh';
 import { PREWARN_M, prepareRoute, progressAt, remainingWaypoints, type NavProgress } from '@/lib/nav-progress';
 import { carIconFor, prefsFor, routeColorFor, type CarIconOption } from '@/lib/preferences';
 import { getPref, setPref } from '@/lib/prefs';
@@ -36,6 +37,7 @@ import { fetchRouteOptions } from '@/services/functions';
 import { useAuth } from '@/providers/AuthProvider';
 import { clearHazard, fetchLiveHazards, reportHazard } from '@/services/hazards';
 import { announceHazardAhead, setRouteAwareAlerts, startHazardWatch, stopHazardWatch } from '@/services/hazard-watch';
+import { setVoiceNav, speakGuidance, voiceNavOn } from '@/services/voice-notes';
 import { useSpeedLimit } from '@/services/speed-limit';
 import { COCKPIT_MAP_STYLE } from '@/theme/map-style';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -284,7 +286,7 @@ export default function Navigate() {
   const [following, setFollowing] = useState(true);
   const [position, setPosition] = useState<Location.LocationObject | null>(null);
   const [progress, setProgress] = useState<NavProgress | null>(null);
-  const [muted, setMuted] = useState(getPref('nav.muted') === 'true');
+  const [muted, setMuted] = useState(() => !voiceNavOn());
   const [rerouting, setRerouting] = useState(false);
   const [waypoints, setWaypoints] = useState<NavDestination[]>(req?.to ?? []);
 
@@ -423,8 +425,8 @@ export default function Navigate() {
   const say = useCallback(
     (text: string) => {
       if (muted || !text) return;
-      Speech.stop();
-      Speech.speak(text, { language: 'en-GB', rate: 1.0 });
+      // Spoken through the navigation-guidance audio path: Waze, Maps and music dip under it.
+      speakGuidance(text);
     },
     [muted],
   );
@@ -523,6 +525,62 @@ export default function Navigate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position]);
 
+  // 4b. Live traffic while driving: ask again every few minutes and move the driver off a road that
+  // has closed or jammed up, onto the quickest way home. Skipped when offline or off route (the
+  // reroute above handles that), and only switches for a clear gain so the line never flip-flops.
+  const trip = useRef({ position, progress, prepared, waypoints, rerouting, choice });
+  useEffect(() => {
+    trip.current = { position, progress, prepared, waypoints, rerouting, choice };
+  });
+  useEffect(() => {
+    if (!navigating) return;
+    let alive = true;
+    let busy = false;
+    const timer = setInterval(async () => {
+      const cur = trip.current;
+      if (busy || !cur.position || !cur.progress || !cur.prepared || cur.rerouting || cur.progress.arrived || cur.progress.offRoute) return;
+      if (Date.now() - lastReroute.current < REROUTE_COOLDOWN_MS) return;
+      busy = true;
+      try {
+        const here = { lat: cur.position.coords.latitude, lng: cur.position.coords.longitude };
+        const ahead = remainingWaypoints(cur.prepared, cur.waypoints, cur.progress.vertex) as NavDestination[];
+        const stops = ahead.length ? ahead : cur.waypoints.slice(-1);
+        const { result, liveError: err } = await fetchRouteOptions([here, ...stops]);
+        // The driver may have stopped, gone off route or been rerouted while this was in flight.
+        const now = trip.current;
+        if (!alive || err || result.source === 'estimate' || !now.progress || now.prepared !== cur.prepared || now.rerouting || now.progress.offRoute) return;
+        const fresh = routeChoices(result);
+        const preferred = fresh.filter((o) => o.kind === now.choice.kind)[now.choice.n] ?? fresh[0] ?? null;
+        const verdict = assessTraffic(
+          cur.prepared.geometry.slice(Math.max(0, now.progress.vertex)),
+          now.progress.remainingM,
+          fresh,
+          preferred,
+        );
+        if (verdict.action !== 'switch') return;
+        lastReroute.current = Date.now();
+        offRouteFixes.current = 0;
+        lastVertex.current = 0;
+        spoken.current = { step: -1, prewarned: false };
+        setOptions(result);
+        setLiveError(null);
+        setWaypoints(stops);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        speakGuidance(verdict.reason === 'faster' ? 'Faster route found. Following it now.' : 'The road ahead has changed. Following a better route.');
+        setToast(verdict.reason === 'faster' ? 'Switched to a faster route' : 'Road ahead changed. New route');
+      } catch {
+        // Offline or the service is busy: keep following the current route.
+      } finally {
+        busy = false;
+      }
+    }, TRAFFIC_REFRESH_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+    // The timer reads everything it needs from `trip`; only starting and stopping navigation restarts it.
+  }, [navigating]);
+
   // 5. Android Auto: mirror the live route onto the car screen while navigating.
   useEffect(() => {
     if (!navigating || !option || !req) return;
@@ -586,7 +644,7 @@ export default function Navigate() {
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
-    setPref('nav.muted', String(next));
+    setVoiceNav(!next);
     if (next) Speech.stop();
   };
 

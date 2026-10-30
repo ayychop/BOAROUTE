@@ -3,18 +3,18 @@ import * as TaskManager from 'expo-task-manager';
 import { AppState, Platform } from 'react-native';
 import { nearestHazardWithin } from '@/lib/hazard-alerts';
 import { isLiveHazard, type HazardReport } from '@/lib/hazards';
-import { APPROACH_ALERT_M, finishedIds, leadMetres, nextVoiceCue, recordCue, type AlertLedger } from '@/lib/voice-alerts';
+import { alertAllowed, APPROACH_ALERT_M, finishedIds, isVoiceAlertType, leadMetres, nextVoiceCue, recordCue, type AlertLedger } from '@/lib/voice-alerts';
 import { fetchLiveHazards } from '@/services/hazards';
-import { playVoiceNote, preloadVoiceNotes } from '@/services/voice-notes';
+import { alertToggles, playVoiceNote, preloadVoiceNotes } from '@/services/voice-notes';
 
 /**
- * Plays the two-stage speed camera / police voice notes (approaching at
- * 500 m, passing at 100 m) from a location foreground service, so they keep
- * coming while Waze, Spotify or the lock screen is in front.
+ * Plays the speed camera / police voice note (once, inside about half a mile)
+ * from a location foreground service, so it keeps coming while Waze, Spotify or
+ * the lock screen is in front.
  *
  * While the in-app navigator is on screen it owns the alerts instead (it
  * measures along the planned route, which is more precise than the heading
- * cone used here) and both share one ledger, so each note plays once.
+ * cone used here) and both share one ledger, so each report is announced once.
  *
  * The task must be defined at module load (imported from the root layout) so
  * Android can deliver locations even if the JS runtime was restarted.
@@ -27,7 +27,7 @@ let hazards: HazardReport[] = [];
 let fetchedAt = 0;
 let fetching = false;
 let routeAwareOwner = false;
-const ledger: AlertLedger = new Map();
+const ledger: AlertLedger = new Set();
 
 /** The in-app navigator sets this while it is focused and navigating. */
 export function setRouteAwareAlerts(on: boolean) {
@@ -36,7 +36,7 @@ export function setRouteAwareAlerts(on: boolean) {
 
 /** Plays the next note for a report the navigator found along its route. */
 export function announceHazardAhead(ahead: { hazard: HazardReport; distanceM: number } | null, speedMps: number | null): boolean {
-  const cue = nextVoiceCue(ahead, ledger, speedMps);
+  const cue = nextVoiceCue(ahead, ledger, speedMps, alertToggles());
   if (!cue) return false;
   recordCue(ledger, cue);
   playVoiceNote(cue.clip);
@@ -64,7 +64,9 @@ function onFix(fix: Location.LocationObject) {
   if (routeAwareOwner && AppState.currentState === 'active') return;
   const here = { lat: fix.coords.latitude, lng: fix.coords.longitude };
   const speed = fix.coords.speed ?? null;
-  const live = hazards.filter((h) => isLiveHazard(h));
+  // Switched-off kinds are dropped before picking the nearest, so a camera that is off never hides police behind it.
+  const toggles = alertToggles();
+  const live = hazards.filter((h) => isLiveHazard(h) && isVoiceAlertType(h.hazard_type) && alertAllowed(h.hazard_type, toggles));
   const ahead = nearestHazardWithin(here, fix.coords.heading ?? null, live, finishedIds(ledger), APPROACH_ALERT_M + leadMetres(speed));
   announceHazardAhead(ahead, speed);
 }
@@ -85,20 +87,25 @@ export function isHazardWatchRunning(): boolean {
 }
 
 /**
- * Starts background updates for this trip. Android shows a "Navigating"
- * notification while it runs. Fails quietly (alerts then only work on screen)
- * when background location is refused or unsupported, e.g. in Expo Go.
+ * Starts the location foreground service for this trip. Android shows a
+ * "Navigating" notification while it runs. Fails quietly (alerts then only work
+ * on screen) when location is refused or unsupported, e.g. in Expo Go.
  *
- * `prompt: false` never asks for background location: on Android 11+ that
- * opens Settings, which would get in the way of handing off to Waze.
+ * It needs only the normal "while using the app" location permission, not
+ * "Allow all the time": a foreground service started while BOAROUTE is on screen
+ * keeps receiving locations after Waze or the lock screen takes over. That is
+ * why this must be called BEFORE handing off to Waze (Android 12+ refuses to
+ * start one from the background).
+ *
+ * `prompt: false` never asks for permission; `true` shows the normal location
+ * dialog once if it has not been answered.
  */
 export async function startHazardWatch({ prompt = true }: { prompt?: boolean } = {}): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   try {
     if (!(await TaskManager.isAvailableAsync())) return false;
-    const bg = await Location.getBackgroundPermissionsAsync();
-    // Ask once; after a refusal Android only offers it in Settings, so don't nag every trip.
-    if (!bg.granted && (!prompt || !bg.canAskAgain || !(await Location.requestBackgroundPermissionsAsync()).granted)) return false;
+    const fg = await Location.getForegroundPermissionsAsync();
+    if (!fg.granted && (!prompt || !fg.canAskAgain || !(await Location.requestForegroundPermissionsAsync()).granted)) return false;
     preloadVoiceNotes().catch(() => {});
     if (await Location.hasStartedLocationUpdatesAsync(HAZARD_WATCH_TASK)) {
       watching = true;
@@ -126,10 +133,11 @@ export async function startHazardWatch({ prompt = true }: { prompt?: boolean } =
   }
 }
 
+/** True when location is allowed, which is all the alerts service needs (see startHazardWatch). */
 export async function hasBackgroundAlertsPermission(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   try {
-    return (await Location.getBackgroundPermissionsAsync()).granted;
+    return (await Location.getForegroundPermissionsAsync()).granted;
   } catch {
     return false;
   }
