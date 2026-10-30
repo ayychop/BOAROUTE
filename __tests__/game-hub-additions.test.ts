@@ -92,13 +92,16 @@ describe('alert audio sources', () => {
     expect(fs.existsSync(path.join(root, 'assets/sounds/police_passing.mp3'))).toBe(false);
   });
 
-  it('has real MP3 data in both camera files', () => {
+  it('has real audio data in both camera files', () => {
     for (const name of ['camera_approaching.mp3', 'camera_passing.mp3']) {
       const bytes = fs.readFileSync(path.join(root, 'assets/sounds', name));
       expect(bytes.length).toBeGreaterThan(1000);
+      // MP3 (tagged or raw frames), or an MP4/3GPP audio container that voice recorders
+      // often save under an .mp3 name; Android's players detect the format from the contents.
       const id3 = bytes.subarray(0, 3).toString('latin1') === 'ID3';
       const frameSync = bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
-      expect(id3 || frameSync).toBe(true);
+      const mp4 = bytes.subarray(4, 8).toString('latin1') === 'ftyp';
+      expect(id3 || frameSync || mp4).toBe(true);
     }
   });
 });
