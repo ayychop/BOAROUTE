@@ -28,12 +28,14 @@ import { recentMonths, talliesForMonth } from '@/lib/history';
 import { monthTitle } from '@/lib/report';
 import { odometerValue } from '@/lib/odometer';
 import { computeDue, monthProgress } from '@/lib/route-engine';
+import { BIG_HEADER_CHARS, GREETINGS, parseGreetingIndex, pickGreetingIndex, renderGreeting } from '@/lib/greetings';
 import { prefsFor } from '@/lib/preferences';
+import { getPref, setPref } from '@/lib/prefs';
 import { vehicleFor } from '@/lib/vehicles';
 import { isWorkingDate, workingDatesLeft } from '@/lib/workdays';
 import { useAuth } from '@/providers/AuthProvider';
 import { useData } from '@/providers/DataProvider';
-import { COCKPIT_INK, greetingFor } from '@/theme/palettes';
+import { COCKPIT_INK } from '@/theme/palettes';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius } from '@/theme/typography';
 
@@ -73,6 +75,23 @@ function TileGrid({ children }: { children: ReactNode[] }) {
   );
 }
 
+const LAST_GREETING_PREF = 'home.greeting';
+let launchGreeting: number | null = null;
+
+/**
+ * The header line for this launch. Picked the first time the Home screen is
+ * built after the app starts and kept until it is closed, so it holds still
+ * while you move around and changes on the next fresh open. The previous
+ * launch's line is remembered so it never repeats back to back.
+ */
+function greetingForThisLaunch(): string {
+  if (launchGreeting === null) {
+    launchGreeting = pickGreetingIndex(parseGreetingIndex(getPref(LAST_GREETING_PREF)));
+    setPref(LAST_GREETING_PREF, String(launchGreeting));
+  }
+  return GREETINGS[launchGreeting];
+}
+
 export default function Hub() {
   const { palette, phase } = useTheme();
   const { profile, isAdmin } = useAuth();
@@ -80,6 +99,7 @@ export default function Hub() {
   const { compact, expanded } = useLayout();
   const units = useUnits();
   const [refreshing, setRefreshing] = useState(false);
+  const [greetingTemplate] = useState(greetingForThisLaunch);
 
   const nowMs = useNow();
   const now = new Date(nowMs);
@@ -112,6 +132,8 @@ export default function Hub() {
     setRefreshing(false);
   };
 
+  const greeting = renderGreeting(greetingTemplate, firstName(profile?.name, profile?.email));
+
   const header = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 12 : 16, marginBottom: compact ? 16 : 22 }}>
       <BRLogo size={compact ? 40 : expanded ? 60 : 50} animated={phase === 'cockpit'} />
@@ -119,8 +141,16 @@ export default function Hub() {
         <Txt variant="label" tone="primary" numberOfLines={1}>
           {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
         </Txt>
-        <Txt variant={compact ? 'title' : 'display'} numberOfLines={2}>
-          {greetingFor(phase, now.getHours())}, {firstName(profile?.name, profile?.email)}
+        <Txt
+          variant={compact || greeting.length > BIG_HEADER_CHARS ? 'title' : 'display'}
+          numberOfLines={3}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+          maxFontSizeMultiplier={1.15}
+          ellipsizeMode="tail"
+          accessibilityRole="header"
+        >
+          {greeting}
         </Txt>
       </View>
     </View>
